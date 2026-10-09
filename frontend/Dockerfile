@@ -5,6 +5,9 @@ RUN corepack enable && corepack prepare pnpm@10.18.0 --activate
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
+# The frontend imports this backend file for API types. Keep the same sibling
+# layout described by tsconfig's ../backend path inside the build image.
+COPY backend/src/chat-types.ts /backend/src/chat-types.ts
 
 ARG IP_ADDRESS=127.0.0.1
 ARG ASSISTANT_NAME=Ada
