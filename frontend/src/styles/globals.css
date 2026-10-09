@@ -1,0 +1,282 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'tw-shimmer';
+@import './generative-ui.css';
+/* Streamdown (message markdown) styles its controls with Tailwind classes. */
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Fonts. UI and body text: Figtree, round and open, friendly at small sizes.
+ * Display (greetings and headings): Bricolage Grotesque, with a bit of
+ * character. Code: Commit Mono. Figtree and Bricolage come from Fontsource
+ * (imported in main.tsx).
+ */
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('../fonts/CommitMono-400-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('../fonts/CommitMono-700-Regular.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('../fonts/CommitMono-400-Italic.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('../fonts/CommitMono-700-Italic.otf') format('opentype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  --font-figtree: 'Figtree Variable';
+  --font-bricolage: 'Bricolage Grotesque Variable';
+  --font-commit-mono: 'Commit Mono';
+}
+
+/*
+ * Light only. A white canvas, ink text, and flat blocks of joyful colour that
+ * always carry white text: bright blue (Artemis, you, the main actions), mint (a
+ * live call), pink (notes and memories), blue (background work). No
+ * gradients, no glows: colour is the decoration.
+ */
+:root {
+  --radius: 1.25rem;
+  --background: #ffffff;
+  --foreground: #15141a;
+  --card: #ffffff;
+  --card-foreground: #15141a;
+  --popover: #ffffff;
+  --popover-foreground: #15141a;
+  --primary: #0575f0;
+  --primary-hover: #0462cc;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f2f7;
+  --secondary-foreground: #15141a;
+  --muted: #f3f2f7;
+  --muted-foreground: #6e6b7b;
+  --accent: #e6f1fe;
+  --accent-foreground: #15141a;
+  --destructive: #e5383b;
+  --border: #e7e5ee;
+  --input: #e7e5ee;
+  --ring: #0575f0;
+  --mint: #0e9f6e;
+  --pink: #e83e8c;
+  --sky: #2563eb;
+  --sunny: #ffb020;
+  --chart-1: #0575f0;
+  --chart-2: #0e9f6e;
+  --chart-3: #ffb020;
+  --chart-4: #e83e8c;
+  --chart-5: #2563eb;
+  --sidebar: #f6f5fa;
+  --sidebar-foreground: #15141a;
+  --sidebar-primary: #0575f0;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eceaf3;
+  --sidebar-accent-foreground: #15141a;
+  --sidebar-border: #e7e5ee;
+  --sidebar-ring: #0575f0;
+  /* Generative UI tones (positive / warning facts and alerts). */
+  --aui-success: oklch(0.6 0.15 149);
+  --aui-warning: oklch(0.68 0.16 70);
+  color-scheme: light;
+}
+
+@theme inline {
+  --font-sans:
+    var(--font-figtree), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-display: var(--font-bricolage), var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    var(--font-commit-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-mint: var(--mint);
+  --color-pink: var(--pink);
+  --color-sky: var(--sky);
+  --color-sunny: var(--sunny);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Everything rounded: shadcn's radius scale follows --radius. */
+  --radius-sm: calc(var(--radius) - 10px);
+  --radius-md: calc(var(--radius) - 6px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 6px);
+
+  /*
+   * Motion. The spring (with a visible overshoot) is only for button presses:
+   * a direct answer to the user's own action. Everything that moves on its
+   * own slides, with at most a hair of settle (--ease-slide).
+   */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-slide: cubic-bezier(0.25, 1.06, 0.4, 1);
+  --animate-pop-in: slide-in 320ms var(--ease-slide) both;
+  --animate-rise-in: slide-in 320ms var(--ease-slide) both;
+  --animate-mascot-turn: mascot-turn 1.1s var(--ease-out-soft) infinite;
+  --animate-call-ring: call-ring 1.8s ease-out infinite;
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+  }
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+    to {
+      height: 0;
+    }
+  }
+  /* New messages, notes and chips slide up into place. */
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* The mascot waiting for a reply: it turns on itself, easing into each turn. */
+  @keyframes mascot-turn {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  /* A flat ring that ripples out of the end-call button. */
+  @keyframes call-ring {
+    from {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--mint) 45%, transparent);
+    }
+    to {
+      box-shadow: 0 0 0 10px transparent;
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-medium;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-extrabold tracking-tight;
+  }
+  /* Every button gives a little squish when pressed. */
+  button {
+    transition-property: color, background-color, border-color, opacity, transform;
+    transition-duration: 160ms, 160ms, 160ms, 160ms, 260ms;
+    transition-timing-function: ease, ease, ease, ease, var(--ease-spring);
+  }
+  button:active:not(:disabled) {
+    transform: scale(0.93);
+  }
+}
+
+@layer components {
+  /* The mascot's eyes close for a blink (the rotation is applied to the svg). */
+  .mascot-blink {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: mascot-blink 150ms ease-in-out;
+  }
+  @keyframes mascot-blink {
+    50% {
+      transform: scaleY(0.1);
+    }
+  }
+
+  /* The mascot below a finished reply, beside its action bar. */
+  .mascot-wrapped {
+    translate: 10px 7px;
+  }
+
+  /* Lift on hover, squish on press: for the main actions. */
+  .bouncy {
+    transition:
+      transform 220ms var(--ease-spring),
+      background-color 150ms ease;
+  }
+  .bouncy:hover:not(:disabled) {
+    transform: translateY(-1px) scale(1.05);
+  }
+  .bouncy:active:not(:disabled) {
+    transform: scale(0.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+
+@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));

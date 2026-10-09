@@ -1,0 +1,109 @@
+# Infrastructure only: the Letta App Server (agent state, memory, conversations)
+# and a LiveKit server in dev mode. The backend, the frontend and the voice agent
+# run on the host (`pnpm dev`, `uv run agent dev`) so they hot-reload and so
+# WebRTC media uses the host network.
+name: livekit-letta
+
+services:
+  letta:
+    image: livekit-letta/letta:0.34.4-groq-qwen
+    build:
+      context: ./infrastructure/letta
+    # Native providers are enabled by their API key env vars. An optional
+    # OpenAI-compatible endpoint is registered at startup, through the proxy
+    # below. letta/setup.mjs installs the assistant's subagents and MCP servers.
+    # Non-loopback listeners require auth: the shared token is written to a file
+    # for capability-token auth. All state (agents, conversations, MemFS memory)
+    # lives in /root/.letta.
+    command:
+      - sh
+      - -c
+      - >-
+        node /opt/assistant/setup.mjs || exit 1;
+        if [ -n "$$OPENAI_COMPATIBLE_BASE_URL" ]; then
+        letta --backend local connect openai-compatible
+        --base-url http://openai-compatible-proxy:8080/v1 --api-key "$$OPENAI_COMPATIBLE_API_KEY" || exit 1;
+        fi &&
+        printf %s "$$LETTA_SERVER_TOKEN" > /run/letta-token &&
+        exec letta --backend local server
+        --listen ws://0.0.0.0:4500
+        --ws-auth capability-token --ws-token-file /run/letta-token
+    environment:
+      LETTA_SERVER_TOKEN: ${LETTA_SERVER_TOKEN:?set LETTA_SERVER_TOKEN in .env}
+      LETTA_SKIP_KEYCHAIN_CHECK: "1"
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
+      OPENAI_COMPATIBLE_PROXY_URL: http://openai-compatible-proxy:8080/v1
+      # Background workers: their model.
+      ASSISTANT_TASK_MODEL: ${ASSISTANT_TASK_MODEL:-}
+      # Where letta/notifications.mjs hands background-task notifications over:
+      # the backend on the host (Docker Desktop and Rancher Desktop resolve
+      # host.docker.internal; on a plain Linux engine set this to a host IP).
+      ASSISTANT_GATEWAY_URL: ${ASSISTANT_GATEWAY_URL:-http://host.docker.internal:3000}
+    depends_on:
+      - openai-compatible-proxy
+    ports:
+      - "127.0.0.1:4500:4500"
+    volumes:
+      - letta-data:/root/.letta
+      # The agent's workspace (its working directory), shared with the backend.
+      # data/ holds the backend's files (attachments, state): read-only here.
+      - ./backend/.workspace:/workspace
+      - ./backend/.workspace/data:/workspace/data:ro
+      - ./letta/telnyx.mjs:/root/.letta/mods/telnyx.mjs:ro
+      - ./letta/notifications.mjs:/root/.letta/mods/notifications.mjs:ro
+      - ./letta/setup.mjs:/opt/assistant/setup.mjs:ro
+      - ./letta/agents:/opt/assistant/agents:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4500/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Letta always appends /v1 to an OpenAI-compatible base URL, for model
+  # discovery and for completions. Endpoints that live elsewhere (Telnyx:
+  # https://api.telnyx.com/v2/ai/openai) are served here as /v1/*.
+  openai-compatible-proxy:
+    image: nginx:1.27-alpine
+    command:
+      - sh
+      - -c
+      - |
+        upstream="$${OPENAI_COMPATIBLE_BASE_URL:-http://127.0.0.1:9}"
+        upstream="$${upstream%/}"
+        cat > /etc/nginx/conf.d/default.conf <<EOF
+        server {
+          listen 8080;
+          location /v1/ {
+            proxy_pass $$upstream/;
+            proxy_ssl_server_name on;
+            proxy_http_version 1.1;
+            proxy_buffering off;
+            proxy_read_timeout 600s;
+          }
+        }
+        EOF
+        exec nginx -g 'daemon off;'
+    environment:
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-}
+    restart: unless-stopped
+
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    # --dev: keys devkey/secret, single UDP port 7882. Bind all interfaces inside
+    # the container and advertise 127.0.0.1 so the browser on the host can reach media.
+    command: --dev --bind 0.0.0.0 --node-ip 127.0.0.1
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    restart: unless-stopped
+
+volumes:
+  letta-data:

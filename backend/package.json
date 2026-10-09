@@ -1,0 +1,44 @@
+{
+  "name": "livekit-letta-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19"
+  },
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false --include \"prompts/**/*.md\" src/server.ts",
+    "start": "tsx src/server.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.5",
+    "@letta-ai/letta-agent-sdk": "0.8.30",
+    "@letta-ai/letta-code": "0.34.4",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "hono": "^4.10.1",
+    "livekit-server-sdk": "^2.19.1",
+    "tsx": "^4.20.6",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@trivago/prettier-plugin-sort-imports": "^5.2.2",
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10.1.5",
+    "prettier": "^3.4.2",
+    "typescript": "^5",
+    "typescript-eslint": "^8"
+  },
+  "packageManager": "pnpm@10.18.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@letta-ai/letta-code"
+    ]
+  }
+}
