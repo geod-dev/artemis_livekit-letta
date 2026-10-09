@@ -22,8 +22,8 @@ app.route('/api/mcp', mcp);
 app.route('/api', files);
 app.route('/api', utilities);
 
-serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
-  console.info(`[backend] listening on http://localhost:${port}`);
+serve({ fetch: app.fetch, hostname: '0.0.0.0', port: config.port }, ({ port }) => {
+  console.info(`[backend] listening on port ${port}`);
 });
 
 // Management connection to the Letta server: the shared MCP list, its skill and the bridge mod.

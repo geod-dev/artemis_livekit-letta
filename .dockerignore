@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+**/node_modules
+**/.pnpm-store
+**/.venv
+**/__pycache__
+**/*.pyc
+backend/.workspace
+frontend/dist

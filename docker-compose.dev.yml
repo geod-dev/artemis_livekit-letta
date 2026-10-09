@@ -1,0 +1,7 @@
+# Local hot-reload setup: keep Letta and LiveKit in Docker, run app code on host.
+services:
+  letta:
+    environment:
+      ASSISTANT_GATEWAY_URL: http://host.docker.internal:3000
+    ports:
+      - "127.0.0.1:4500:4500"

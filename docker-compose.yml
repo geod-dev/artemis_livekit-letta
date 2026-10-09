@@ -1,7 +1,5 @@
-# Infrastructure only: the Letta App Server (agent state, memory, conversations)
-# and a LiveKit server in dev mode. The backend, the frontend and the voice agent
-# run on the host (`pnpm dev`, `uv run agent dev`) so they hot-reload and so
-# WebRTC media uses the host network.
+# The full application stack. Host-facing URLs use IP_ADDRESS; containers use
+# Compose service names for traffic that stays inside the Docker network.
 name: livekit-letta
 
 services:
@@ -41,14 +39,13 @@ services:
       OPENAI_COMPATIBLE_PROXY_URL: http://openai-compatible-proxy:8080/v1
       # Background workers: their model.
       ASSISTANT_TASK_MODEL: ${ASSISTANT_TASK_MODEL:-}
-      # Where letta/notifications.mjs hands background-task notifications over:
-      # the backend on the host (Docker Desktop and Rancher Desktop resolve
-      # host.docker.internal; on a plain Linux engine set this to a host IP).
-      ASSISTANT_GATEWAY_URL: ${ASSISTANT_GATEWAY_URL:-http://host.docker.internal:3000}
+      # Defaults to the backend service in the full stack. Host-based development
+      # can override this with host.docker.internal:3000.
+      ASSISTANT_GATEWAY_URL: ${ASSISTANT_GATEWAY_URL:-http://backend:3000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - openai-compatible-proxy
-    ports:
-      - "127.0.0.1:4500:4500"
     volumes:
       - letta-data:/root/.letta
       # The agent's workspace (its working directory), shared with the backend.
@@ -96,13 +93,57 @@ services:
 
   livekit:
     image: livekit/livekit-server:v1.13.7
-    # --dev: keys devkey/secret, single UDP port 7882. Bind all interfaces inside
-    # the container and advertise 127.0.0.1 so the browser on the host can reach media.
-    command: --dev --bind 0.0.0.0 --node-ip 127.0.0.1
+    # Use configured API keys and a single UDP media port. Advertise the host
+    # address so browsers on other devices can reach WebRTC media.
+    command: --bind 0.0.0.0 --node-ip ${IP_ADDRESS:-127.0.0.1} --udp-port 7882
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-secret}"
     ports:
       - "7880:7880"
       - "7881:7881"
       - "7882:7882/udp"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    environment:
+      BACKEND_PORT: 3000
+      LETTA_URL: http://letta:4500
+      LIVEKIT_URL: ws://${IP_ADDRESS:-127.0.0.1}:7880
+    depends_on:
+      letta:
+        condition: service_healthy
+    volumes:
+      - ./backend/.workspace:/app/.workspace
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        IP_ADDRESS: ${IP_ADDRESS:-127.0.0.1}
+        ASSISTANT_NAME: ${ASSISTANT_NAME:-Ada}
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
+  voice-agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    env_file: .env
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      GATEWAY_URL: http://backend:3000
+    depends_on:
+      - backend
+      - livekit
     restart: unless-stopped
 
 volumes:

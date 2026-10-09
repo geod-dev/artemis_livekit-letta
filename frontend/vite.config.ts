@@ -7,8 +7,15 @@ import react from '@vitejs/plugin-react';
 // and the voice agent. The browser reaches the backend through the `/api` proxy.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, fileURLToPath(new URL('..', import.meta.url)), '');
-  const assistantName = env.ASSISTANT_NAME || 'Ada';
-  const proxy = { '/api': { target: env.BACKEND_URL || 'http://localhost:3000' } };
+  const assistantName = process.env.ASSISTANT_NAME || env.ASSISTANT_NAME || 'Ada';
+  const proxy = {
+    '/api': {
+      target:
+        process.env.BACKEND_URL ||
+        env.BACKEND_URL ||
+        `http://${process.env.IP_ADDRESS || env.IP_ADDRESS || '127.0.0.1'}:3000`,
+    },
+  };
   return {
     plugins: [react(), tailwindcss(), assistantNameInHtml(assistantName)],
     define: { 'import.meta.env.ASSISTANT_NAME': JSON.stringify(assistantName) },

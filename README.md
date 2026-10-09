@@ -171,8 +171,8 @@ queued but never spoken goes to the chat as text when the call ends.
 ## Repository layout
 
 ```
-docker-compose.yml   Letta App Server + LiveKit server (dev mode)
-.env.example         every setting, shared by compose, backend/, frontend/ and agent/
+docker-compose.yml   Full stack: Letta, LiveKit, backend, frontend and voice agent
+.env.example         shared settings, including the single host IP_ADDRESS
 letta/               mounted into the Letta container
   setup.mjs            installs subagent definitions before the server starts
   agents/research.md   the research worker (native Letta subagent)
@@ -200,25 +200,48 @@ agent/               Python LiveKit agent (uv)
 
 ## Running it
 
-Requirements: Docker, Node ≥ 22.19 with pnpm, Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/).
+Requirements for the complete stack: Docker with Docker Compose. No host Node or Python installation is needed.
 
 ```bash
-cp .env.example .env           # then fill in the keys you use
-docker compose up -d           # Letta on :4500, LiveKit on :7880
-
-cd backend && pnpm install && pnpm dev      # API on http://localhost:3000
-cd frontend && pnpm install && pnpm dev     # the app: http://localhost:5173
-cd agent && uv sync && uv run agent dev     # voice agent worker
+cp .env.example .env           # then fill in the provider keys you use
+docker compose up --build -d   # builds and starts every service
 ```
+
+Set `IP_ADDRESS` once in `.env` to the IPv4 address clients use to reach this host. Use
+`127.0.0.1` for local testing; for another device or a deployment, use the host's reachable LAN/public
+address. The app is at `http://<IP_ADDRESS>:5173`. LiveKit uses the same address for its websocket and
+WebRTC media. Docker publishes the web app and LiveKit ports; the backend and Letta stay inside Docker's
+private network. Allow inbound TCP ports 5173, 7880, and 7881, plus UDP port 7882, in the VPS firewall.
+For voice calls from a remote browser, serve the app and LiveKit over HTTPS/WSS with a trusted certificate;
+browser microphone access requires a secure origin.
 
 Minimum keys: one LLM provider for the models you select (e.g. Telnyx through
 `OPENAI_COMPATIBLE_BASE_URL/_API_KEY`) and the speech provider (`DEEPGRAM_API_KEY` for the default Flux
 STT/TTS). The agent is created on first use; to start over, delete it (or change `LETTA_AGENT_NAME`), or
 remove the `letta-data` volume. For web search, add an MCP server in Settings → MCP servers.
 
-Background notifications reach the backend at `ASSISTANT_GATEWAY_URL` (default
-`http://host.docker.internal:3000`, which Docker Desktop and Rancher Desktop resolve to the host). If the
-backend is unreachable, Letta delivers notifications natively instead (no call-mode policy or read state).
+To stop the stack, run `docker compose down`. Letta data and the backend workspace remain on disk. To follow
+startup output, run `docker compose logs -f`.
+
+### Local development
+
+Use `IP_ADDRESS=127.0.0.1` in `.env` for local work. Install Node ≥ 22.19 with pnpm and Python ≥ 3.11 with
+[uv](https://docs.astral.sh/uv/). Start the supporting services:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d letta livekit
+```
+
+Then run these in separate terminals from the repository root (install each project's dependencies once):
+
+```bash
+cd backend && pnpm install && pnpm dev
+cd frontend && pnpm install && pnpm dev
+cd agent && uv sync && uv run agent dev
+```
+
+Open `http://127.0.0.1:5173`. The Vite server proxies API requests to the backend, and the dev override
+lets Letta send background notifications to the host backend.
 
 Other commands:
 
@@ -238,6 +261,7 @@ node --test letta/*.test.mjs        # Letta mods, from the repository root
 | `ASSISTANT_TASK_MODEL` | model of the `research` worker (empty: the worker inherits the conversation's model) |
 | `ASSISTANT_REFLECTION_STEPS` | background reflection interval, in agent steps |
 | `VOICE_STT`, `VOICE_TTS`, `VOICE_TTS_VOICE` | `<provider>/<model-or-voice>`: `deepgram`, `telnyx`, `openai`, `cartesia`, `elevenlabs`, `inference` |
+| `IP_ADDRESS` | host address advertised to browsers and used for published service ports (`127.0.0.1` locally) |
 | `OPENAI_COMPATIBLE_BASE_URL/_API_KEY` | optional extra OpenAI-compatible provider for Letta (`openai-compatible/<model>`), served under `/v1` by the compose proxy |
 | `ASSISTANT_GATEWAY_URL` | where the Letta container reaches the backend for background notifications |
 | `BACKEND_PORT`, `BACKEND_URL` | the backend's port (default 3000), and where the frontend proxies `/api` to |

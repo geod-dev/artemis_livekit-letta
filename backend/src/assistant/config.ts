@@ -8,19 +8,20 @@ const rootEnv = fileURLToPath(new URL('../../../.env', import.meta.url));
 if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
 
 function env(name: string, fallback?: string): string {
-  const value = process.env[name]?.trim();
+  const value = process.env[name]?.trim().replaceAll('${IP_ADDRESS}', process.env.IP_ADDRESS || '127.0.0.1');
   if (value) return value;
   if (fallback !== undefined) return fallback;
   throw new Error(`Missing required environment variable ${name} (see .env.example)`);
 }
 
 const workspaceDir = fileURLToPath(new URL('../../.workspace', import.meta.url));
+const ipAddress = env('IP_ADDRESS', '127.0.0.1');
 
 /** Server-side configuration. Everything model/provider-specific lives here. */
 export const config = {
   port: Number(process.env.BACKEND_PORT || 3000),
   letta: {
-    url: env('LETTA_URL', 'http://127.0.0.1:4500'),
+    url: env('LETTA_URL', `http://${ipAddress}:4500`),
     token: process.env.LETTA_SERVER_TOKEN?.trim() || undefined,
     agentName: env('LETTA_AGENT_NAME', 'personal-assistant'),
   },
@@ -64,7 +65,7 @@ export const config = {
     model: env('ASSISTANT_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'),
   },
   livekit: {
-    url: env('LIVEKIT_URL', 'ws://localhost:7880'),
+    url: env('LIVEKIT_URL', `ws://${ipAddress}:7880`),
     apiKey: env('LIVEKIT_API_KEY', 'devkey'),
     apiSecret: env('LIVEKIT_API_SECRET', 'secret'),
     agentName: env('LIVEKIT_AGENT_NAME', 'assistant'),

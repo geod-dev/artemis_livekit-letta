@@ -26,7 +26,9 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         return cls(
-            gateway_url=os.getenv("GATEWAY_URL", "http://localhost:3000").rstrip("/"),
+            gateway_url=os.getenv(
+                "GATEWAY_URL", f"http://{os.getenv('IP_ADDRESS', '127.0.0.1')}:3000"
+            ).rstrip("/"),
             gateway_token=os.getenv("VOICE_GATEWAY_TOKEN", "dev-voice-token-change-me"),
             agent_name=os.getenv("LIVEKIT_AGENT_NAME", "assistant"),
             stt=os.getenv("VOICE_STT", "deepgram/flux-general-multi"),
