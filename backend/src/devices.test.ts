@@ -68,6 +68,8 @@ test('each device is persisted as a standard MCP server and uses the normal MCP 
   const f = await fixture();
   try {
     const session = await f.hub.register('laptop', tools);
+    // Registration publishes the catalog asynchronously; wait before inspecting it.
+    await f.registry.reconcile();
     const stored = await f.registry.list();
     assert.equal(stored.length, 1);
     assert.equal(stored[0].managed?.deviceName, 'laptop');
@@ -126,6 +128,7 @@ test('devices with the same tool name have independent MCP endpoints and lifetim
   try {
     const laptop = await f.hub.register('laptop', tools);
     await f.hub.register('desktop', tools);
+    await f.registry.reconcile();
     const stored = await f.registry.list();
     assert.equal(stored.length, 2);
     assert.notEqual(stored[0].url, stored[1].url);

@@ -225,6 +225,20 @@ def load_device_token(env_file=None):
     return normalize_token(getpass.getpass('Device token: ')), 'interactive input'
 
 
+def upload_device_file(server, token, name, session, call_id, path):
+    """Stream raw bytes over HTTP; return only server-generated file metadata."""
+    with path.open('rb') as file:
+        size = os.fstat(file.fileno()).st_size
+        if size > 25 * 1024 * 1024: raise ValueError('File exceeds the 25 MB export limit')
+        url = server.rstrip('/') + '/api/devices/' + urllib.parse.quote(name, safe='') + '/files/' + urllib.parse.quote(call_id, safe='')
+        req = urllib.request.Request(url, data=file, method='POST', headers={
+            'Authorization': 'Bearer ' + token, 'X-Device-Session': session,
+            'Content-Type': 'application/octet-stream', 'Content-Length': str(size),
+        })
+        with urllib.request.urlopen(req, timeout=45) as response:
+            return json.load(response)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('name', help='Unique device name: letters, numbers, underscores, hyphens')
@@ -270,6 +284,8 @@ def main():
     def request(path, body=None, session=None, timeout=35):
         with open_request(path, body, session, timeout=timeout) as response:
             return json.load(response)
+    def upload_file(path, call_id):
+        return upload_device_file(server, token, args.name, session, call_id, path)
     def execute(message):
         try:
             if message.get('method') != 'tools/call': raise ValueError('Unsupported MCP method')
@@ -277,6 +293,8 @@ def main():
             if local: return local.rpc('tools/call', params)
             handler = scope_handlers.get(params['name'])
             if handler is None: raise ValueError('Unknown tool')
+            if params['name'] == 'filesystem_export':
+                return handler(params.get('arguments', {}), upload=lambda path: upload_file(path, message['id']))
             return handler(params.get('arguments', {}))
         except Exception as error:
             return {'isError': True, 'content': [{'type': 'text', 'text': str(error)}]}

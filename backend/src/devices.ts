@@ -10,6 +10,7 @@ import { streamSSE } from 'hono/streaming';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { config } from './assistant/config';
 import { equalSecret } from './auth';
+import { saveDeviceFile } from './device-files';
 import type { McpServer } from './mcp/settings';
 
 interface Rpc {
@@ -36,6 +37,9 @@ export class DeviceHub {
     string,
     {
       session: string;
+      tool: string;
+      sourcePath?: string;
+      uploadStarted?: boolean;
       resolve: (value: CallToolResult) => void;
       timer: ReturnType<typeof setTimeout>;
     }
@@ -206,6 +210,19 @@ export class DeviceHub {
     this.pending.delete(id);
     p.resolve(validated);
   }
+  beginFileUpload(name: string, session: string, id: string): string {
+    this.checkFileUpload(name, session, id);
+    const p = this.pending.get(id)!;
+    if (p.uploadStarted) throw new Error('File upload already started');
+    p.uploadStarted = true;
+    return p.sourcePath!;
+  }
+  checkFileUpload(name: string, session: string, id: string) {
+    this.get(name, session, true);
+    const p = this.pending.get(id);
+    if (!p || p.session !== session || p.tool !== 'filesystem_export' || !p.sourcePath)
+      throw new Error('No matching pending file export');
+  }
   async call(
     name: string,
     session: string,
@@ -230,7 +247,13 @@ export class DeviceHub {
           ],
         });
       }, 60_000);
-      this.pending.set(id, { session: d.session, resolve, timer });
+      this.pending.set(id, {
+        session: d.session,
+        tool,
+        sourcePath: typeof args.path === 'string' ? args.path : undefined,
+        resolve,
+        timer,
+      });
     });
     d.queue.push({
       jsonrpc: '2.0',
@@ -243,7 +266,7 @@ export class DeviceHub {
   }
 }
 export const deviceHub = new DeviceHub();
-export function createDeviceRoutes(hub: DeviceHub): Hono {
+export function createDeviceRoutes(hub: DeviceHub, workspace = config.workspace.dir): Hono {
   const routes = new Hono();
   routes.post('/register', bodyLimit({ maxSize: 256_000 }), async (c) => {
     try {
@@ -255,6 +278,21 @@ export function createDeviceRoutes(hub: DeviceHub): Hono {
   });
   const sessionOf = (c: { req: { header: (name: string) => string | undefined } }) =>
     c.req.header('X-Device-Session') ?? '';
+  routes.post('/:name/files/:id', async (c) => {
+    const name = c.req.param('name'),
+      session = sessionOf(c),
+      id = c.req.param('id');
+    try {
+      const sourcePath = hub.beginFileUpload(name, session, id);
+      return c.json(
+        await saveDeviceFile(c.req.raw, sourcePath, workspace, () =>
+          hub.checkFileUpload(name, session, id)
+        )
+      );
+    } catch (error) {
+      return c.json({ error: String(error) }, 409);
+    }
+  });
   routes.get('/:name/events', (c) => {
     const name = c.req.param('name'),
       session = sessionOf(c);
