@@ -3,6 +3,8 @@
 Python 3.10+; no packages to install. Run on the desktop whose browser, files, audio, terminal, or screen you want to expose.
 
 ```sh
+python devices/artemis-device.py laptop
+# Or choose scopes explicitly without the menu:
 python devices/artemis-device.py laptop --scopes browser
 ```
 
@@ -10,7 +12,7 @@ The script reads **ARTEMIS_DEVICE_TOKEN** from the environment, then from the pr
 
 ## Built-in scopes
 
-Pass one or more scope names after `--scopes`. Only those scopes are registered with Artemis; with no `--scopes` the device exposes no built-in tools. Restart the client to change its scopes.
+Pass one or more scope names after `--scopes`. Only those scopes are registered with Artemis. If `--scopes` is omitted, an interactive keyboard menu opens before the client starts: use Up/Down to move, Space to toggle a scope, and Enter to confirm. Browser is selected by default; the other scopes start unchecked. If you select terminal, the menu asks which executable names to allow. Ctrl+C cancels the menu or cleanly disconnects a running client. A non-interactive launch must provide `--scopes` explicitly.
 
 ```sh
 python devices/artemis-device.py laptop --scopes browser media filesystem screenshot

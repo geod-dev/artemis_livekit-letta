@@ -19,6 +19,90 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scopes import build_scopes
 from scopes.browser import open_url
 
+AVAILABLE_SCOPES = ('browser', 'media', 'filesystem', 'terminal', 'screenshot')
+
+
+def select_scopes():
+    """Show a small keyboard-driven multi-select menu in an interactive terminal."""
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        raise RuntimeError('Choose scopes with --scopes when running without an interactive terminal.')
+
+    selected = {'browser'}
+    cursor = 0
+    labels = [
+        'Browser — open HTTP(S) URLs',
+        'Media — control playback and volume',
+        'Filesystem — list, read, and write files',
+        'Terminal — run explicitly allowlisted commands',
+        'Screenshot — capture the desktop',
+    ]
+    lines = []
+
+    def render(first=False):
+        nonlocal lines
+        current = [
+            'Select Device scopes (↑/↓ move, Space toggles, Enter confirms, q cancels)',
+            '',
+        ]
+        current.extend(f"{'❯' if index == cursor else ' '} [{'x' if scope in selected else ' '}] {label}"
+                       for index, (scope, label) in enumerate(zip(AVAILABLE_SCOPES, labels)))
+        current.extend(['', 'Browser is selected by default. Terminal will ask which commands to allow.'])
+        if not first:
+            sys.stdout.write(f'\x1b[{len(lines)}A')
+        for line in current:
+            sys.stdout.write('\r\x1b[2K' + line + '\n')
+        sys.stdout.flush()
+        lines = current
+
+    def read_key():
+        if os.name == 'nt':
+            import msvcrt
+            key = msvcrt.getwch()
+            if key in ('\x00', '\xe0'):
+                return {'H': 'up', 'P': 'down'}.get(msvcrt.getwch(), '')
+            if key == '\x03': raise KeyboardInterrupt
+            if key == '\r': return 'enter'
+            if key == ' ': return 'space'
+            return key.casefold()
+
+        import termios
+        import tty
+        fd = sys.stdin.fileno()
+        previous = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            key = sys.stdin.read(1)
+            if key == '\x03': raise KeyboardInterrupt
+            if key == '\x1b':
+                sequence = sys.stdin.read(2)
+                return {'\x1b[A': 'up', '\x1b[B': 'down'}.get(key + sequence, '')
+            if key in ('\r', '\n'): return 'enter'
+            if key == ' ': return 'space'
+            return key.casefold()
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, previous)
+
+    sys.stdout.write('\x1b[?25l')
+    try:
+        render(first=True)
+        while True:
+            key = read_key()
+            if key == 'up': cursor = (cursor - 1) % len(AVAILABLE_SCOPES)
+            elif key == 'down': cursor = (cursor + 1) % len(AVAILABLE_SCOPES)
+            elif key == 'space':
+                scope = AVAILABLE_SCOPES[cursor]
+                if scope in selected: selected.remove(scope)
+                else: selected.add(scope)
+            elif key == 'enter':
+                return [scope for scope in AVAILABLE_SCOPES if scope in selected]
+            elif key == 'q':
+                raise SystemExit(0)
+            render()
+    finally:
+        sys.stdout.write('\x1b[?25h\x1b[0m\n')
+        sys.stdout.flush()
+
+
 class StdioMcp:
     """Relay tools from any local MCP stdio server using JSON-RPC."""
     def __init__(self, command):
@@ -80,6 +164,28 @@ def stream_events(response):
             data.append(line[5:].lstrip())
 
 
+def interruptible_stream_events(response):
+    """Keep socket reads off the main thread so Ctrl+C is handled promptly."""
+    events = queue.Queue()
+
+    def read_events():
+        try:
+            for event in stream_events(response):
+                events.put(event)
+        except Exception as error:
+            events.put(error)
+        finally:
+            events.put(None)
+
+    threading.Thread(target=read_events, daemon=True).start()
+    while True:
+        try: item = events.get(timeout=0.25)
+        except queue.Empty: continue
+        if item is None: return
+        if isinstance(item, Exception): raise item
+        yield item
+
+
 def normalize_token(value):
     value = value.strip()
     # Some terminals include bracketed-paste markers when echo is disabled.
@@ -124,7 +230,7 @@ def main():
     parser.add_argument('name', help='Unique device name: letters, numbers, underscores, hyphens')
     parser.add_argument('--server', default=os.environ.get('ARTEMIS_URL', 'https://185.252.233.123'))
     parser.add_argument('--firefox', help='Firefox executable path')
-    parser.add_argument('--scopes', nargs='+', choices=('browser', 'media', 'filesystem', 'terminal', 'screenshot'), default=[], metavar='SCOPE', help='Scopes to expose (browser, media, filesystem, terminal, screenshot)')
+    parser.add_argument('--scopes', nargs='+', choices=AVAILABLE_SCOPES, default=None, metavar='SCOPE', help='Scopes to expose (browser, media, filesystem, terminal, screenshot); omit for an interactive menu')
     parser.add_argument('--filesystem-root', action='append', default=[], metavar='PATH', help='Filesystem root available to the filesystem scope; repeat to add roots (defaults to the current directory)')
     parser.add_argument('--terminal-command', action='append', default=[], metavar='NAME', help='Executable name allowed by the terminal scope; repeat to add commands. Commands run without a shell.')
     parser.add_argument('--env-file', help='Read ARTEMIS_DEVICE_TOKEN from this file instead of the environment or the project .env')
@@ -132,6 +238,16 @@ def main():
     args = parser.parse_args()
     if urllib.parse.urlsplit(args.server).scheme != 'https' and urllib.parse.urlsplit(args.server).hostname not in ('localhost', '127.0.0.1'):
         parser.error('Use HTTPS for remote servers')
+    if args.scopes is None:
+        if args.mcp_command:
+            args.scopes = []
+        else:
+            try: args.scopes = select_scopes()
+            except RuntimeError as error: parser.error(str(error))
+            if 'terminal' in args.scopes and not args.terminal_command:
+                try: raw_commands = input('Commands to allow for terminal (comma-separated executable names): ')
+                except EOFError: parser.error('Terminal scope requires at least one --terminal-command entry or an interactive allowlist.')
+                args.terminal_command = [name.strip() for name in raw_commands.split(',') if name.strip()]
     if args.mcp_command and args.scopes:
         parser.error('--mcp-command cannot be combined with built-in --scopes')
     if 'terminal' in args.scopes and not args.terminal_command:
@@ -144,22 +260,20 @@ def main():
     print(f'Token source: {token_source} ({len(token)} characters, fingerprint {fingerprint}).', flush=True)
     server = args.server.rstrip('/')
     print(f'Connecting to Artemis at {server} as "{args.name}"...', flush=True)
-    if args.mcp_command:
-        print('Starting the local MCP server and loading its tools...', flush=True)
-    local = StdioMcp(args.mcp_command) if args.mcp_command else None
-    def open_request(path, body=None, session=None):
+    local = None
+    def open_request(path, body=None, session=None, timeout=35):
         headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
         if session: headers['X-Device-Session'] = session
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(server + '/api/devices/' + path, data=data, headers=headers)
-        try: return urllib.request.urlopen(req, timeout=35)
+        try: return urllib.request.urlopen(req, timeout=timeout)
         except urllib.error.HTTPError as error:
             error.artemis_endpoint = path
             raise
         except OSError as error:
             raise ConnectionError(f'{path}: {error}') from error
-    def request(path, body=None, session=None):
-        with open_request(path, body, session) as response:
+    def request(path, body=None, session=None, timeout=35):
+        with open_request(path, body, session, timeout=timeout) as response:
             return json.load(response)
     def execute(message):
         try:
@@ -175,13 +289,16 @@ def main():
     session = None
     delay = 1
     try:
+        if args.mcp_command:
+            print('Starting the local MCP server and loading its tools...', flush=True)
+            local = StdioMcp(args.mcp_command)
         while True:
             try:
                 tools = local.tools() if local else scope_tools
                 print(f'Registering device with Artemis ({len(tools)} tool(s))...', flush=True)
                 session = request('register', {'name': args.name, 'tools': tools})['session']
                 with open_request(device_path + '/events', session=session) as response:
-                    for event, message in stream_events(response):
+                    for event, message in interruptible_stream_events(response):
                         if event == 'connected':
                             print(f'Connected: {args.name} ({len(tools)} tool(s)). Leave this window open.', flush=True)
                             delay = 1
@@ -207,7 +324,7 @@ def main():
                 print(f'Connection failed ({error}); retrying in {delay}s.', flush=True)
             finally:
                 if session:
-                    try: request(device_path + '/disconnect', {}, session)
+                    try: request(device_path + '/disconnect', {}, session, timeout=3)
                     except (OSError, ValueError): pass
                     session = None
             time.sleep(delay); delay = min(delay * 2, 30)
@@ -216,4 +333,6 @@ def main():
     finally:
         if local: local.close()
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    try: main()
+    except KeyboardInterrupt: print('Disconnected.', flush=True)
