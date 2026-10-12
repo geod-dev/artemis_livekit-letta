@@ -112,7 +112,9 @@ export function McpServers({ active }: { active: boolean }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <h2 className="font-display text-lg font-extrabold">MCP servers</h2>
-        <span className="text-muted-foreground ms-auto text-sm">{servers.length} servers</span>
+        <span className="text-muted-foreground ms-auto text-sm">
+          {servers.length} {servers.length === 1 ? 'server' : 'servers'}
+        </span>
         <Button
           type="button"
           variant="ghost"
@@ -147,7 +149,7 @@ export function McpServers({ active }: { active: boolean }) {
                 <p className="font-semibold">{server.managed?.deviceName ?? server.name}</p>
                 <p className="text-muted-foreground truncate text-xs">
                   {server.managed
-                    ? `External device · ${server.managed.tools} tool(s) · Managed automatically`
+                    ? `External device · ${server.managed.tools} ${server.managed.tools === 1 ? 'tool' : 'tools'} · Managed automatically`
                     : describeServer(server)}
                 </p>
                 <ServerStatus server={server} bridge={settings?.bridge} />
