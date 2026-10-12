@@ -7,39 +7,17 @@ import json
 import os
 import queue
 import shlex
-import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-
-FIREFOX_TOOL = {
-    'name': 'open_url',
-    'description': 'Open an HTTP or HTTPS URL in Firefox on this device.',
-    'inputSchema': {'type': 'object', 'properties': {'url': {'type': 'string'}}, 'required': ['url'], 'additionalProperties': False},
-    'annotations': {'readOnlyHint': False},
-}
-
-def open_url(arguments, firefox=None):
-    url = arguments.get('url')
-    if not isinstance(url, str) or any(ord(c) < 32 for c in url):
-        raise ValueError('A valid HTTP or HTTPS URL is required')
-    parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
-        raise ValueError('Only HTTP and HTTPS URLs are allowed')
-    executable = firefox or shutil.which('firefox')
-    if not executable:
-        candidates = [os.path.join(os.environ.get('PROGRAMFILES', ''), 'Mozilla Firefox', 'firefox.exe'),
-                      os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), 'Mozilla Firefox', 'firefox.exe'),
-                      '/Applications/Firefox.app/Contents/MacOS/firefox']
-        executable = next((p for p in candidates if os.path.isfile(p)), None)
-    if not executable:
-        raise RuntimeError('Firefox not found. Supply --firefox with its executable path.')
-    subprocess.Popen([executable, '--new-tab', url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return {'content': [{'type': 'text', 'text': 'Opened in Firefox: ' + url}]}
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scopes import build_scopes
+from scopes.browser import open_url
 
 class StdioMcp:
     """Relay tools from any local MCP stdio server using JSON-RPC."""
@@ -146,11 +124,20 @@ def main():
     parser.add_argument('name', help='Unique device name: letters, numbers, underscores, hyphens')
     parser.add_argument('--server', default=os.environ.get('ARTEMIS_URL', 'https://185.252.233.123'))
     parser.add_argument('--firefox', help='Firefox executable path')
+    parser.add_argument('--scopes', nargs='+', choices=('browser', 'media', 'filesystem', 'terminal', 'screenshot'), default=[], metavar='SCOPE', help='Scopes to expose (browser, media, filesystem, terminal, screenshot)')
+    parser.add_argument('--filesystem-root', action='append', default=[], metavar='PATH', help='Filesystem root available to the filesystem scope; repeat to add roots (defaults to the current directory)')
+    parser.add_argument('--terminal-command', action='append', default=[], metavar='NAME', help='Executable name allowed by the terminal scope; repeat to add commands. Commands run without a shell.')
     parser.add_argument('--env-file', help='Read ARTEMIS_DEVICE_TOKEN from this file instead of the environment or the project .env')
-    parser.add_argument('--mcp-command', nargs=argparse.REMAINDER, help='Relay a local MCP stdio server instead of the built-in Firefox tool; put this option last')
+    parser.add_argument('--mcp-command', nargs=argparse.REMAINDER, help='Relay a local MCP stdio server instead of built-in scopes; put this option last')
     args = parser.parse_args()
     if urllib.parse.urlsplit(args.server).scheme != 'https' and urllib.parse.urlsplit(args.server).hostname not in ('localhost', '127.0.0.1'):
         parser.error('Use HTTPS for remote servers')
+    if args.mcp_command and args.scopes:
+        parser.error('--mcp-command cannot be combined with built-in --scopes')
+    if 'terminal' in args.scopes and not args.terminal_command:
+        parser.error('The terminal scope requires at least one --terminal-command allowlist entry')
+    try: scope_tools, scope_handlers = build_scopes(args)
+    except (OSError, RuntimeError, ValueError) as error: parser.error(str(error))
     try: token, token_source = load_device_token(args.env_file)
     except (ValueError, OSError) as error: parser.error(str(error))
     fingerprint = hashlib.sha256(token.encode()).hexdigest()[:12]
@@ -179,8 +166,9 @@ def main():
             if message.get('method') != 'tools/call': raise ValueError('Unsupported MCP method')
             params = message['params']
             if local: return local.rpc('tools/call', params)
-            if params['name'] == 'open_url': return open_url(params.get('arguments', {}), args.firefox)
-            raise ValueError('Unknown tool')
+            handler = scope_handlers.get(params['name'])
+            if handler is None: raise ValueError('Unknown tool')
+            return handler(params.get('arguments', {}))
         except Exception as error:
             return {'isError': True, 'content': [{'type': 'text', 'text': str(error)}]}
     device_path = urllib.parse.quote(args.name, safe='')
@@ -189,7 +177,7 @@ def main():
     try:
         while True:
             try:
-                tools = local.tools() if local else [FIREFOX_TOOL]
+                tools = local.tools() if local else scope_tools
                 print(f'Registering device with Artemis ({len(tools)} tool(s))...', flush=True)
                 session = request('register', {'name': args.name, 'tools': tools})['session']
                 with open_request(device_path + '/events', session=session) as response:
