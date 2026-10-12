@@ -1,4 +1,4 @@
-import { assistant } from '../assistant/letta';
+import { assistant, configureMcpInventory, syncAssistantSystemPrompt } from '../assistant/letta';
 import {
   isLettaServerReady,
   lettaServerRequest,
@@ -70,7 +70,9 @@ export const mcpCatalog = new McpCatalog({
   servers: () => registry.list(),
   client: mcpClient,
   log,
+  changed: syncAssistantSystemPrompt,
 });
+configureMcpInventory(() => mcpCatalog.snapshot().tools);
 
 /** The native tools the backend serves to its mods (`/api/letta/tools/<name>`). */
 export const toolHandlers: ReadonlyMap<string, ToolHandler> = bridgeHandlers(mcpCatalog, mcpClient);

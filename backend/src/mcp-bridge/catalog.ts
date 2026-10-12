@@ -97,6 +97,7 @@ export class McpCatalog {
       log?: (message: string) => void;
       now?: () => number;
       ttlMs?: number;
+      changed?: () => Promise<void>;
     }
   ) {}
 
@@ -126,6 +127,7 @@ export class McpCatalog {
         for (const [name, reason] of failures) {
           this.deps.log?.(`MCP bridge: ${name} did not list tools (${reason})`);
         }
+        await this.deps.changed?.();
         return this.tools;
       } finally {
         this.inflight = null;

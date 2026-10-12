@@ -8,7 +8,6 @@ import type {
 import { randomUUID } from 'node:crypto';
 import type { ChatAttachment, Modality, TextEffort, TurnMode } from '../chat-types';
 import { BRIDGE_TOOL_NAMES } from '../mcp-bridge/tools';
-import { mcpCatalog } from '../mcp/native-tools';
 import {
   depthAfter,
   receiveNotifications,
@@ -22,7 +21,6 @@ import { config } from './config';
 import { toSummary } from './conversations';
 import { publish } from './events';
 import { assistant, letta } from './letta';
-import { mcpContextReminder } from './mcp-context';
 import { CallStateFilter, decodeUserContent, encodeTurn } from './messages';
 import { modelEffort } from './model-effort';
 import { fallbackTitle, generateTitle } from './titles';
@@ -225,15 +223,13 @@ class ConversationRuntime {
     }
 
     const updates = [...(request.updates ?? []), ...takeHeldUpdates(this.conversationId)];
-    const encoded =
-      mcpContextReminder(mcpCatalog.snapshot().tools) +
-      encodeTurn(
-        mode,
-        request.text,
-        updates,
-        request.attachments,
-        formatCurrentDateTime(new Date(), config.assistant.timezone)
-      );
+    const encoded = encodeTurn(
+      mode,
+      request.text,
+      updates,
+      request.attachments,
+      formatCurrentDateTime(new Date(), config.assistant.timezone)
+    );
     const otid = randomUUID();
     publish(this.conversationId, { type: 'turn_start', turnId, modality: request.modality });
     decodeUserContent(encoded).forEach((part, index) => {

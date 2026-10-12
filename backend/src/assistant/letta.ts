@@ -1,6 +1,8 @@
 import { LettaAgentClient } from '@letta-ai/letta-agent-sdk';
 import WebSocket from 'ws';
+import type { CatalogTool } from '../mcp-bridge/catalog';
 import { config } from './config';
+import { mcpSystemContext } from './mcp-context';
 import { initialHuman, initialPersona, systemPrompt } from './prompts';
 
 interface AssistantIdentity {
@@ -15,6 +17,32 @@ interface AssistantIdentity {
 
 let lettaClient: LettaAgentClient | undefined;
 let identity: Promise<AssistantIdentity> | undefined;
+let inventory: () => readonly CatalogTool[] = () => [];
+let appliedPrompt: string | null = null;
+let promptChain: Promise<unknown> = Promise.resolve();
+
+export function configureMcpInventory(provider: () => readonly CatalogTool[]): void {
+  inventory = provider;
+}
+
+function currentSystemPrompt(): string {
+  return (
+    systemPrompt(config.assistant.name, config.workspace.agentDir) + mcpSystemContext(inventory())
+  );
+}
+
+/** The local backend recompiles existing conversations when the raw system prompt changes. */
+export function syncAssistantSystemPrompt(): Promise<void> {
+  const run = promptChain.then(async () => {
+    const { agentId } = await assistant();
+    const prompt = currentSystemPrompt();
+    if (prompt === appliedPrompt) return;
+    await letta().agents.update(agentId, { system: prompt });
+    appliedPrompt = prompt;
+  });
+  promptChain = run.catch(() => {});
+  return run;
+}
 
 /**
  * Letta streams the transcript of background workers (frames with a top-level
@@ -67,7 +95,7 @@ export function assistant(): Promise<AssistantIdentity> {
 
 async function resolveAssistant(): Promise<AssistantIdentity> {
   const client = letta();
-  const prompt = systemPrompt(config.assistant.name, config.workspace.agentDir);
+  const prompt = currentSystemPrompt();
   const existing = await client.agents.list({ name: config.letta.agentName, limit: 1 });
   // The system prompt is set at creation; keep an existing agent on the current one.
   if (existing[0] && existing[0].system !== prompt) {
@@ -86,6 +114,7 @@ async function resolveAssistant(): Promise<AssistantIdentity> {
       skillSources: [],
       dreaming: { trigger: 'step-count', stepCount: config.memory.reflectionStepCount },
     }));
+  appliedPrompt = prompt;
 
   // Sort locally: the local backend does not honour every list ordering.
   const conversations = await client.conversations.list({ agentId, limit: 1000 });

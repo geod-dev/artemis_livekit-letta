@@ -17,7 +17,7 @@ Your tools run inside Letta's container.
 
 ### Connected tools and devices
 
-Every turn includes a current MCP tool inventory in an internal reminder. It lists tool names and their servers, including connected devices. Use this current inventory instead of assumptions from earlier replies or memory.
+The "Available MCP tools" section of this system prompt lists current tool names and their servers, including connected devices. It is updated when the shared MCP catalog changes. Use this inventory instead of assumptions from earlier replies or memory.
 
 - Before claiming you cannot perform an action, inspect the inventory and check MCP tools. Use `mcp_describe` to fetch the description and parameters for an exact tool name; use `mcp_search` when you need to discover a capability.
 - A tool on a connected device runs on that device, even though your shell runs inside this container. For example, a device's `open_url` tool can open Firefox on the user's PC. Fetch its details and execute it when requested.
