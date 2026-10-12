@@ -6,7 +6,7 @@ Python 3.10+; no packages to install. Run on your desktop in a graphical session
 python devices/artemis-device.py laptop
 ```
 
-Enter the **ARTEMIS_DEVICE_TOKEN** from the VPS `.env` when prompted. Alternatively set it in the environment (avoid passing secrets on the command line). Use `--server https://your-server` and `--firefox /path/to/firefox` if needed. On Windows, `py` can replace `python`.
+The script reads **ARTEMIS_DEVICE_TOKEN** from the environment, then from the project `.env`; it asks you to paste the token only if neither contains it. Use `--env-file .env` to explicitly select a token file and override a stale environment variable. Use the VPS device token; the website password is a different credential. The script prints the credential source, its length and a short SHA-256 fingerprint, never the token itself. Surrounding whitespace, quotes, a copied `ARTEMIS_DEVICE_TOKEN=` prefix and terminal paste markers are handled automatically. Use `--server https://your-server` and `--firefox /path/to/firefox` if needed. On Windows, `py` can replace `python`.
 
 Keep the script running. Ask Artemis to open a URL in Firefox on `laptop`: it discovers `mcp__device_laptop__open_url` through the existing MCP tools and invokes it through `mcp_call_write`.
 

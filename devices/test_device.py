@@ -1,12 +1,28 @@
 import importlib.util
 import io
+import os
 import sys
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('device', 'devices/artemis-device.py')
 device = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(device)
 class DeviceTest(unittest.TestCase):
+    def test_token_paste_normalization(self):
+        for pasted in ['  demo-token\n', '"demo-token"', 'ARTEMIS_DEVICE_TOKEN=\'demo-token\'', '\x1b[200~demo-token\x1b[201~']:
+            self.assertEqual(device.normalize_token(pasted), 'demo-token')
+        for pasted in ['', 'demo token', 'demo\u200btoken']:
+            with self.assertRaises(ValueError): device.normalize_token(pasted)
+    def test_token_file_overrides_stale_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / '.env'
+            path.write_text('OTHER_KEY=ignored\nARTEMIS_DEVICE_TOKEN="file-token" # device credential\n')
+            with patch.dict(os.environ, {'ARTEMIS_DEVICE_TOKEN':'stale-token'}):
+                self.assertEqual(device.load_device_token(str(path)), ('file-token', str(path.resolve())))
+                self.assertEqual(device.load_device_token()[0], 'stale-token')
+            with self.assertRaises(ValueError): device.load_device_token(str(path.parent / 'missing'))
     def test_persistent_connection_events(self):
         response = io.BytesIO(b'event: connected\ndata: {"name":"laptop"}\n\nevent: ping\ndata: {}\n\nevent: request\ndata: {"id":"1",\ndata: "method":"tools/call"}\n\n')
         self.assertEqual(list(device.stream_events(response)), [('connected', {'name':'laptop'}), ('ping', {}), ('request', {'id':'1','method':'tools/call'})])
