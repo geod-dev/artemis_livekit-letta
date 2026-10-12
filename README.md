@@ -329,6 +329,32 @@ The agent logs this breakdown per turn (`turn latency:`), the gateway logs
 ≈ 0.8–2 s through Letta in this setup. The voice agent calls the backend directly; the frontend is not in
 the voice path.
 
+## HTTPS on a public VPS
+
+Public deployments need HTTPS: microphone recording and `crypto.randomUUID()`
+(used when sending messages and uploading files) require a secure browser context.
+Localhost is trusted by browsers, which is why HTTP works during local development.
+
+For a Debian/Ubuntu VPS without a domain, install nginx and Certbot **5.4 or newer**
+(older distro packages do not support IP certificates with webroot validation).
+For example, with uv installed: `uv tool install 'certbot>=5.4'`.
+Set `IP_ADDRESS` in `.env` to the public IPv4 address, allow inbound TCP 80/443
+and LiveKit media TCP 7881/UDP 7882, then run as root:
+
+```sh
+CERTBOT=/root/.local/bin/certbot sh infrastructure/https/setup.sh 185.252.233.123
+```
+
+The script obtains a publicly trusted Let's Encrypt IP certificate, rebuilds the
+app, serves it at `https://185.252.233.123`, and redirects HTTP (including the old
+port 5173) there. It binds the frontend to loopback port 5180 and routes browser
+LiveKit signaling through `wss://185.252.233.123/livekit`; the voice agent continues
+using the internal Docker address. API event streams remain unbuffered.
+IP certificates last six days, so a systemd timer checks for renewal every six
+hours and reloads nginx after renewal. Port 80 must remain accessible for renewal.
+Replace the example IP with your own. The script backs up `.env` before changing
+the three deployment settings; rerunning it preserves existing certificates.
+
 ## Known limitations
 
 - Single user, no authentication (the token endpoint and APIs are open on localhost).

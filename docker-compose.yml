@@ -112,7 +112,7 @@ services:
     environment:
       BACKEND_PORT: 3000
       LETTA_URL: http://letta:4500
-      LIVEKIT_URL: ws://${IP_ADDRESS:-127.0.0.1}:7880
+      LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:-127.0.0.1}:7880}
     depends_on:
       letta:
         condition: service_healthy
@@ -130,7 +130,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "5173:80"
+      - "${FRONTEND_BIND:-0.0.0.0}:${FRONTEND_PORT:-5173}:80"
     restart: unless-stopped
 
   voice-agent:

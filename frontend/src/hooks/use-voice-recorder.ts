@@ -66,6 +66,12 @@ export function useVoiceRecorder() {
     setStatus('recording');
     let stream: MediaStream | undefined;
     try {
+      if (!window.isSecureContext) {
+        throw new Error('Microphone access requires HTTPS. Open this site over HTTPS to record.');
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Microphone recording is not supported by this browser.');
+      }
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
       });

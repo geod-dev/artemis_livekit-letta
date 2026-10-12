@@ -1,0 +1,41 @@
+server {
+  listen 80;
+  listen 5173;
+  server_name @IP@;
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/assistant-acme;
+  }
+
+  location / {
+    return 308 https://@IP@$request_uri;
+  }
+}
+
+server {
+  listen 443 ssl;
+  server_name @IP@;
+  ssl_certificate /etc/letsencrypt/live/@IP@/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/@IP@/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  client_max_body_size 25m;
+
+  location /livekit/ {
+    proxy_pass http://127.0.0.1:7880/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 3600s;
+  }
+
+  location / {
+    proxy_pass http://127.0.0.1:5180;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+  }
+}

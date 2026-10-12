@@ -1,5 +1,6 @@
 .env
 .env.local
+.env.pre-https.*
 node_modules/
 .venv/
 __pycache__/
