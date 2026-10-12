@@ -10,6 +10,22 @@ spec = importlib.util.spec_from_file_location('device', 'devices/artemis-device.
 device = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(device)
 class DeviceTest(unittest.TestCase):
+    def test_terminal_can_run_and_read_outside_active_folder(self):
+        from types import SimpleNamespace
+        from scopes.terminal import register
+        with tempfile.TemporaryDirectory() as directory:
+            active = Path(directory) / 'active'
+            outside = Path(directory) / 'other'
+            active.mkdir()
+            outside.mkdir()
+            (outside / 'example.txt').write_text('outside-folder-access', encoding='utf-8')
+            tools, handlers = register(SimpleNamespace(active_folder=str(active)))
+            self.assertIn('system-wide', tools[0]['description'])
+            result = handlers['terminal_run']({'command': sys.executable, 'arguments': ['-c', "from pathlib import Path; print(Path('example.txt').read_text())"], 'cwd': str(outside)})
+            self.assertIn('exit_code: 0', result['content'][0]['text'])
+            self.assertIn('outside-folder-access', result['content'][0]['text'])
+            result = handlers['terminal_run']({'command': sys.executable, 'arguments': ['-c', 'from pathlib import Path; import sys; print(Path(sys.argv[1]).read_text())', str(outside / 'example.txt')]})
+            self.assertIn('outside-folder-access', result['content'][0]['text'])
     def test_device_upload_streams_exact_binary_bytes_over_http(self):
         import json
         import threading
