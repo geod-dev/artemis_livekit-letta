@@ -28,7 +28,7 @@ const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
  * `mode` is the call's starting mode ("short" unless "long" is asked for); the
  * agent opens the call in it, and the set_call_mode tool can still switch it.
  *
- * NOTE: no auth layer — this is a single-user local prototype.
+ * Protected by the backend's browser-session authentication.
  */
 voice.post('/token', async (c) => {
   try {

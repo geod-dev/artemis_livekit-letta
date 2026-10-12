@@ -6,6 +6,7 @@ import {
   readLettaFile,
   writeLettaFile,
 } from '../assistant/letta-server';
+import { deviceHub } from '../devices';
 import { type ModsIo, syncMods } from '../internal-tools/install';
 import { renderToolsMod } from '../internal-tools/mod';
 import type { ToolHandler } from '../internal-tools/types';
@@ -68,10 +69,17 @@ export const mcpCatalog = new McpCatalog({
   servers: () => loadMcpServers(mcpIo),
   client: mcpClient,
   log,
+  extraTools: () => deviceHub.catalog(),
 });
 
 /** The native tools the backend serves to its mods (`/api/letta/tools/<name>`). */
-export const toolHandlers: ReadonlyMap<string, ToolHandler> = bridgeHandlers(mcpCatalog, mcpClient);
+export const toolHandlers: ReadonlyMap<string, ToolHandler> = bridgeHandlers(mcpCatalog, {
+  listTools: mcpClient.listTools,
+  callTool: (server, tool, args) =>
+    server.url?.startsWith('device:')
+      ? deviceHub.call(server, tool, args)
+      : mcpClient.callTool(server, tool, args),
+});
 
 // Serialised: a save and a reconnect can land at once.
 let modsChain: Promise<unknown> = Promise.resolve();
@@ -87,7 +95,7 @@ function resyncMods(reason: string, options: { refreshCatalog: boolean }): Promi
         path: MCP_BRIDGE_MOD_PATH,
         source: renderToolsMod({
           title: 'mcp-bridge v1',
-          tools: tools.length > 0 ? BRIDGE_TOOL_SPECS : [],
+          tools: process.env.ARTEMIS_DEVICE_TOKEN || tools.length > 0 ? BRIDGE_TOOL_SPECS : [],
         }),
       },
     ]);

@@ -97,6 +97,7 @@ export class McpCatalog {
       log?: (message: string) => void;
       now?: () => number;
       ttlMs?: number;
+      extraTools?: () => CatalogTool[];
     }
   ) {}
 
@@ -139,11 +140,11 @@ export class McpCatalog {
     if (this.fetchedAt === 0 || this.now() - this.fetchedAt > (this.deps.ttlMs ?? DEFAULT_TTL_MS)) {
       await this.refresh();
     }
-    return this.tools;
+    return [...this.tools, ...(this.deps.extraTools?.() ?? [])];
   }
 
   /** What the last refresh saw, without refreshing. */
   snapshot(): { tools: readonly CatalogTool[]; failures: ReadonlyMap<string, string> } {
-    return { tools: this.tools, failures: this.failures };
+    return { tools: [...this.tools, ...(this.deps.extraTools?.() ?? [])], failures: this.failures };
   }
 }

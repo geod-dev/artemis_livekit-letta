@@ -54,6 +54,16 @@ export function AppMenu({
             <SettingsIcon className="size-4" />
             Settings
           </DropdownMenu.Item>
+          <DropdownMenu.Item
+            className={ITEM}
+            onSelect={() => {
+              void fetch('/api/auth/logout', { method: 'POST' }).then(() =>
+                window.location.reload()
+              );
+            }}
+          >
+            Se déconnecter
+          </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

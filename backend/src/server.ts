@@ -1,7 +1,8 @@
 import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
 import { config } from './assistant/config';
 import { startLettaServerConnection } from './assistant/letta-server';
+import { createAuth } from './auth';
+import { devices } from './devices';
 import { startMcp } from './mcp/native-tools';
 import { conversations } from './routes/conversations';
 import { files } from './routes/files';
@@ -14,7 +15,8 @@ import { voice } from './routes/voice';
  * The backend: the single entry point to Letta for the chat frontend, the voice
  * agent and the Letta server's notifications mod. All routes live under /api.
  */
-const app = new Hono();
+const app = createAuth(process.env.ARTEMIS_PASSWORD ?? '', process.env.ARTEMIS_DEVICE_TOKEN ?? '');
+app.route('/api/devices', devices);
 app.route('/api/conversations', conversations);
 app.route('/api/voice', voice);
 app.route('/api/letta', letta);
