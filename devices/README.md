@@ -12,21 +12,21 @@ The script reads **ARTEMIS_DEVICE_TOKEN** from the environment, then from the pr
 
 ## Built-in scopes
 
-Pass one or more scope names after `--scopes`. Only those scopes are registered with Artemis. If `--scopes` is omitted, an interactive keyboard menu opens before the client starts: use Up/Down to move, Space to toggle a scope, and Enter to confirm. Browser is selected by default; the other scopes start unchecked. If you select terminal, the menu asks which executable names to allow. Ctrl+C cancels the menu or cleanly disconnects a running client. A non-interactive launch must provide `--scopes` explicitly.
+Pass one or more scope names after `--scopes`. Only those scopes are registered with Artemis. If `--scopes` is omitted, an interactive keyboard menu opens before the client starts: use Up/Down to move, Space to toggle a scope, and Enter to confirm. Browser is selected by default; the other scopes start unchecked. Ctrl+C cancels the menu or cleanly disconnects a running client. A non-interactive launch must provide `--scopes` explicitly.
 
 ```sh
 python devices/artemis-device.py laptop --scopes browser media filesystem screenshot
-python devices/artemis-device.py laptop --scopes filesystem --filesystem-root ~/Documents
-python devices/artemis-device.py laptop --scopes terminal --filesystem-root ~/Projects --terminal-command git --terminal-command rg
+python devices/artemis-device.py laptop --scopes filesystem --active-folder ~/Documents
+python devices/artemis-device.py laptop --scopes terminal --active-folder ~/Projects
 ```
 
 - `browser` exposes `open_url`, which accepts only HTTP and HTTPS URLs. It opens Firefox when available (or the configured `--firefox`), otherwise the system's default URL handler.
 - `media` exposes `media_control` for play, pause, current track/status, and volume. Linux uses `playerctl`; macOS uses the Music app via `osascript`; Windows uses system media controls and Windows Core Audio for volume. Linux requires `playerctl` on PATH.
-- `filesystem` exposes `filesystem_list`, `filesystem_read`, and `filesystem_write`. Every path is confined to `--filesystem-root` directories; repeat the option for additional roots. If omitted, the current working directory is the root. Reads and writes are limited to UTF-8 text files up to 1 MB; parent directories must already exist.
-- `terminal` exposes `terminal_run`. It requires one or more `--terminal-command` entries, each naming an executable already on PATH. Calls use an argument array without a shell, are limited to 30 seconds and 64 arguments, and run only inside the filesystem roots. Output is capped at 64 KB per stream. Only allow commands and arguments you are comfortable letting remote requests invoke; do not allowlist shells or general-purpose interpreters such as `sh`, `cmd`, `powershell`, `python`, or `node`.
+- `filesystem` exposes `filesystem_list`, `filesystem_read`, and `filesystem_write`. It can access any location on the device; every tool call must supply an absolute path. `--active-folder` adds context to the tool descriptions but does not limit access. Reads and writes are limited to UTF-8 text files up to 1 MB; parent directories must already exist.
+- `terminal` exposes `terminal_run` and can run any executable available on the device, with any arguments. No command allowlist is required. Commands run without an implicit shell, so send the executable in `command` and its arguments as separate entries in `arguments`; a shell can itself be launched explicitly when needed. The optional `cwd` must be an absolute path and can be anywhere; it defaults to `--active-folder`. Calls are limited to 30 seconds and output to 64 KB per stream.
 - `screenshot` exposes `screenshot_capture` for the primary desktop. Windows uses PowerShell, macOS uses `screencapture`, and Linux requires `gnome-screenshot` or `scrot`. PNG results are limited to 10 MB.
 
-These scopes can read or change local state, control media, run allowlisted processes, or capture the screen. Enable only the scopes needed for the session and keep the device token private.
+`--active-folder` defaults to the directory where the client is launched. It describes the user's current context in filesystem and terminal tools; all absolute paths on the device remain accessible. Filesystem and terminal can read or change local state anywhere on the device, media controls audio, and screenshot captures the screen. Enable only the scopes needed for the session and keep the device token private.
 
 Keep the script running. Ask Artemis to use a tool on the connected device; it discovers the selected tools through the existing MCP tools and invokes them through `mcp_call_write`.
 

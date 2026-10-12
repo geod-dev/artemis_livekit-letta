@@ -33,7 +33,7 @@ def select_scopes():
         'Browser — open HTTP(S) URLs',
         'Media — control playback and volume',
         'Filesystem — list, read, and write files',
-        'Terminal — run explicitly allowlisted commands',
+        'Terminal — run any installed command',
         'Screenshot — capture the desktop',
     ]
     lines = []
@@ -46,7 +46,7 @@ def select_scopes():
         ]
         current.extend(f"{'❯' if index == cursor else ' '} [{'x' if scope in selected else ' '}] {label}"
                        for index, (scope, label) in enumerate(zip(AVAILABLE_SCOPES, labels)))
-        current.extend(['', 'Browser is selected by default. Terminal will ask which commands to allow.'])
+        current.extend(['', 'Browser is selected by default. Terminal can run any installed command.'])
         if not first:
             sys.stdout.write(f'\x1b[{len(lines)}A')
         for line in current:
@@ -231,11 +231,12 @@ def main():
     parser.add_argument('--server', default=os.environ.get('ARTEMIS_URL', 'https://185.252.233.123'))
     parser.add_argument('--firefox', help='Firefox executable path')
     parser.add_argument('--scopes', nargs='+', choices=AVAILABLE_SCOPES, default=None, metavar='SCOPE', help='Scopes to expose (browser, media, filesystem, terminal, screenshot); omit for an interactive menu')
-    parser.add_argument('--filesystem-root', action='append', default=[], metavar='PATH', help='Filesystem root available to the filesystem scope; repeat to add roots (defaults to the current directory)')
-    parser.add_argument('--terminal-command', action='append', default=[], metavar='NAME', help='Executable name allowed by the terminal scope; repeat to add commands. Commands run without a shell.')
+    parser.add_argument('--active-folder', default=str(Path.cwd()), metavar='PATH', help='Context folder described to the tools and used as the terminal starting directory (defaults to the current directory; not a filesystem restriction)')
     parser.add_argument('--env-file', help='Read ARTEMIS_DEVICE_TOKEN from this file instead of the environment or the project .env')
     parser.add_argument('--mcp-command', nargs=argparse.REMAINDER, help='Relay a local MCP stdio server instead of built-in scopes; put this option last')
     args = parser.parse_args()
+    args.active_folder = Path(args.active_folder).expanduser().resolve()
+    if not args.active_folder.is_dir(): parser.error('--active-folder must be an existing directory')
     if urllib.parse.urlsplit(args.server).scheme != 'https' and urllib.parse.urlsplit(args.server).hostname not in ('localhost', '127.0.0.1'):
         parser.error('Use HTTPS for remote servers')
     if args.scopes is None:
@@ -244,14 +245,8 @@ def main():
         else:
             try: args.scopes = select_scopes()
             except RuntimeError as error: parser.error(str(error))
-            if 'terminal' in args.scopes and not args.terminal_command:
-                try: raw_commands = input('Commands to allow for terminal (comma-separated executable names): ')
-                except EOFError: parser.error('Terminal scope requires at least one --terminal-command entry or an interactive allowlist.')
-                args.terminal_command = [name.strip() for name in raw_commands.split(',') if name.strip()]
     if args.mcp_command and args.scopes:
         parser.error('--mcp-command cannot be combined with built-in --scopes')
-    if 'terminal' in args.scopes and not args.terminal_command:
-        parser.error('The terminal scope requires at least one --terminal-command allowlist entry')
     try: scope_tools, scope_handlers = build_scopes(args)
     except (OSError, RuntimeError, ValueError) as error: parser.error(str(error))
     try: token, token_source = load_device_token(args.env_file)
