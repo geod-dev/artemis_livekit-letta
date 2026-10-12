@@ -96,12 +96,16 @@ def main():
         parser.error('Use HTTPS for remote servers')
     token = os.environ.get('ARTEMIS_DEVICE_TOKEN') or getpass.getpass('Device token: ')
     if not token: parser.error('A device token is required')
+    server = args.server.rstrip('/')
+    print(f'Connecting to Artemis at {server} as "{args.name}"...', flush=True)
+    if args.mcp_command:
+        print('Starting the local MCP server and loading its tools...', flush=True)
     local = StdioMcp(args.mcp_command) if args.mcp_command else None
     def request(path, body=None, session=None):
         headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
         if session: headers['X-Device-Session'] = session
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(args.server.rstrip('/') + '/api/devices/' + path, data=data, headers=headers)
+        req = urllib.request.Request(server + '/api/devices/' + path, data=data, headers=headers)
         with urllib.request.urlopen(req, timeout=35) as response:
             return json.load(response)
     session = None
@@ -111,8 +115,9 @@ def main():
             try:
                 if session is None:
                     tools = local.tools() if local else [FIREFOX_TOOL]
+                    print(f'Registering device with Artemis ({len(tools)} tool(s))...', flush=True)
                     session = request('register', {'name': args.name, 'tools': tools})['session']
-                    print('Connected:', args.name, '(' + str(len(tools)) + ' tools)', flush=True)
+                    print(f'Connected: {args.name} ({len(tools)} tool(s)). Leave this window open.', flush=True)
                 messages = request(urllib.parse.quote(args.name, safe='') + '/poll', session=session)['requests']
                 delay = 1
                 for message in messages:
@@ -129,11 +134,11 @@ def main():
             except urllib.error.HTTPError as error:
                 if error.code in (401, 403): raise SystemExit('Device authentication rejected; check ARTEMIS_DEVICE_TOKEN')
                 session = None
-                print('Connection interrupted; reconnecting in', delay, 'seconds', flush=True)
+                print(f'Artemis returned HTTP {error.code} ({error.reason}); reconnecting in {delay}s.', flush=True)
                 time.sleep(delay); delay = min(delay * 2, 30)
-            except (OSError, ValueError, KeyError):
+            except (OSError, ValueError, KeyError) as error:
                 session = None
-                print('Connection interrupted; reconnecting in', delay, 'seconds', flush=True)
+                print(f'Connection failed ({error}); retrying in {delay}s.', flush=True)
                 time.sleep(delay); delay = min(delay * 2, 30)
     except KeyboardInterrupt:
         pass
