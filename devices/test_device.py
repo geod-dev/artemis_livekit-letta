@@ -10,6 +10,23 @@ spec = importlib.util.spec_from_file_location('device', 'devices/artemis-device.
 device = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(device)
 class DeviceTest(unittest.TestCase):
+    def test_terminal_shell_lines_spaces_quotes_and_pipes(self):
+        from types import SimpleNamespace
+        from scopes.terminal import register
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'file with spaces.txt'
+            path.write_text('quoted-path-content', encoding='utf-8')
+            _, handlers = register(SimpleNamespace(active_folder=directory))
+            commands = [
+                "Write-Output 'été with spaces' | ForEach-Object { $_ }" if os.name == 'nt' else "printf 'été with spaces' | cat",
+                "Get-Content 'file with spaces.txt'" if os.name == 'nt' else "cat 'file with spaces.txt'",
+            ]
+            for command, expected in zip(commands, ['été with spaces', 'quoted-path-content']):
+                result = handlers['terminal_run']({'command': command, 'arguments': []})
+                self.assertIn('exit_code: 0', result['content'][0]['text'])
+                self.assertIn(expected, result['content'][0]['text'])
+            result = handlers['terminal_run']({'command': sys.executable, 'arguments': ['-c', 'import sys; print(sys.argv[1])', 'literal & $value | argument']})
+            self.assertIn('literal & $value | argument', result['content'][0]['text'])
     def test_terminal_can_run_and_read_outside_active_folder(self):
         from types import SimpleNamespace
         from scopes.terminal import register
