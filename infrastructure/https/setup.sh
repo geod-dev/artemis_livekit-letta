@@ -62,5 +62,7 @@ WantedBy=timers.target
 EOF
 systemctl daemon-reload
 systemctl enable --now assistant-certbot.timer
-curl --fail --silent --show-error "https://$ip/api/conversations"
+# Containers can still be starting just after Compose returns.
+curl --fail --silent --show-error --retry 15 --retry-delay 2 --retry-connrefused \
+  "https://$ip/api/conversations"
 printf '\nReady: https://%s\n' "$ip"
