@@ -13,7 +13,8 @@ import type { ToolHandler } from '../internal-tools/types';
 import { McpCatalog } from '../mcp-bridge/catalog';
 import { mcpClient } from '../mcp-bridge/client';
 import { BRIDGE_TOOL_SPECS, MCP_BRIDGE_MOD_PATH, bridgeHandlers } from '../mcp-bridge/tools';
-import { type McpIo, ensureMcpServers, loadMcpServers, saveMcpServers } from './service';
+import { McpRegistry } from './registry';
+import { type McpIo } from './service';
 import type { McpServer } from './settings';
 
 /**
@@ -66,20 +67,20 @@ const modsIo: ModsIo = {
 };
 
 export const mcpCatalog = new McpCatalog({
-  servers: () => loadMcpServers(mcpIo),
+  servers: () => registry.list(),
   client: mcpClient,
   log,
-  extraTools: () => deviceHub.catalog(),
 });
 
 /** The native tools the backend serves to its mods (`/api/letta/tools/<name>`). */
-export const toolHandlers: ReadonlyMap<string, ToolHandler> = bridgeHandlers(mcpCatalog, {
-  listTools: mcpClient.listTools,
-  callTool: (server, tool, args) =>
-    server.url?.startsWith('device:')
-      ? deviceHub.call(server, tool, args)
-      : mcpClient.callTool(server, tool, args),
-});
+export const toolHandlers: ReadonlyMap<string, ToolHandler> = bridgeHandlers(mcpCatalog, mcpClient);
+
+const registry = new McpRegistry(
+  mcpIo,
+  () => deviceHub.servers(),
+  () => resyncMods('server registry updated', { refreshCatalog: true })
+);
+deviceHub.onChange(() => registry.reconcile());
 
 // Serialised: a save and a reconnect can land at once.
 let modsChain: Promise<unknown> = Promise.resolve();
@@ -112,16 +113,16 @@ function errorMessage(error: unknown): string {
 /** Bring the shared list's skill and the bridge mod in line on every connect. */
 export function startMcp(): void {
   onLettaServerConnected(() => {
-    void ensureMcpServers(mcpIo)
+    void registry
+      .reconcile()
+      .then(() => registry.list())
       .then((servers) => log(`${servers.length} shared server(s) configured`))
-      .catch((error) => log(`could not sync shared servers: ${errorMessage(error)}`))
-      .then(() => resyncMods('connected', { refreshCatalog: true }))
-      .catch(() => {});
+      .catch((error) => log(`could not sync shared servers: ${errorMessage(error)}`));
   });
 }
 
 export function getMcpServers(): Promise<McpServer[]> {
-  return loadMcpServers(mcpIo);
+  return registry.list();
 }
 
 /**
@@ -130,7 +131,5 @@ export function getMcpServers(): Promise<McpServer[]> {
  * its mod do.
  */
 export async function setMcpServers(servers: McpServer[]): Promise<void> {
-  await saveMcpServers(mcpIo, servers);
-  // Awaited so the answer carries the new catalog; a failed reload is logged, not the save's error.
-  await resyncMods('Settings -> MCP servers', { refreshCatalog: true }).catch(() => {});
+  await registry.saveManual(servers);
 }

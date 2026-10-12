@@ -111,6 +111,7 @@ services:
     env_file: .env
     environment:
       BACKEND_PORT: 3000
+      MCP_DEVICE_BASE_URL: http://backend:3000
       LETTA_URL: http://letta:4500
       LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:-127.0.0.1}:7880}
     depends_on:

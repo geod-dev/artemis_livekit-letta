@@ -13,6 +13,15 @@ import { InvalidMcpServersError, type McpServer, validateMcpServers } from '../m
  */
 export const mcp = new Hono();
 
+/** Internal credentials and endpoint addresses do not belong in the device UI. */
+function publicServers(servers: McpServer[]): McpServer[] {
+  return servers.map((server) =>
+    server.managed
+      ? { name: server.name, transport: server.transport, managed: server.managed }
+      : server
+  );
+}
+
 function bridgeStatus(): McpSettingsResponse['bridge'] {
   const { tools, failures } = mcpCatalog.snapshot();
   return {
@@ -25,10 +34,13 @@ function bridgeStatus(): McpSettingsResponse['bridge'] {
 mcp.get('/', async () => {
   if (!isLettaServerReady()) return errorResponse('The Letta server is not connected', 503);
   try {
-    const body: McpSettingsResponse = { servers: await getMcpServers(), bridge: bridgeStatus() };
+    const body: McpSettingsResponse = {
+      servers: publicServers(await getMcpServers()),
+      bridge: bridgeStatus(),
+    };
     return Response.json(body);
   } catch (error) {
-    return errorResponse(error, 502);
+    return errorResponse(error, error instanceof InvalidMcpServersError ? 400 : 502);
   }
 });
 
@@ -44,8 +56,11 @@ mcp.put('/', async (c) => {
   try {
     await setMcpServers(servers);
   } catch (error) {
-    return errorResponse(error, 502);
+    return errorResponse(error, error instanceof InvalidMcpServersError ? 400 : 502);
   }
-  const response: McpSettingsResponse = { servers, bridge: bridgeStatus() };
+  const response: McpSettingsResponse = {
+    servers: publicServers(await getMcpServers()),
+    bridge: bridgeStatus(),
+  };
   return Response.json(response);
 });

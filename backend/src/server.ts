@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { config } from './assistant/config';
 import { startLettaServerConnection } from './assistant/letta-server';
 import { createAuth } from './auth';
+import { deviceMcp } from './device-mcp';
 import { devices } from './devices';
 import { startMcp } from './mcp/native-tools';
 import { conversations } from './routes/conversations';
@@ -16,6 +17,7 @@ import { voice } from './routes/voice';
  * agent and the Letta server's notifications mod. All routes live under /api.
  */
 const app = createAuth(process.env.ARTEMIS_PASSWORD ?? '', process.env.ARTEMIS_DEVICE_TOKEN ?? '');
+app.route('/internal/mcp/devices', deviceMcp);
 app.route('/api/devices', devices);
 app.route('/api/conversations', conversations);
 app.route('/api/voice', voice);

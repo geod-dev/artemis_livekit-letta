@@ -43,9 +43,10 @@ export function McpServers({ active }: { active: boolean }) {
   const [draftIndex, setDraftIndex] = useState<number | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
   const servers = settings?.servers ?? [];
+  const editableServers = servers.filter((server) => !server.managed);
 
-  const load = useCallback(async () => {
-    setStatus('Loading…');
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setStatus('Loading…');
     try {
       const response = await fetch('/api/mcp');
       if (!response.ok) {
@@ -53,14 +54,19 @@ export function McpServers({ active }: { active: boolean }) {
         return;
       }
       setSettings((await response.json()) as McpSettingsResponse);
-      setStatus('');
+      if (!silent) setStatus('');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     }
   }, []);
 
   useEffect(() => {
-    if (active) void load();
+    if (!active) return;
+    void load();
+    const timer = setInterval(() => {
+      void load(true);
+    }, 5_000);
+    return () => clearInterval(timer);
   }, [active, load]);
 
   const persist = async (next: McpServer[]): Promise<boolean> => {
@@ -69,7 +75,7 @@ export function McpServers({ active }: { active: boolean }) {
       const response = await fetch('/api/mcp', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ servers: next }),
+        body: JSON.stringify({ servers: next.filter((server) => !server.managed) }),
       });
       if (!response.ok) {
         setStatus(await errorText(response, 'Save failed'));
@@ -91,7 +97,7 @@ export function McpServers({ active }: { active: boolean }) {
 
   const commit = async () => {
     if (!draft?.name.trim()) return;
-    const next = [...servers];
+    const next = [...editableServers];
     if (draftIndex === null) next.push(fromDraft(draft));
     else next[draftIndex] = fromDraft(draft);
     if (await persist(next)) setDraft(null);
@@ -99,14 +105,14 @@ export function McpServers({ active }: { active: boolean }) {
 
   const remove = async (index: number) => {
     setRemoving(null);
-    await persist(servers.filter((_, i) => i !== index));
+    await persist(editableServers.filter((_, i) => i !== index));
   };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <h2 className="font-display text-lg font-extrabold">MCP servers</h2>
-        <span className="text-muted-foreground ms-auto text-sm">{servers.length} configured</span>
+        <span className="text-muted-foreground ms-auto text-sm">{servers.length} servers</span>
         <Button
           type="button"
           variant="ghost"
@@ -123,66 +129,74 @@ export function McpServers({ active }: { active: boolean }) {
       </div>
 
       <p className="text-muted-foreground text-sm">
-        Shared by every agent. The assistant uses http and sse servers through its native{' '}
-        <code>mcp_search</code> / <code>mcp_call</code> tools; workers, and stdio servers, go
-        through the <code>mcp-servers</code> skill.
+        Connect services and devices so your assistant can use their tools. Devices appear
+        automatically while connected and are managed by their connections.
       </p>
 
       {status && <p className="text-muted-foreground text-sm">{status}</p>}
 
       <ul className="flex flex-col gap-2">
-        {servers.map((server, index) => (
-          <li
-            key={server.name}
-            className="border-border/70 flex items-center gap-3 rounded-2xl border px-4 py-3"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">{server.name}</p>
-              <p className="text-muted-foreground truncate font-mono text-xs">
-                {describeServer(server)}
-              </p>
-              <ServerStatus server={server} bridge={settings?.bridge} />
-            </div>
-            {removing === index ? (
-              <>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => void remove(index)}
-                >
-                  Remove
-                </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setRemoving(null)}>
-                  Keep
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => openEditor(server, index)}
-                  aria-label={`Edit ${server.name}`}
-                  title="Edit"
-                >
-                  <PencilIcon />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setRemoving(index)}
-                  aria-label={`Remove ${server.name}`}
-                  title="Remove"
-                >
-                  <Trash2Icon />
-                </Button>
-              </>
-            )}
-          </li>
-        ))}
+        {servers.map((server) => {
+          const index = editableServers.findIndex((entry) => entry.name === server.name);
+          return (
+            <li
+              key={server.name}
+              className="border-border/70 flex items-center gap-3 rounded-2xl border px-4 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">{server.managed?.deviceName ?? server.name}</p>
+                <p className="text-muted-foreground truncate text-xs">
+                  {server.managed
+                    ? `External device · ${server.managed.tools} tool(s) · Managed automatically`
+                    : describeServer(server)}
+                </p>
+                <ServerStatus server={server} bridge={settings?.bridge} />
+              </div>
+              {server.managed ? (
+                <span className="bg-mint/10 text-mint rounded-full px-2.5 py-1 text-xs font-medium">
+                  Device
+                </span>
+              ) : removing === index ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => void remove(index)}
+                  >
+                    Remove
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setRemoving(null)}>
+                    Keep
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => openEditor(server, index)}
+                    aria-label={`Edit ${server.name}`}
+                    title="Edit"
+                  >
+                    <PencilIcon />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setRemoving(index)}
+                    aria-label={`Remove ${server.name}`}
+                    title="Remove"
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </>
+              )}
+            </li>
+          );
+        })}
         {settings && servers.length === 0 && (
           <li className="text-muted-foreground text-sm">No MCP servers configured.</li>
         )}

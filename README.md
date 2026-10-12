@@ -357,7 +357,7 @@ the three deployment settings; rerunning it preserves existing certificates.
 
 ## Known limitations
 
-- Single user, protected by `ARTEMIS_PASSWORD` in `.env` (required). Browser sessions last 90 days; changing the password and restarting the backend revokes them. Connected devices use the separate `ARTEMIS_DEVICE_TOKEN`; see [device setup](devices/README.md).
+- Single user, protected by `ARTEMIS_PASSWORD` in `.env` (required). Browser sessions last 90 days; changing the password and restarting the backend revokes them. Connected devices use the separate `ARTEMIS_DEVICE_TOKEN` and appear as automatically managed servers in the shared MCP list; see [device setup](devices/README.md).
 - The live event feed is in-process: run one backend instance (fine for a personal assistant).
 - Letta's current App Server (Letta Code 0.34) has no API to append a message without running a turn, which
   is why voice turns go through Letta rather than being logged afterwards, and why a held background result

@@ -85,6 +85,20 @@ class StdioMcp:
         self.process.stdout.close()
 
 
+def stream_events(response):
+    """Read the persistent device event connection without third-party packages."""
+    event, data = 'message', []
+    for raw in response:
+        line = raw.decode('utf-8').rstrip('\r\n')
+        if not line:
+            if data: yield event, json.loads('\n'.join(data))
+            event, data = 'message', []
+        elif line.startswith('event:'):
+            event = line[6:].lstrip()
+        elif line.startswith('data:'):
+            data.append(line[5:].lstrip())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('name', help='Unique device name: letters, numbers, underscores, hyphens')
@@ -101,47 +115,58 @@ def main():
     if args.mcp_command:
         print('Starting the local MCP server and loading its tools...', flush=True)
     local = StdioMcp(args.mcp_command) if args.mcp_command else None
-    def request(path, body=None, session=None):
+    def open_request(path, body=None, session=None):
         headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
         if session: headers['X-Device-Session'] = session
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(server + '/api/devices/' + path, data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=35) as response:
+        return urllib.request.urlopen(req, timeout=35)
+    def request(path, body=None, session=None):
+        with open_request(path, body, session) as response:
             return json.load(response)
+    def execute(message):
+        try:
+            if message.get('method') != 'tools/call': raise ValueError('Unsupported MCP method')
+            params = message['params']
+            if local: return local.rpc('tools/call', params)
+            if params['name'] == 'open_url': return open_url(params.get('arguments', {}), args.firefox)
+            raise ValueError('Unknown tool')
+        except Exception as error:
+            return {'isError': True, 'content': [{'type': 'text', 'text': str(error)}]}
+    device_path = urllib.parse.quote(args.name, safe='')
     session = None
     delay = 1
     try:
         while True:
             try:
-                if session is None:
-                    tools = local.tools() if local else [FIREFOX_TOOL]
-                    print(f'Registering device with Artemis ({len(tools)} tool(s))...', flush=True)
-                    session = request('register', {'name': args.name, 'tools': tools})['session']
-                    print(f'Connected: {args.name} ({len(tools)} tool(s)). Leave this window open.', flush=True)
-                messages = request(urllib.parse.quote(args.name, safe='') + '/poll', session=session)['requests']
-                delay = 1
-                for message in messages:
-                    try:
-                        if message.get('method') != 'tools/call': raise ValueError('Unsupported MCP method')
-                        params = message['params']
-                        if local: result = local.rpc('tools/call', params)
-                        elif params['name'] == 'open_url': result = open_url(params.get('arguments', {}), args.firefox)
-                        else: raise ValueError('Unknown tool')
-                    except Exception as error:
-                        result = {'isError': True, 'content': [{'type': 'text', 'text': str(error)}]}
-                    # Never replay an action after a failed response upload.
-                    request(urllib.parse.quote(args.name, safe='') + '/results', {'jsonrpc': '2.0', 'id': message['id'], 'result': result}, session)
+                tools = local.tools() if local else [FIREFOX_TOOL]
+                print(f'Registering device with Artemis ({len(tools)} tool(s))...', flush=True)
+                session = request('register', {'name': args.name, 'tools': tools})['session']
+                with open_request(device_path + '/events', session=session) as response:
+                    for event, message in stream_events(response):
+                        if event == 'connected':
+                            print(f'Connected: {args.name} ({len(tools)} tool(s)). Leave this window open.', flush=True)
+                            delay = 1
+                        elif event == 'ping':
+                            request(device_path + '/heartbeat', {}, session)
+                        elif event == 'request':
+                            result = execute(message)
+                            # Never replay an action after a failed response upload.
+                            request(device_path + '/results', {'jsonrpc': '2.0', 'id': message['id'], 'result': result}, session)
+                raise ConnectionError('Artemis closed the device connection')
             except urllib.error.HTTPError as error:
                 if error.code in (401, 403): raise SystemExit('Device authentication rejected; check ARTEMIS_DEVICE_TOKEN')
-                session = None
                 print(f'Artemis returned HTTP {error.code} ({error.reason}); reconnecting in {delay}s.', flush=True)
-                time.sleep(delay); delay = min(delay * 2, 30)
             except (OSError, ValueError, KeyError) as error:
-                session = None
                 print(f'Connection failed ({error}); retrying in {delay}s.', flush=True)
-                time.sleep(delay); delay = min(delay * 2, 30)
+            finally:
+                if session:
+                    try: request(device_path + '/disconnect', {}, session)
+                    except (OSError, ValueError): pass
+                    session = None
+            time.sleep(delay); delay = min(delay * 2, 30)
     except KeyboardInterrupt:
-        pass
+        print('Disconnected.', flush=True)
     finally:
         if local: local.close()
 

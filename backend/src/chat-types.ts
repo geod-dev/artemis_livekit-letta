@@ -112,6 +112,13 @@ export interface McpServer {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /** Registered automatically while an external device is connected. */
+  managed?: {
+    type: 'device';
+    deviceName: string;
+    connectedAt: string;
+    tools: number;
+  };
 }
 
 /** `GET`/`PUT /api/mcp`: the shared list, and what the native `mcp_*` tools reach of it. */

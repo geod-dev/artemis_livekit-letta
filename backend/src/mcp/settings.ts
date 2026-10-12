@@ -62,6 +62,9 @@ function validateServer(value: unknown, index: number): McpServer {
     throw new InvalidMcpServersError(`Server ${index} is not an object`);
   }
   const raw = value as Record<string, unknown>;
+  if (raw.managed !== undefined) {
+    throw new InvalidMcpServersError('Connected devices cannot be edited in MCP settings');
+  }
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
   if (!name) throw new InvalidMcpServersError(`Server ${index} has no name`);
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
