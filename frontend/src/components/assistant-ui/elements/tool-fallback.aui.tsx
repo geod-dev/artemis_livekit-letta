@@ -17,6 +17,10 @@ import {
 import { code } from '@streamdown/code';
 import { BashTerminal } from '@/components/assistant-ui/elements/bash-terminal';
 import {
+  MARKDOWN_COMPONENTS,
+  MARKDOWN_REHYPE_PLUGINS,
+} from '@/components/assistant-ui/elements/markdown-text';
+import {
   getToolDisplay,
   shellCommand,
   toolCall,
@@ -284,6 +288,8 @@ function ToolFallbackResult({
           <Streamdown
             mode="static"
             plugins={TOOL_MARKDOWN_PLUGINS}
+            components={MARKDOWN_COMPONENTS}
+            rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
             shikiTheme={['github-light', 'github-dark']}
             className="aui-tool-fallback-result-content space-y-2 break-words [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs"
           >

@@ -11,6 +11,11 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { config } from '../assistant/config';
+import { imageType } from '../assistant/workspace';
 import type { McpServer } from '../mcp/settings';
 
 /** A tool as `tools/list` describes it: the subset the bridge uses. */
@@ -51,12 +56,63 @@ export function textOfResult(result: unknown): CallResult {
   for (const block of Array.isArray(record.content) ? record.content : []) {
     const typed = block as { type?: unknown; text?: unknown };
     if (typed?.type === 'text' && typeof typed.text === 'string') parts.push(typed.text);
-    else if (typed && typeof typed.type === 'string') parts.push(`[${typed.type} content omitted]`);
+    else if (typed && typeof typed.type === 'string' && typed.type !== 'image')
+      parts.push(`[${typed.type} content omitted]`);
   }
   if (parts.length === 0 && record.structuredContent !== undefined) {
     parts.push(JSON.stringify(record.structuredContent, null, 2));
   }
   return { text: parts.join('\n').trim(), isError: record.isError === true };
+}
+
+/** Save device screenshots into the agent's shared workspace and return both
+ * an inline workspace image and its absolute path inside the agent container. */
+async function deviceScreenshotResult(
+  result: unknown,
+  deviceName: string
+): Promise<CallResult> {
+  const record = (result && typeof result === 'object' ? result : {}) as Record<string, unknown>;
+  const content = Array.isArray(record.content) ? record.content : [];
+  const images = content.filter(
+    (block): block is { type: 'image'; data: string; mimeType: string } =>
+      !!block &&
+      typeof block === 'object' &&
+      (block as { type?: unknown }).type === 'image' &&
+      typeof (block as { data?: unknown }).data === 'string' &&
+      typeof (block as { mimeType?: unknown }).mimeType === 'string'
+  );
+  if (images.length === 0) return textOfResult(result);
+  if (images.length > 1) throw new Error('A screenshot result may contain only one image');
+  const image = images[0]!;
+  const validBase64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+  if (
+    image.mimeType !== 'image/png' ||
+    image.data.length > 14_000_000 ||
+    !validBase64.test(image.data)
+  )
+    throw new Error('Screenshot must be a valid PNG of at most 10 MB');
+  const bytes = Buffer.from(image.data, 'base64');
+  if (bytes.length > 10_000_000 || imageType(bytes) !== 'image/png')
+    throw new Error('Screenshot must be a valid PNG of at most 10 MB');
+
+  const safeDevice = deviceName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64) || 'device';
+  const filename = `${safeDevice}-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.png`;
+  const relativePath = `screenshots/${filename}`;
+  const directory = join(config.workspace.dir, 'screenshots');
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, filename), bytes, { flag: 'wx' });
+
+  const text = textOfResult({ ...record, content: content.filter((block) => block !== image) });
+  return {
+    text: [
+      `![Screenshot from ${deviceName}](/workspace/${relativePath})`,
+      `Saved to /workspace/${relativePath} (workspace path: ${relativePath}).`,
+      text.text,
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
+    isError: text.isError,
+  };
 }
 
 async function withClient<T>(server: McpServer, run: (client: Client) => Promise<T>): Promise<T> {
@@ -82,9 +138,14 @@ export const mcpClient: McpClientPort = {
       return tools;
     }),
   callTool: (server, tool, args) =>
-    withClient(server, async (client) =>
-      textOfResult(
-        await client.callTool({ name: tool, arguments: args }, undefined, { timeout: 120_000 })
-      )
-    ),
+    withClient(server, async (client) => {
+      const result = await client.callTool(
+        { name: tool, arguments: args },
+        undefined,
+        { timeout: 120_000 }
+      );
+      if (server.managed?.type === 'device' && tool === 'screenshot_capture')
+        return deviceScreenshotResult(result, server.managed.deviceName);
+      return textOfResult(result);
+    }),
 };

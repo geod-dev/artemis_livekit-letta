@@ -56,6 +56,20 @@ export class DeviceHub {
   onChange(listener: () => Promise<void>) {
     this.changed = listener;
   }
+  private refreshRegistry(name?: string, session?: string, attempt = 0) {
+    if (name && this.devices.get(name)?.session !== session) return;
+    void Promise.resolve()
+      .then(() => this.changed())
+      .catch((error) => {
+        console.error('[devices] registry refresh failed', error);
+        if (attempt >= 5) return;
+        const timer = setTimeout(
+          () => this.refreshRegistry(name, session, attempt + 1),
+          Math.min(1_000 * 2 ** attempt, 30_000)
+        );
+        timer.unref();
+      });
+  }
   close() {
     clearInterval(this.expiry);
     for (const name of this.devices.keys()) this.remove(name);
@@ -69,7 +83,10 @@ export class DeviceHub {
       throw new Error('Invalid MCP tool name');
     if (new Set(validated.map((t) => t.name)).size !== validated.length)
       throw new Error('Duplicate tool names');
-    await this.expire();
+    let expired = false;
+    for (const [deviceName, device] of this.devices)
+      if (this.now() - device.seen > 75_000) expired = this.remove(deviceName) || expired;
+    if (expired) this.refreshRegistry();
     if (!this.devices.has(name) && this.devices.size >= 100) throw new Error('Too many devices');
     this.remove(name);
     const session = randomUUID();
@@ -82,13 +99,9 @@ export class DeviceHub {
       queue: [],
       streaming: false,
     });
-    try {
-      await this.changed();
-    } catch (error) {
-      this.remove(name, session);
-      await this.changed().catch(() => {});
-      throw error;
-    }
+    // Registration is the device's handshake. Do not make it wait on Letta's
+    // MCP catalog refresh (which can be slow on startup); publish it separately.
+    this.refreshRegistry(name, session);
     return session;
   }
   private remove(name: string, session?: string): boolean {
@@ -232,8 +245,7 @@ export class DeviceHub {
 export const deviceHub = new DeviceHub();
 export function createDeviceRoutes(hub: DeviceHub): Hono {
   const routes = new Hono();
-  routes.use('*', bodyLimit({ maxSize: 256_000 }));
-  routes.post('/register', async (c) => {
+  routes.post('/register', bodyLimit({ maxSize: 256_000 }), async (c) => {
     try {
       const body = await c.req.json();
       return c.json({ session: await hub.register(body.name, body.tools) });
@@ -302,7 +314,8 @@ export function createDeviceRoutes(hub: DeviceHub): Hono {
       return c.json({ error: String(e) }, 503);
     }
   });
-  routes.post('/:name/results', async (c) => {
+  // A 10 MB screenshot is about 13.4 MB when base64 encoded in JSON.
+  routes.post('/:name/results', bodyLimit({ maxSize: 16_000_000 }), async (c) => {
     try {
       const body = await c.req.json();
       hub.result(
