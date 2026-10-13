@@ -29,6 +29,8 @@ services:
     environment:
       LETTA_SERVER_TOKEN: ${LETTA_SERVER_TOKEN:?set LETTA_SERVER_TOKEN in .env}
       LETTA_SKIP_KEYCHAIN_CHECK: "1"
+      # This image and its compatibility patch pin Letta to 0.34.4.
+      DISABLE_AUTOUPDATER: "1"
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
       ZAI_API_KEY: ${ZAI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
