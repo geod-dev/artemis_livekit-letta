@@ -14,6 +14,7 @@ COMPOSE_PROJECT_NAME=iakgsm1age87oct55wknozc6
 FRONTEND_BIND=127.0.0.1
 FRONTEND_PORT=5180
 LIVEKIT_PUBLIC_URL=wss://185.252.233.123/livekit
+LIVEKIT_SIGNAL_BIND=127.0.0.1
 ```
 
 The workspace is independent of Git clones. The external Letta volume holds the existing agents, conversations and memory. Do not delete these paths or run `docker compose down -v`. Production previews are disabled because this installation shares persistent data and fixed ports.
@@ -47,7 +48,7 @@ journalctl -u artemis-deploy.service -u artemis-token-rotation.service
 - Coolify: `https://185.252.233.123:8443`
 - Both are served by host nginx using the existing trusted IP certificate and renewal timer.
 - Coolify's 8000, 6001 and 6002 ports are bound to loopback. Nginx forwards dashboard requests, `/app/` realtime WebSockets and `/terminal/ws` terminal WebSockets over HTTPS on 8443.
-- Public ports in use: TCP 22 (SSH), 80/443 (Artemis and certificate renewal), 8443 (Coolify), 7881 and UDP 7882 (LiveKit media). The current Compose also publishes LiveKit signaling on TCP 7880; browser signaling uses `/livekit` over HTTPS.
+- Public ports in use: TCP 22 (SSH), 80/443 (Artemis and certificate renewal), 8443 (Coolify), 7881 and UDP 7882 (LiveKit media). LiveKit signaling on TCP 7880 is bound to loopback; browser signaling uses `/livekit` over HTTPS. Production uses a generated LiveKit API secret rather than the development default.
 
 Coolify's built-in proxy is set to `NONE` because host nginx handles these endpoints. Coolify remains responsible for application builds and container lifecycle.
 

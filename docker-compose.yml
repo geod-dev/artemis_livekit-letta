@@ -101,7 +101,7 @@ services:
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-secret}"
     ports:
-      - "7880:7880"
+      - "${LIVEKIT_SIGNAL_BIND:-0.0.0.0}:7880:7880"
       - "7881:7881"
       - "7882:7882/udp"
     restart: unless-stopped
