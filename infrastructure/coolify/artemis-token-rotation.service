@@ -1,0 +1,16 @@
+[Unit]
+Description=Renew the Artemis Coolify deployment token
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/artemis/rotate-token.py
+TimeoutStartSec=120
+Restart=on-failure
+RestartSec=3600
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/artemis /var/lib/artemis-deploy

@@ -1,0 +1,10 @@
+[Unit]
+Description=Rotate the limited Artemis deployment token monthly
+
+[Timer]
+OnCalendar=monthly
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

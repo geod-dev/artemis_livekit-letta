@@ -200,6 +200,10 @@ agent/               Python LiveKit agent (uv)
 
 ## Running it
 
+The production VPS is managed by Coolify. See
+[the Coolify deployment guide](infrastructure/coolify/README.md) for persistent
+storage, automatic deployments, HTTPS and recovery.
+
 Requirements for the complete stack: Docker with Docker Compose. No host Node or Python installation is needed.
 
 ```bash
