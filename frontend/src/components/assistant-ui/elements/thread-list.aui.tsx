@@ -30,7 +30,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/shadcn/utils';
-import { mono } from './surfaces';
 
 export const ThreadList: FC = () => {
   const [search, setSearch] = useState('');
@@ -229,7 +228,7 @@ const ThreadListItemGroups: FC<{ searchQuery?: string }> = ({ searchQuery = '' }
     <Fragment key={group.label}>
       <div
         data-slot="aui_thread-list-group-label"
-        className={cn(mono, 'text-foreground/35 px-3 pt-4 pb-1.5 first:pt-1')}
+        className="text-muted-foreground px-3 pt-5 pb-2 text-xs font-semibold first:pt-1"
       >
         {group.label}
       </div>
@@ -444,7 +443,7 @@ const ThreadListItemMore: FC<{ onRename: () => void }> = ({ onRename }) => {
         align="start"
         sideOffset={6}
         data-slot="aui_thread-list-item-more-content"
-        className="bg-popover text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-32 overflow-hidden rounded-xl border p-1.5"
+        className="mobile-menu-motion bg-popover text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-32 overflow-hidden rounded-xl border p-1.5"
       >
         <ThreadListItemMorePrimitive.Item
           data-slot="aui_thread-list-item-more-item"

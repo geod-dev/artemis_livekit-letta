@@ -10,7 +10,6 @@ import { Thread } from '@/components/assistant-ui/elements/thread.aui';
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button';
 import { WorkspaceFilePanelContext } from '@/components/assistant-ui/elements/workspace-file';
 import { WorkspaceFilePanel } from '@/components/assistant-ui/elements/workspace-file-panel';
-import { AppMenu } from '@/components/chat/app-menu';
 import { CallBar } from '@/components/chat/call-bar';
 import { LoadingBar } from '@/components/chat/loading-bar';
 import { Sidebar } from '@/components/chat/sidebar';
@@ -75,7 +74,6 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const openSettings = useCallback(() => setSettingsOpen(true), []);
-  const openSearch = useCallback(() => setSearchOpen(true), []);
   const newChat = useCallback(() => select(null), [select]);
   const [openFile, setOpenFile] = useState<string | null>(null);
   const closeFile = useCallback(() => setOpenFile(null), []);
@@ -231,6 +229,8 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
               searchOpen={searchOpen}
               onSearchOpenChange={setSearchOpen}
               newChatActive={activeId === null}
+              onNewChat={newChat}
+              onSettings={openSettings}
             />
             <main className="bg-background flex min-w-0 flex-1 flex-col">
               <header className="flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-3 lg:gap-3 lg:px-6">
@@ -279,7 +279,6 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
                     <PhoneIcon className="size-4" />
                   )}
                 </TooltipIconButton>
-                <AppMenu onNewChat={newChat} onSearch={openSearch} onSettings={openSettings} />
               </header>
               {inCall && <CallBar />}
               <div className="min-h-0 flex-1">

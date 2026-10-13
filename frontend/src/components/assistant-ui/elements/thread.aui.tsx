@@ -203,6 +203,7 @@ const ThreadRoot: FC<{
   return (
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root @container relative flex h-full flex-col"
+      data-empty={isEmpty ? 'true' : undefined}
       style={{
         ['--thread-max-width' as string]: '44rem',
         ['--composer-bg' as string]: 'var(--color-card)',
@@ -241,6 +242,7 @@ const ThreadRoot: FC<{
             <ThreadPrimitive.ViewportFooter
               className={cn(
                 'aui-thread-viewport-footer flex flex-col gap-4 overflow-visible pb-4 md:pb-6',
+                isEmpty && 'aui-thread-empty-footer',
                 // The gap above the composer fades the messages out instead of cutting them off.
                 !isEmpty &&
                   'sticky bottom-0 z-20 mt-auto bg-[linear-gradient(to_bottom,transparent,var(--color-background)_1.5rem)] pt-6'
@@ -505,7 +507,7 @@ const Composer: FC<{ autoFocus: boolean; placeholder: string; docked: boolean }>
 }) => {
   const glideRef = useComposerGlide(docked);
   return (
-    <div ref={glideRef} className="w-full">
+    <div ref={glideRef} className="aui-thread-composer w-full">
       <ComposerRoot autoFocus={autoFocus} placeholder={placeholder} />
     </div>
   );
@@ -572,10 +574,10 @@ const ComposerAction: FC = () => {
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-send bouncy size-8 rounded-full"
+              className="aui-composer-send bouncy size-6 rounded-full sm:size-8"
               aria-label="Send message"
             >
-              <ArrowUpIcon className="aui-composer-send-icon size-4" />
+              <ArrowUpIcon className="aui-composer-send-icon size-3 sm:size-4" />
             </TooltipIconButton>
           </ComposerPrimitive.Send>
         </AuiIf>
@@ -840,7 +842,7 @@ const AssistantActionBar: FC = () => {
           side="bottom"
           align="start"
           sideOffset={6}
-          className="aui-action-bar-more-content bg-popover text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5"
+          className="aui-action-bar-more-content mobile-menu-motion bg-popover text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5"
         >
           <ActionBarPrimitive.ExportMarkdown asChild>
             <ActionBarMorePrimitive.Item className="aui-action-bar-more-item hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none">
@@ -948,7 +950,7 @@ const UserActionBar: FC = () => {
             side="bottom"
             align="end"
             sideOffset={6}
-            className="aui-action-bar-more-content bg-popover text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5"
+            className="aui-action-bar-more-content mobile-menu-motion bg-popover text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5"
           >
             <ActionBarMorePrimitive.Item
               onSelect={() => void aui.message.delete()}

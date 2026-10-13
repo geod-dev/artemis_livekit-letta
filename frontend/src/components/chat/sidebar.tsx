@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MenuIcon, PlusIcon, SearchIcon } from 'lucide-react';
+import { MenuIcon, PlusIcon, SearchIcon, SettingsIcon } from 'lucide-react';
 import { useAuiState } from '@assistant-ui/react';
 import {
   ThreadListItems,
@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 
 const QUIET_ICON_BUTTON =
-  'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted size-9 justify-center rounded-full border-0 bg-transparent p-0 opacity-0 transition-opacity group-hover/sidebar:opacity-100 focus-visible:opacity-100';
+  'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted size-9 justify-center rounded-full border-0 bg-transparent p-0 opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 focus-visible:opacity-100 lg:transition-none';
 
 /** Conversation list, driven by the assistant-ui thread list runtime. */
 export function Sidebar({
@@ -26,6 +26,8 @@ export function Sidebar({
   searchOpen,
   onSearchOpenChange,
   newChatActive,
+  onNewChat,
+  onSettings,
 }: {
   assistantName: string;
   error: string | null;
@@ -33,6 +35,8 @@ export function Sidebar({
   onSearchOpenChange: (open: boolean) => void;
   /** No conversation is selected: the new chat is the page on screen. */
   newChatActive: boolean;
+  onNewChat: () => void;
+  onSettings: () => void;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -58,8 +62,19 @@ export function Sidebar({
 
   const content = (
     <>
-      <div className="flex items-center justify-between gap-2 ps-6 pe-4 pt-6 pb-2">
-        <span className="font-display text-3xl font-extrabold tracking-tight">{assistantName}</span>
+      <div className="flex items-center justify-between gap-2 ps-6 pe-4 pt-4 pb-2">
+        <button
+          type="button"
+          onClick={() => {
+            onNewChat();
+            setMobileOpen(false);
+          }}
+          aria-label={`${assistantName} — new chat`}
+          title="New chat"
+          className="font-display cursor-pointer rounded-md text-3xl font-extrabold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+        >
+          {assistantName}
+        </button>
         <Button
           type="button"
           variant="ghost"
@@ -93,6 +108,20 @@ export function Sidebar({
         )}
         <ThreadListItems className="-mx-1 overflow-y-auto px-1" />
       </ThreadListRoot>
+      <div className="shrink-0 p-3">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setMobileOpen(false);
+            onSettings();
+          }}
+          className="text-muted-foreground hover:text-foreground w-full justify-start gap-3 rounded-xl px-3"
+        >
+          <SettingsIcon className="size-4" />
+          Settings
+        </Button>
+      </div>
     </>
   );
 
@@ -114,7 +143,8 @@ export function Sidebar({
         </DialogTrigger>
         <DialogContent
           showCloseButton={false}
-          className="group/sidebar mobile-chat-drawer top-0 left-0 h-full max-h-none w-[min(20rem,90vw)] max-w-none translate-x-0 translate-y-0 gap-0 rounded-none p-0 lg:hidden"
+          overlayClassName="mobile-chat-backdrop"
+          className="group/sidebar mobile-chat-drawer data-[state=open]:animate-none data-[state=closed]:animate-none top-0 left-0 h-full max-h-none w-[min(18rem,85vw)] max-w-none translate-x-0 translate-y-0 gap-0 rounded-none p-0 lg:hidden"
         >
           <DialogHeader className="sr-only">
             <DialogTitle>Chats</DialogTitle>
