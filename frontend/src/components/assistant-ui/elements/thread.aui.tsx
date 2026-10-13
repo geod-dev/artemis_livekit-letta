@@ -219,13 +219,13 @@ const ThreadRoot: FC<{
           autoScroll={!isEmpty}
           ref={viewportRef}
           data-slot="aui_thread-viewport"
-          className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll"
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
         >
           <div
             className={cn(
               'relative mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4',
               // Optical centre sits above the geometric one: bias the block upward.
-              isEmpty && 'justify-center pb-[36vh]'
+              isEmpty && 'justify-center pb-8 sm:pb-[20dvh]'
             )}
           >
             <AuiIf condition={isNewChatView}>
@@ -256,10 +256,8 @@ const ThreadRoot: FC<{
             </ThreadPrimitive.ViewportFooter>
           </div>
         </ThreadPrimitive.Viewport>
-        {/* Outside the scroller: mascot movement cannot extend its scroll height. */}
-        <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
-          <Mascot viewportRef={viewportRef} easterEggEnabled={mascotEasterEgg} />
-        </div>
+        {/* One persistent mascot can travel between the chat and settings header. */}
+        <Mascot viewportRef={viewportRef} easterEggEnabled={mascotEasterEgg} />
       </MascotEasterEggContext.Provider>
     </ThreadPrimitive.Root>
   );
@@ -881,7 +879,7 @@ const UserMessage: FC = () => {
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
         <div
           className={cn(
-            'aui-user-message-content peer bg-primary text-primary-foreground rounded-[1.5rem] rounded-br-lg px-5 py-3 text-[15px] leading-relaxed font-semibold wrap-break-word empty:hidden',
+            'aui-user-message-content peer bg-bubble text-primary-foreground rounded-[1.5rem] rounded-br-lg px-5 py-3 text-[15px] leading-relaxed font-semibold wrap-break-word empty:hidden',
             isSpoken && 'italic'
           )}
         >

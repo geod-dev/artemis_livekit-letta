@@ -48,6 +48,23 @@ function useSelectedConversation() {
 }
 
 export function ChatApp({ assistantName }: { assistantName: string }) {
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const resize = () => {
+      document.documentElement.style.setProperty(
+        '--app-height',
+        `${viewport?.height ?? window.innerHeight}px`
+      );
+    };
+    resize();
+    viewport?.addEventListener('resize', resize);
+    window.addEventListener('resize', resize);
+    return () => {
+      viewport?.removeEventListener('resize', resize);
+      window.removeEventListener('resize', resize);
+      document.documentElement.style.removeProperty('--app-height');
+    };
+  }, []);
   const list = useConversations();
   const { upsert, create } = list;
   const [activeId, select] = useSelectedConversation();
@@ -207,7 +224,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       <AssistantRuntimeProvider runtime={runtime} config={AUI_CONFIG}>
         <TooltipProvider>
           <LoadingBar active={conversation.loading} />
-          <div className="text-foreground flex h-svh">
+          <div className="app-shell text-foreground flex">
             <Sidebar
               assistantName={assistantName}
               error={list.error}
@@ -216,11 +233,11 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
               newChatActive={activeId === null}
             />
             <main className="bg-background flex min-w-0 flex-1 flex-col">
-              <header className="flex h-16 shrink-0 items-center justify-between gap-3 px-6">
+              <header className="flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-3 lg:gap-3 lg:px-6">
                 {!conversation.blank && shownId && (
                   <h1
                     key={shownId}
-                    className="font-display animate-rise-in truncate text-xl font-extrabold"
+                    className="font-display animate-rise-in min-w-0 truncate text-base font-extrabold sm:text-xl"
                   >
                     {shownTitle ?? 'Conversation'}
                   </h1>
@@ -269,6 +286,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
                 <ChatThreadContext.Provider value={threadState}>
                   <WorkspaceFilePanelContext.Provider value={setOpenFile}>
                     <Thread
+                      autoFocus={window.matchMedia('(hover: hover) and (pointer: fine)').matches}
                       components={THREAD_COMPONENTS}
                       placeholder={
                         inCall

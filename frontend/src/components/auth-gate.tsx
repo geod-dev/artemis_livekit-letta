@@ -40,10 +40,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
   if (authenticated) return children;
   return (
-    <main className="bg-background flex min-h-dvh items-center justify-center p-6">
+    <main className="bg-background flex h-dvh items-center justify-center overflow-y-auto p-4 sm:p-6">
       <form
         onSubmit={login}
-        className="bg-card w-full max-w-sm space-y-5 rounded-2xl border p-8 shadow-sm"
+        className="bg-card my-auto w-full max-w-sm shrink-0 space-y-5 rounded-2xl border p-8 shadow-sm"
       >
         <h1 className="text-2xl font-semibold">{import.meta.env.ASSISTANT_NAME}</h1>
         {authenticated === null ? (

@@ -1,9 +1,10 @@
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, type SVGProps, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuiState } from '@assistant-ui/react';
 import { cn } from '@/lib/shadcn/utils';
 
 /**
- * Artemis's mascot lives in a bounded overlay outside the scrolling content.
+ * Artemis's mascot lives in a shared viewport overlay outside the scrolling content.
  * Anchors are measured in that overlay's visible coordinates, so switching
  * conversations never makes its animated position extend the scroll height.
  *
@@ -36,6 +37,21 @@ const GAP_AFTER_TEXT = 6;
 const MAX_EYE_SHIFT = 4;
 /** Frames of unchanged scroll required before the mascot travels. */
 const STABLE_FRAMES = 3;
+
+/** Shared Artemis mark for the app header and animated chat mascot. */
+export function MascotMark({ children, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="-2 -2 104 104" {...props}>
+      <circle cx="50" cy="50" r="43.75" fill="none" stroke="currentColor" strokeWidth="12.5" />
+      {children ?? (
+        <g fill="currentColor">
+          <rect x="29" y="32.5" width="16" height="35" rx="8" />
+          <rect x="55" y="32.5" width="16" height="35" rx="8" />
+        </g>
+      )}
+    </svg>
+  );
+}
 
 export function Mascot({
   viewportRef,
@@ -110,20 +126,28 @@ export function Mascot({
     let frame = 0;
     const tick = () => {
       frame = requestAnimationFrame(tick);
+      const settingsAnchor = document.querySelector<HTMLElement>('[data-mascot-anchor="settings"]');
+      container.style.zIndex = settingsAnchor ? '60' : '10';
       const switched = threadIdRef.current !== lastThreadId;
       const scrollDelta = viewport.scrollTop - lastScrollTop;
       stableFrames = !switched && scrollDelta === 0 ? stableFrames + 1 : 0;
       // Follow ordinary scrolling, but retain the rendered position on a switch.
-      if (pos && !switched && scrollDelta !== 0) {
+      if (pos && !settingsAnchor && !switched && scrollDelta !== 0) {
         pos = clampToViewport({ ...pos, y: pos.y - scrollDelta }, container, viewport);
       }
       lastScrollTop = viewport.scrollTop;
       lastThreadId = threadIdRef.current;
 
       let wrapped: Element | null = null;
-      const spot = findSpot(viewport, container, modeRef.current, pos !== null, (message) => {
-        wrapped = message;
-      });
+      const settingsBounds = settingsAnchor?.getBoundingClientRect();
+      const spot = settingsBounds
+        ? {
+            box: toBox(container, settingsBounds.left, settingsBounds.top, settingsBounds.width),
+            mode: 'idle' as const,
+          }
+        : findSpot(viewport, container, modeRef.current, pos !== null, (message) => {
+            wrapped = message;
+          });
       markWrapped(wrapped);
       if (spot === 'hold') return; // its next spot is not rendered yet: stay put
       if (spot === 'offscreen') {
@@ -140,10 +164,10 @@ export function Mascot({
       // The effective mode drives the CSS animation (spin while waiting).
       if (root.dataset.mode !== spot.mode) root.dataset.mode = spot.mode;
       root.classList.toggle('mascot-wrapped', spot.mode === 'idle' && wrappedMessage !== null);
-      const target = clampToViewport(spot.box, container, viewport);
+      const target = settingsAnchor ? spot.box : clampToViewport(spot.box, container, viewport);
 
       pos ??= { ...target };
-      const ready = stableFrames >= STABLE_FRAMES;
+      const ready = settingsAnchor !== null || stableFrames >= STABLE_FRAMES;
       if (ready) {
         // A plain ease-out glide (each frame covers a fixed share of the
         // remaining distance): it never overshoots, and snaps to whole pixels
@@ -191,46 +215,45 @@ export function Mascot({
 
   const blinking = useRandomBlink();
 
-  return (
-    <div
-      ref={rootRef}
-      aria-hidden={!easterEggEnabled}
-      role={easterEggEnabled ? 'button' : undefined}
-      tabIndex={easterEggEnabled ? 0 : undefined}
-      aria-label={easterEggEnabled ? 'Click for a surprise' : undefined}
-      onClick={showEasterEgg}
-      onKeyDown={(event) => {
-        if (easterEggEnabled && (event.key === 'Enter' || event.key === ' ')) {
-          event.preventDefault();
-          showEasterEgg();
-        }
-      }}
-      data-mode={mode}
-      className={cn(
-        'group/mascot text-primary absolute top-0 left-0 z-10 transition-opacity duration-200',
-        easterEggEnabled ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'
-      )}
-      style={{ width: 0, height: 0, opacity: 0 }}
-    >
-      <svg
-        viewBox="0 0 100 100"
-        className="group-data-[mode=waiting]/mascot:animate-mascot-turn size-full"
+  return createPortal(
+    <div className="pointer-events-none fixed inset-0 z-10 overflow-hidden">
+      <div
+        ref={rootRef}
+        aria-hidden={!easterEggEnabled}
+        role={easterEggEnabled ? 'button' : undefined}
+        tabIndex={easterEggEnabled ? 0 : undefined}
+        aria-label={easterEggEnabled ? 'Click for a surprise' : undefined}
+        onClick={showEasterEgg}
+        onKeyDown={(event) => {
+          if (easterEggEnabled && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            showEasterEgg();
+          }
+        }}
+        data-mode={mode}
+        className={cn(
+          'group/mascot text-mascot absolute top-0 left-0 z-10 transition-opacity duration-200',
+          easterEggEnabled ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'
+        )}
+        style={{ width: 0, height: 0, opacity: 0 }}
       >
-        <circle cx="50" cy="50" r="43.75" fill="none" stroke="currentColor" strokeWidth="12.5" />
-        <g ref={eyesRef}>
-          {showXMarks ? (
-            <g fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round">
-              <path d="m32 41 10 18m0-18L32 59m26-18 10 18m0-18L58 59" />
-            </g>
-          ) : (
-            <g className={blinking ? 'mascot-blink' : undefined}>
-              <rect x="29" y="32.5" width="16" height="35" rx="8" fill="currentColor" />
-              <rect x="55" y="32.5" width="16" height="35" rx="8" fill="currentColor" />
-            </g>
-          )}
-        </g>
-      </svg>
-    </div>
+        <MascotMark className="group-data-[mode=waiting]/mascot:animate-mascot-turn size-full">
+          <g ref={eyesRef}>
+            {showXMarks ? (
+              <g fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round">
+                <path d="m32 41 10 18m0-18L32 59m26-18 10 18m0-18L58 59" />
+              </g>
+            ) : (
+              <g className={blinking ? 'mascot-blink' : undefined}>
+                <rect x="29" y="32.5" width="16" height="35" rx="8" fill="currentColor" />
+                <rect x="55" y="32.5" width="16" height="35" rx="8" fill="currentColor" />
+              </g>
+            )}
+          </g>
+        </MascotMark>
+      </div>
+    </div>,
+    document.body
   );
 }
 

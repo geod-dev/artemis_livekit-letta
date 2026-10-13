@@ -1,18 +1,25 @@
-import { useEffect, useState } from 'react';
-import { LogOutIcon, MoonIcon, PlugZapIcon, SunIcon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeftIcon,
+  ChevronRightIcon,
+  LogOutIcon,
+  MoonIcon,
+  PlugZapIcon,
+  SunIcon,
+} from 'lucide-react';
 import { McpServers } from '@/components/settings/mcp-servers';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { applyTheme, getStoredTheme, type Theme } from '@/lib/theme';
 import { cn } from '@/lib/shadcn/utils';
+import { type Theme, applyTheme, getStoredTheme } from '@/lib/theme';
 
 type SettingsSection = 'appearance' | 'mcp';
 
-/** The sections, grouped as the menu shows them. */
-const SECTION_GROUPS: { label: string; sections: { id: SettingsSection; label: string }[] }[] = [
-  { label: 'Preferences', sections: [{ id: 'appearance', label: 'Appearance' }] },
-  { label: 'Tools & integrations', sections: [{ id: 'mcp', label: 'MCP servers' }] },
+const SECTIONS: { id: SettingsSection; label: string }[] = [
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'mcp', label: 'MCP servers' },
 ];
-const SECTIONS = SECTION_GROUPS.flatMap((group) => group.sections);
+const NAV_BUTTON =
+  'hover:bg-muted focus-visible:ring-ring flex min-h-12 w-full shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-start text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none';
 const LAST_SECTION_KEY = 'settings-section';
 const SECTION_ICONS = { appearance: SunIcon, mcp: PlugZapIcon };
 
@@ -37,6 +44,9 @@ export function SettingsDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [section, setSection] = useState<SettingsSection>(storedSection);
+  const [dashboard, setDashboard] = useState(true);
+  const contentRef = useRef<HTMLElement>(null);
+  const navigationRef = useRef<HTMLElement>(null);
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
 
   useEffect(() => {
@@ -46,6 +56,12 @@ export function SettingsDialog({
       // Remembering the section is a convenience.
     }
   }, [section]);
+
+  useEffect(() => {
+    if (!open || !window.matchMedia('(max-width: 767px)').matches) return;
+    if (dashboard) navigationRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    else contentRef.current?.focus();
+  }, [dashboard, open]);
 
   const label = SECTIONS.find((s) => s.id === section)?.label;
 
@@ -58,87 +74,163 @@ export function SettingsDialog({
     void fetch('/api/auth/logout', { method: 'POST' }).then(() => window.location.reload());
   }
 
+  function closeSettings() {
+    setDashboard(true);
+    onOpenChange(false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(85vh,44rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
-        <DialogHeader className="border-border/70 border-b px-6 py-4 text-start">
-          <DialogTitle className="font-display text-xl font-extrabold">Settings</DialogTitle>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setDashboard(true);
+        onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="settings-page top-0 left-0 flex w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none duration-0 sm:max-w-none"
+      >
+        <DialogHeader className="border-border/70 shrink-0 border-b px-4 py-3 text-start sm:px-8">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4">
+            <DialogTitle className="font-display text-xl font-extrabold">Settings</DialogTitle>
+            <span
+              aria-hidden="true"
+              data-mascot-anchor="settings"
+              className="block size-6 shrink-0"
+            />
+          </div>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col md:flex-row">
           <nav
+            ref={navigationRef}
             aria-label="Settings sections"
-            className="border-border/70 flex shrink-0 gap-4 overflow-x-auto border-b p-3 md:w-56 md:flex-col md:border-e md:border-b-0"
+            className={cn(
+              'border-border/70 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-4 md:w-64 md:flex-none md:border-e',
+              !dashboard && 'hidden md:flex'
+            )}
           >
-            {SECTION_GROUPS.map((group) => (
-              <div key={group.label} className="flex flex-col gap-1">
-                <p className="text-muted-foreground px-3 text-xs font-semibold">{group.label}</p>
-                {group.sections.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setSection(item.id)}
-                    aria-current={item.id === section ? 'page' : undefined}
-                    className={cn(
-                      'hover:bg-muted rounded-xl px-3 py-2 text-start text-sm whitespace-nowrap',
-                      item.id === section && 'bg-muted font-semibold'
-                    )}
-                  >
-                    {(() => {
-                      const Icon = SECTION_ICONS[item.id];
-                      return <Icon aria-hidden="true" className="size-4 shrink-0" />;
-                    })()}
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            ))}
+            <button type="button" onClick={closeSettings} className={NAV_BUTTON}>
+              <ArrowLeftIcon aria-hidden="true" className="size-4" />
+              Back to app
+            </button>
+            {SECTIONS.map((item) => {
+              const Icon = SECTION_ICONS[item.id];
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setSection(item.id);
+                    setDashboard(false);
+                  }}
+                  aria-current={item.id === section ? 'page' : undefined}
+                  className={cn(NAV_BUTTON, item.id === section && 'md:bg-muted')}
+                >
+                  <Icon aria-hidden="true" className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1">{item.label}</span>
+                  <ChevronRightIcon
+                    aria-hidden="true"
+                    className="text-muted-foreground size-4 shrink-0 md:hidden"
+                  />
+                </button>
+              );
+            })}
             <button
               type="button"
               onClick={signOut}
-              className="text-muted-foreground hover:bg-muted hover:text-foreground mt-auto flex items-center gap-2 rounded-xl border-t px-3 py-3 text-start text-sm md:mt-4"
+              title="Sign out"
+              className={cn(NAV_BUTTON, 'mt-auto')}
             >
               <LogOutIcon aria-hidden="true" className="size-4 shrink-0" />
-              Sign out
+              <span>Sign out</span>
             </button>
           </nav>
-          <section aria-label={label} className="min-h-0 flex-1 overflow-y-auto p-6">
+          <section
+            ref={contentRef}
+            tabIndex={-1}
+            aria-label={label}
+            className={cn(
+              'min-h-0 min-w-0 flex-1 overflow-y-auto p-4 outline-none sm:p-8 md:block',
+              dashboard && 'hidden'
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => setDashboard(true)}
+              className={cn(NAV_BUTTON, 'mb-6 md:hidden')}
+            >
+              <ArrowLeftIcon aria-hidden="true" className="size-4" />
+              All settings
+            </button>
             {section === 'appearance' && (
               <div className="max-w-xl space-y-5">
                 <div>
                   <h2 className="text-lg font-bold">Appearance</h2>
-                  <p className="text-muted-foreground mt-1 text-sm">Choose how Artemis looks on this device.</p>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    Choose how Artemis looks on this device.
+                  </p>
                 </div>
-                <div className="border-border flex items-center justify-between gap-4 rounded-2xl border p-4">
-                  <div className="flex items-center gap-3">
-                    {theme === 'dark' ? (
-                      <MoonIcon aria-hidden="true" className="text-muted-foreground size-5" />
-                    ) : (
-                      <SunIcon aria-hidden="true" className="text-muted-foreground size-5" />
-                    )}
-                    <div>
-                      <p className="text-sm font-semibold">Dark mode</p>
-                      <p className="text-muted-foreground text-sm">Use a darker color palette.</p>
-                    </div>
+                <fieldset className="space-y-3">
+                  <legend className="text-sm font-semibold">Color theme</legend>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['light', 'dark'] as const).map((option) => {
+                      const Icon = option === 'dark' ? MoonIcon : SunIcon;
+                      return (
+                        <label
+                          key={option}
+                          className={cn(
+                            'has-focus-visible:ring-ring relative flex cursor-pointer flex-col gap-3 rounded-2xl border-2 p-4 has-focus-visible:ring-2 has-focus-visible:ring-offset-2',
+                            theme === option
+                              ? 'border-primary bg-accent'
+                              : 'border-border hover:bg-muted'
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name="color-theme"
+                            value={option}
+                            checked={theme === option}
+                            onChange={() => changeTheme(option)}
+                            className="sr-only"
+                          />
+                          <div
+                            aria-hidden="true"
+                            className={cn(
+                              'space-y-2 rounded-lg border p-3',
+                              option === 'dark'
+                                ? 'border-[#383541] bg-[#15141a]'
+                                : 'border-[#e7e5ee] bg-white'
+                            )}
+                          >
+                            <div
+                              className={cn(
+                                'h-2 w-1/2 rounded-full',
+                                option === 'dark' ? 'bg-[#143d73]' : 'bg-[#0575f0]'
+                              )}
+                            />
+                            <div
+                              className={cn(
+                                'h-2 w-3/4 rounded-full',
+                                option === 'dark' ? 'bg-[#aaa6b7]' : 'bg-[#e7e5ee]'
+                              )}
+                            />
+                            <div
+                              className={cn(
+                                'h-2 w-2/3 rounded-full',
+                                option === 'dark' ? 'bg-[#383541]' : 'bg-[#e7e5ee]'
+                              )}
+                            />
+                          </div>
+                          <span className="flex items-center gap-2 text-sm font-semibold">
+                            <Icon aria-hidden="true" className="size-4" />
+                            {option === 'dark' ? 'Dark' : 'Light'}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={theme === 'dark'}
-                    aria-label="Dark mode"
-                    onClick={() => changeTheme(theme === 'dark' ? 'light' : 'dark')}
-                    className={cn(
-                      'focus-visible:ring-ring relative h-7 w-12 shrink-0 rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none',
-                      theme === 'dark' ? 'bg-primary' : 'bg-muted-foreground/35'
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'absolute top-1 size-5 rounded-full bg-white shadow transition-transform',
-                        theme === 'dark' ? 'translate-x-6' : 'translate-x-1'
-                      )}
-                    />
-                  </button>
-                </div>
+                </fieldset>
               </div>
             )}
             {section === 'mcp' && <McpServers active={open} />}

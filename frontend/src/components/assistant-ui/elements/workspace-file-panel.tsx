@@ -134,7 +134,7 @@ export function WorkspaceFilePanel({ path, onClose }: { path: string; onClose: (
   return (
     <aside
       aria-label={name}
-      className="bg-background border-border/70 animate-in fade-in-0 slide-in-from-right-8 fixed inset-0 z-40 flex flex-col duration-200 ease-out motion-reduce:animate-none md:static md:inset-auto md:z-auto md:w-[min(42rem,45vw)] md:shrink-0 md:border-s"
+      className="mobile-file-panel bg-background border-border/70 animate-in fade-in-0 slide-in-from-right-8 fixed inset-0 z-40 flex flex-col duration-200 ease-out motion-reduce:animate-none xl:static xl:inset-auto xl:z-auto xl:w-[min(42rem,45vw)] xl:shrink-0 xl:border-s"
     >
       <header className="flex h-16 shrink-0 items-center gap-2.5 border-b px-4">
         <Icon aria-hidden className="text-muted-foreground size-4 shrink-0" />

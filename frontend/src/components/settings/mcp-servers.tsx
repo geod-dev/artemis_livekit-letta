@@ -109,8 +109,8 @@ export function McpServers({ active }: { active: boolean }) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
         <h2 className="font-display text-lg font-extrabold">MCP servers</h2>
         <span className="text-muted-foreground ms-auto text-sm">
           {servers.length} {servers.length === 1 ? 'server' : 'servers'}
@@ -143,10 +143,12 @@ export function McpServers({ active }: { active: boolean }) {
           return (
             <li
               key={server.name}
-              className="border-border/70 flex items-center gap-3 rounded-2xl border px-4 py-3"
+              className="border-border/70 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3"
             >
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold">{server.managed?.deviceName ?? server.name}</p>
+              <div className="min-w-0 flex-1 basis-36">
+                <p className="font-semibold break-words">
+                  {server.managed?.deviceName ?? server.name}
+                </p>
                 <p className="text-muted-foreground truncate text-xs">
                   {server.managed
                     ? `External device · ${server.managed.tools} ${server.managed.tools === 1 ? 'tool' : 'tools'} · Managed automatically`
@@ -277,7 +279,7 @@ function ServerDialog({
           </DialogDescription>
         </DialogHeader>
         <form
-          className="flex flex-col gap-4"
+          className="flex min-w-0 flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
             onSave();

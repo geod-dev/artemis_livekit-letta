@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { PlusIcon, SearchIcon } from 'lucide-react';
+import { MenuIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import { useAuiState } from '@assistant-ui/react';
 import {
   ThreadListItems,
@@ -7,7 +7,13 @@ import {
   ThreadListRoot,
 } from '@/components/assistant-ui/elements/thread-list.aui';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
 const QUIET_ICON_BUTTON =
@@ -28,6 +34,7 @@ export function Sidebar({
   /** No conversation is selected: the new chat is the page on screen. */
   newChatActive: boolean;
 }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState('');
   const activeThreadId = useAuiState((state) => state.threadListItem.id);
   const previousThreadId = useRef(activeThreadId);
@@ -36,11 +43,21 @@ export function Sidebar({
     if (searchOpen && previousThreadId.current !== activeThreadId) {
       onSearchOpenChange(false);
     }
+    if (previousThreadId.current !== activeThreadId) setMobileOpen(false);
     previousThreadId.current = activeThreadId;
   }, [activeThreadId, onSearchOpenChange, searchOpen]);
 
-  return (
-    <aside className="group/sidebar bg-background border-border/70 hidden w-72 shrink-0 flex-col border-e md:flex">
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMobileOpen(false);
+    };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
+
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-2 ps-6 pe-4 pt-6 pb-2">
         <span className="font-display text-3xl font-extrabold tracking-tight">{assistantName}</span>
         <Button
@@ -48,8 +65,11 @@ export function Sidebar({
           variant="ghost"
           aria-label="Search chats"
           title="Search chats"
-          onClick={() => onSearchOpenChange(true)}
-          className={QUIET_ICON_BUTTON}
+          onClick={() => {
+            setMobileOpen(false);
+            onSearchOpenChange(true);
+          }}
+          className={`${QUIET_ICON_BUTTON} [@media(hover:none)]:opacity-100`}
         >
           <SearchIcon className="size-5" />
         </Button>
@@ -60,6 +80,7 @@ export function Sidebar({
         <ThreadListNew
           data-active={newChatActive ? 'true' : undefined}
           aria-current={newChatActive ? 'page' : undefined}
+          onClick={() => setMobileOpen(false)}
           className="mb-2"
         >
           <PlusIcon className="size-4 shrink-0" />
@@ -71,26 +92,55 @@ export function Sidebar({
           </p>
         )}
         <ThreadListItems className="-mx-1 overflow-y-auto px-1" />
-        <Dialog open={searchOpen} onOpenChange={onSearchOpenChange}>
-          <DialogContent className="gap-3 p-4 sm:max-w-xl">
-            <DialogHeader className="pe-8 text-start">
-              <DialogTitle>Search chats</DialogTitle>
-            </DialogHeader>
-            <Input
-              autoFocus
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search chats"
-              aria-label="Search chats"
-              className="h-11 rounded-xl"
-            />
-            <div className="max-h-[min(55vh,26rem)] min-h-12 overflow-y-auto">
-              <ThreadListItems searchQuery={search} />
-            </div>
-          </DialogContent>
-        </Dialog>
       </ThreadListRoot>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <aside className="group/sidebar bg-background border-border/70 hidden w-64 shrink-0 flex-col border-e lg:flex lg:w-72">
+        {content}
+      </aside>
+      <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label="Open chats"
+            className="mobile-chat-trigger fixed z-30 size-11 rounded-full lg:hidden"
+          >
+            <MenuIcon className="size-5" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent
+          showCloseButton={false}
+          className="group/sidebar mobile-chat-drawer top-0 left-0 h-full max-h-none w-[min(20rem,90vw)] max-w-none translate-x-0 translate-y-0 gap-0 rounded-none p-0 lg:hidden"
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>Chats</DialogTitle>
+          </DialogHeader>
+          {content}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={searchOpen} onOpenChange={onSearchOpenChange}>
+        <DialogContent className="gap-3 p-4 sm:max-w-xl">
+          <DialogHeader className="pe-8 text-start">
+            <DialogTitle>Search chats</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search chats"
+            aria-label="Search chats"
+            className="h-11 rounded-xl"
+          />
+          <div className="max-h-[min(55vh,26rem)] min-h-12 overflow-y-auto">
+            <ThreadListItems searchQuery={search} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
