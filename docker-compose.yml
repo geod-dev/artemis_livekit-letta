@@ -50,8 +50,8 @@ services:
       - letta-data:/root/.letta
       # The agent's workspace (its working directory), shared with the backend.
       # data/ holds the backend's files (attachments, state): read-only here.
-      - ./backend/.workspace:/workspace
-      - ./backend/.workspace/data:/workspace/data:ro
+      - ${WORKSPACE_PATH:-./backend/.workspace}:/workspace
+      - ${WORKSPACE_PATH:-./backend/.workspace}/data:/workspace/data:ro
       - ./letta/telnyx.mjs:/root/.letta/mods/telnyx.mjs:ro
       - ./letta/notifications.mjs:/root/.letta/mods/notifications.mjs:ro
       - ./letta/setup.mjs:/opt/assistant/setup.mjs:ro
@@ -118,7 +118,7 @@ services:
       letta:
         condition: service_healthy
     volumes:
-      - ./backend/.workspace:/app/.workspace
+      - ${WORKSPACE_PATH:-./backend/.workspace}:/app/.workspace
     restart: unless-stopped
 
   frontend:
@@ -149,3 +149,5 @@ services:
 
 volumes:
   letta-data:
+    name: ${LETTA_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-livekit-letta}_letta-data}
+    external: ${LETTA_DATA_EXTERNAL:-false}
