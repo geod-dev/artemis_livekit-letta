@@ -11,10 +11,7 @@ WORKSPACE_PATH=/data/artemis/workspace
 LETTA_DATA_VOLUME=livekit-letta_letta-data
 LETTA_DATA_EXTERNAL=true
 COMPOSE_PROJECT_NAME=iakgsm1age87oct55wknozc6
-FRONTEND_BIND=127.0.0.1
-FRONTEND_PORT=5180
-LIVEKIT_PUBLIC_URL=wss://185.252.233.123/livekit
-LIVEKIT_SIGNAL_BIND=127.0.0.1
+LIVEKIT_PUBLIC_URL=wss://artemis.is-an.ai/livekit
 ```
 
 The workspace is independent of Git clones. The external Letta volume holds the existing agents, conversations and memory. Do not delete these paths or run `docker compose down -v`. Production previews are disabled because this installation shares persistent data and fixed ports.
@@ -44,13 +41,15 @@ journalctl -u artemis-deploy.service -u artemis-token-rotation.service
 
 ## HTTPS and ports
 
-- Artemis: `https://185.252.233.123`
-- Coolify: `https://185.252.233.123:8443`
-- Both are served by host nginx using the existing trusted IP certificate and renewal timer.
-- Coolify's 8000, 6001 and 6002 ports are bound to loopback. Nginx forwards dashboard requests, `/app/` realtime WebSockets and `/terminal/ws` terminal WebSockets over HTTPS on 8443.
-- Public ports in use: TCP 22 (SSH), 80/443 (Artemis and certificate renewal), 8443 (Coolify), 7881 and UDP 7882 (LiveKit media). LiveKit signaling on TCP 7880 is bound to loopback; browser signaling uses `/livekit` over HTTPS. Production uses a generated LiveKit API secret rather than the development default.
-
-Coolify's built-in proxy is set to `NONE` because host nginx handles these endpoints. Coolify remains responsible for application builds and container lifecycle.
+- Artemis: `https://artemis.is-an.ai`, registered as the frontend domain in Coolify.
+- Coolify: `https://coolify.185.252.233.123.sslip.io`, registered as the instance domain.
+- Coolify's native Traefik proxy owns ports 80/443 and obtains and renews TLS certificates.
+- Artemis uses Managed Compose with `/docker-compose.coolify.yml`. Its explicit production mounts retain `/data/artemis/workspace` and the external `livekit-letta_letta-data` volume. The separate `docker-compose.yml` remains available for development.
+- No frontend or LiveKit signaling port is published. HTTPS requests enter Traefik, reach the frontend over Docker networking, then use the application's internal `/api` and `/livekit/` routes.
+- Only TCP 7881 and UDP 7882 are published for WebRTC media. TCP 22 remains available for SSH.
+- Requests to the server IP alone have no application route and return 404.
+- Host nginx is disabled. Its previous configurations are retained in migration backups only.
+- Coolify's maintenance API port 8000 and realtime ports 6001/6002 are loopback-only. Browser access and realtime connections use the native proxy on HTTPS 443.
 
 ## Backups and recovery
 
@@ -58,4 +57,4 @@ Migration backups and the original checkout are retained under `/root/coolify-mi
 
 For recovery, stop writers before restoring data. Restore the workspace to `/data/artemis/workspace` and Letta files into the existing external volume, preserving ownership. Restore a matching Coolify database backup together with `/data/coolify/source/.env`; its `APP_KEY` is required to decrypt the saved application secrets. Never run both the legacy and Coolify applications against the same data simultaneously.
 
-The nginx configurations are `/etc/nginx/sites-available/assistant` and `/etc/nginx/sites-available/coolify`. The loopback port override is `/data/coolify/source/docker-compose.custom.yml`. Keep that override when upgrading Coolify.
+The loopback port override is `/data/coolify/source/docker-compose.custom.yml`. Keep it when upgrading Coolify. Native proxy configuration is saved in Coolify and rendered under `/data/coolify/proxy`; use the Coolify interface to change it.
