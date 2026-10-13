@@ -11,7 +11,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         .then((r) => r.json())
         .then((r) => setAuthenticated(r.authenticated === true))
         .catch(() => {
-          setError('Connexion au serveur impossible.');
+          setError('Unable to connect to the server.');
           setAuthenticated(false);
         });
     void check();
@@ -29,11 +29,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
         body: JSON.stringify({ password }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error);
+      if (!response.ok) throw new Error('Incorrect password.');
       setPassword('');
       setAuthenticated(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Connexion impossible.');
+      setError(e instanceof Error ? e.message : 'Unable to sign in.');
     } finally {
       setBusy(false);
     }
@@ -47,14 +47,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
       >
         <h1 className="text-2xl font-semibold">{import.meta.env.ASSISTANT_NAME}</h1>
         {authenticated === null ? (
-          <p>Connexion…</p>
+          <p>Signing in…</p>
         ) : (
           <>
             <p className="text-muted-foreground text-sm">
-              Entrez votre mot de passe pour accéder à votre assistant.
+              Enter your password to access your assistant.
             </p>
             <input
-              aria-label="Mot de passe"
+              aria-label="Password"
               type="password"
               autoComplete="current-password"
               autoFocus
@@ -72,7 +72,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               disabled={busy}
               className="bg-primary text-primary-foreground w-full rounded-lg px-4 py-2 disabled:opacity-50"
             >
-              {busy ? 'Connexion…' : 'Se connecter'}
+              {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </>
         )}

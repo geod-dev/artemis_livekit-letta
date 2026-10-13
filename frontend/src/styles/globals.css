@@ -51,7 +51,7 @@
 }
 
 /*
- * Light only. A white canvas, ink text, and flat blocks of joyful colour that
+ * A white canvas, ink text, and flat blocks of joyful colour that
  * always carry white text: bright blue (Artemis, you, the main actions), mint (a
  * live call), pink (notes and memories), blue (background work). No
  * gradients, no glows: colour is the decoration.
@@ -98,6 +98,46 @@
   --aui-success: oklch(0.6 0.15 149);
   --aui-warning: oklch(0.68 0.16 70);
   color-scheme: light;
+}
+
+:root.dark {
+  --background: #15141a;
+  --foreground: #f4f2f8;
+  --card: #1d1b23;
+  --card-foreground: #f4f2f8;
+  --popover: #201e27;
+  --popover-foreground: #f4f2f8;
+  --primary: #398cf5;
+  --primary-hover: #5ca0f7;
+  --primary-foreground: #ffffff;
+  --secondary: #292731;
+  --secondary-foreground: #f4f2f8;
+  --muted: #292731;
+  --muted-foreground: #aaa6b7;
+  --accent: #292f3a;
+  --accent-foreground: #f4f2f8;
+  --destructive: #f05255;
+  --border: #383541;
+  --input: #383541;
+  --ring: #398cf5;
+  --mint: #36c694;
+  --pink: #f16aa7;
+  --sky: #6290f4;
+  --sunny: #ffc04d;
+  --chart-1: #398cf5;
+  --chart-2: #36c694;
+  --chart-3: #ffc04d;
+  --chart-4: #f16aa7;
+  --chart-5: #6290f4;
+  --sidebar: #1b1921;
+  --sidebar-foreground: #f4f2f8;
+  --sidebar-primary: #398cf5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #292731;
+  --sidebar-accent-foreground: #f4f2f8;
+  --sidebar-border: #383541;
+  --sidebar-ring: #398cf5;
+  color-scheme: dark;
 }
 
 @theme inline {
