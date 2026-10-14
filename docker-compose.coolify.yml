@@ -105,7 +105,9 @@ services:
       - /data/artemis/workspace:/workspace
       - /data/artemis/workspace/data:/data/backend
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      # `/ready` waits for asynchronous Letta/MCP setup. Compose uses this
+      # process health check so that initialization does not block deployment.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12
