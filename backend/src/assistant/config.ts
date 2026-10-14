@@ -19,7 +19,9 @@ export interface AppConfig {
 }
 
 const backendDir = fileURLToPath(new URL('../../', import.meta.url));
-const repoDir = resolve(backendDir, '..');
+// In the repository, backendDir is <repo>/backend. The container copies that
+// package to /app, so its checkout root is /app rather than the filesystem root.
+const repoDir = resolve(process.env.ARTEMIS_REPO_ROOT || resolve(backendDir, '..'));
 const legacyWorkspace = join(backendDir, '.workspace');
 let loaded = false;
 let rootEnvLoaded = false;
