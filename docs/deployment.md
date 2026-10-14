@@ -34,10 +34,10 @@ The public reverse proxy routes the site to frontend port 80. Only LiveKit media
 TCP 7881 and UDP 7882 need public firewall access. Host nginx can use the
 loopback frontend port for a standalone HTTPS deployment.
 
-Compose health checks cover Letta readiness, the backend's `/ready` dependency
-state, the frontend's proxied `/health` endpoint, and the OpenAI-compatible proxy.
-`/health` is unauthenticated backend liveness. It is suitable for health checks;
-authenticated conversation routes are not.
+Compose health checks cover Letta readiness, backend process liveness (`/health`),
+the frontend's proxied `/health` endpoint, and the OpenAI-compatible proxy. The
+backend's `/ready` endpoint also reports Letta/MCP dependency readiness, but it
+is not used to gate deployment while that asynchronous setup runs.
 
 ## Existing data migration
 
@@ -80,14 +80,21 @@ after a successful renewal. Keep TCP 80 open for certificate renewal.
 
 ## Coolify
 
-Configure Coolify to use `docker-compose.yml` together with
-`docker-compose.prod.yml`, and set environment values in its application
-settings. The former duplicated Coolify Compose file has been removed so
-production service definitions and health checks have one source. Before
-redeploying an existing Coolify application, update its Compose file setting and
-provide the persistent roots and existing external Letta volume in the
-application environment. Keep Traefik on ports 80/443 and route the app domain
-to the frontend container on port 80.
+Configure Coolify to use `docker-compose.coolify.yml` as its single Compose file
+and set the application environment values in Coolify. This file is a complete
+production stack with static volume sources because Coolify rejects environment
+substitution in bind mount paths. It uses `/data/artemis/workspace` for the
+workspace, `/data/artemis/workspace/data` for backend data, and the existing
+external Docker volume `livekit-letta_letta-data`; create the host directories
+and retain that volume. The container paths are set inside the Compose file, so
+`WORKSPACE_PATH`, `ASSISTANT_DATA_ROOT`, `LETTA_DATA_VOLUME`, and
+`LETTA_DATA_EXTERNAL` do not need to be set in Coolify for this configuration.
+Keep Traefik on ports 80/443 and route the app domain to the frontend container
+on port 80.
+
+`docker-compose.prod.yml` remains the production override for standalone Compose
+deployments. Use it together with `docker-compose.yml` for those deployments; it
+is not a standalone Compose file and should not be selected by itself in Coolify.
 
 Do not run the old checkout and Coolify app against the same workspace or Letta
 volume at once. Back up both before a migration or restore. Verify a restored
