@@ -9,7 +9,15 @@ type Recording = {
   stream: MediaStream;
   context: AudioContext;
   chunks: Blob[];
+  bytes: number;
+  stopped: Promise<void>;
+  tooLong: boolean;
+  tooLarge: boolean;
+  durationTimer: ReturnType<typeof setTimeout>;
 };
+
+const MAX_RECORDING_BYTES = 25 * 1024 * 1024;
+const MAX_RECORDING_DURATION_MS = 5 * 60 * 1000;
 
 // Formats Groq accepts, in order of preference; the browser records the first it supports.
 const MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
@@ -37,6 +45,7 @@ export function useVoiceRecorder() {
     recording.current = null;
     setAnalyser(null);
     if (!current) return;
+    clearTimeout(current.durationTimer);
     if (current.recorder.state !== 'inactive') current.recorder.stop();
     current.stream.getTracks().forEach((track) => track.stop());
     void current.context.close().catch(() => {});
@@ -80,17 +89,52 @@ export function useVoiceRecorder() {
         return;
       }
       const mimeType = MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: 64_000,
+      });
       const chunks: Blob[] = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.push(event.data);
-      };
+      let resolveStopped!: () => void;
+      const stopped = new Promise<void>((resolve) => { resolveStopped = resolve; });
+      recorder.addEventListener('stop', resolveStopped, { once: true });
       const context = new AudioContext();
       const node = context.createAnalyser();
       node.fftSize = 1024;
       context.createMediaStreamSource(stream).connect(node);
-      recording.current = { recorder, stream, context, chunks };
-      recorder.start();
+      const recordingData: Recording = {
+        recorder,
+        stream,
+        context,
+        chunks,
+        bytes: 0,
+        stopped,
+        tooLong: false,
+        tooLarge: false,
+        durationTimer: undefined as unknown as ReturnType<typeof setTimeout>,
+      };
+      const releaseCapture = () => {
+        stream?.getTracks().forEach((track) => track.stop());
+        setAnalyser(null);
+        void context.close().catch(() => {});
+      };
+      recorder.ondataavailable = (event) => {
+        if (event.data.size <= 0) return;
+        recordingData.bytes += event.data.size;
+        if (recordingData.bytes > MAX_RECORDING_BYTES) {
+          recordingData.tooLarge = true;
+          if (recorder.state !== 'inactive') recorder.stop();
+          releaseCapture();
+          return;
+        }
+        chunks.push(event.data);
+      };
+      recordingData.durationTimer = setTimeout(() => {
+        recordingData.tooLong = true;
+        if (recorder.state !== 'inactive') recorder.stop();
+        releaseCapture();
+      }, MAX_RECORDING_DURATION_MS);
+      recording.current = recordingData;
+      recorder.start(1000);
       setAnalyser(node);
       setStartedAt(Date.now());
     } catch (error) {
@@ -109,19 +153,34 @@ export function useVoiceRecorder() {
     const current = recording.current;
     if (!current) return null;
     const id = generation.current;
-    const stopped = new Promise<void>((resolve) =>
-      current.recorder.addEventListener('stop', () => resolve(), { once: true })
-    );
-    release();
+    clearTimeout(current.durationTimer);
+    if (current.recorder.state !== 'inactive') release();
+    else {
+      current.stream.getTracks().forEach((track) => track.stop());
+      setAnalyser(null);
+      void current.context.close().catch(() => {});
+    }
     setStatus('transcribing');
-    await stopped;
+    await current.stopped;
     if (id !== generation.current) return null;
+    if (current.tooLarge) {
+      reset();
+      throw new Error('Recording is larger than 25 MB');
+    }
+    if (current.tooLong) {
+      reset();
+      throw new Error('Recording reached the 5 minute limit');
+    }
 
     const type = current.recorder.mimeType || 'audio/webm';
     const audio = new Blob(current.chunks, { type });
     if (audio.size === 0) {
       reset();
       return '';
+    }
+    if (audio.size > MAX_RECORDING_BYTES) {
+      reset();
+      throw new Error('Recording is larger than 25 MB');
     }
     const controller = new AbortController();
     transcription.current = controller;

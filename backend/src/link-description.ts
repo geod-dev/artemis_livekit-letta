@@ -55,7 +55,3 @@ export function linkMetadata(html: string): LinkMetadata {
     description: words && words.length > 24 ? `${words.slice(0, 24).join(' ')}…` : description,
   };
 }
-
-export function linkDescription(html: string): string | undefined {
-  return linkMetadata(html).description;
-}

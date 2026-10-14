@@ -16,6 +16,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "ajv": "^8.20.0",
     "@hono/node-server": "^1.19.5",
     "@letta-ai/letta-agent-sdk": "0.8.30",
     "@letta-ai/letta-code": "0.34.4",
@@ -33,7 +34,8 @@
     "eslint-config-prettier": "^10.1.5",
     "prettier": "^3.4.2",
     "typescript": "^5",
-    "typescript-eslint": "^8"
+    "typescript-eslint": "^8",
+    "undici-types": "7.24.6"
   },
   "packageManager": "pnpm@10.18.0",
   "pnpm": {

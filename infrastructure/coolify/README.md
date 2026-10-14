@@ -1,60 +1,33 @@
-# Artemis on Coolify
+# Coolify operations
 
-Production runs as the **Artemis** Docker Compose application in the **Artemis / production** project on the local Coolify server. Coolify clones `main`, builds the images, starts the containers and retains deployment logs.
+Use the root `docker-compose.yml` as the application's Compose file and set the
+production environment values in Coolify. The application requires unique
+secrets, distinct persistent workspace and backend-data roots, and the existing
+external Letta data volume. See [deployment](../../docs/deployment.md) for
+storage migration and recovery instructions.
 
-## Persistent data
+## Deployment poller
 
-The application environment contains:
+`poll-deploy.py` checks the configured public Git branch and requests a deploy
+through Coolify's loopback API. It waits while any deployment is active. It
+records success only when the deployment reports the same full commit hash that
+was requested. A missing or different revision is recorded as failed; the same
+failed hash is held to prevent a retry loop. Advance the branch or retry that
+revision manually in Coolify.
 
-```dotenv
-WORKSPACE_PATH=/data/artemis/workspace
-LETTA_DATA_VOLUME=livekit-letta_letta-data
-LETTA_DATA_EXTERNAL=true
-COMPOSE_PROJECT_NAME=iakgsm1age87oct55wknozc6
-LIVEKIT_PUBLIC_URL=wss://artemis.is-an.ai/livekit
-```
+## Token rotation
 
-The workspace is independent of Git clones. The external Letta volume holds the existing agents, conversations and memory. Do not delete these paths or run `docker compose down -v`. Production previews are disabled because this installation shares persistent data and fixed ports.
+`rotate-token.py` issues a read/deploy token with a 90-day expiry, validates it
+against the configured application, then atomically replaces the local token
+file and revokes previous tokens. Validation failure revokes only the newly
+issued token and leaves the prior token file unchanged.
 
-Letta updates are applied through its Docker image. Its internal updater is disabled because the image and compatibility patch require version 0.34.4.
-
-## Automatic deployments
-
-`artemis-deploy.timer` checks the public repository's `main` branch every minute. A new commit is deployed through the local Coolify API. Deployments appear in the same Coolify interface as manual deployments. No GitHub account credential is stored on the VPS, and no GitHub App installation is required.
-
-The checker serializes its operations, waits for an active deployment and records successful commits. A failed commit is recorded rather than repeatedly rebuilt. Push a correction or use Coolify's Deploy button to retry manually. A rollback made manually in Coolify is retained until a new commit arrives on `main`.
-
-Installed files:
-
-- `/usr/local/lib/artemis/poll-deploy.py`
-- `/usr/local/lib/artemis/rotate-token.py`
-- `/etc/artemis/coolify-deploy.json` and `/etc/artemis/coolify-token`, readable only by root
-- `/var/lib/artemis-deploy/state.json`
-- Systemd units matching the files in this directory
-
-The API token has only `read` and `deploy` permissions and expires after 90 days. `artemis-token-rotation.timer` renews it monthly, validates the replacement, installs it atomically and revokes the previous token. Configuration tokens used during migration are revoked after setup.
+These local tests use fake API responses and do not need Coolify credentials:
 
 ```sh
-systemctl status artemis-deploy.timer artemis-token-rotation.timer
-journalctl -u artemis-deploy.service -u artemis-token-rotation.service
+python -m unittest infrastructure/coolify/test_poll_deploy.py infrastructure/coolify/test_rotate_token.py
 ```
 
-## HTTPS and ports
-
-- Artemis: `https://artemis.is-an.ai`, registered as the frontend domain in Coolify.
-- Coolify: `https://coolify.185.252.233.123.sslip.io`, registered as the instance domain.
-- Coolify's native Traefik proxy owns ports 80/443 and obtains and renews TLS certificates.
-- Artemis uses Managed Compose with `/docker-compose.coolify.yml`. Its explicit production mounts retain `/data/artemis/workspace` and the external `livekit-letta_letta-data` volume. The separate `docker-compose.yml` remains available for development.
-- No frontend or LiveKit signaling port is published. HTTPS requests enter Traefik, reach the frontend over Docker networking, then use the application's internal `/api` and `/livekit/` routes.
-- Only TCP 7881 and UDP 7882 are published for WebRTC media. TCP 22 remains available for SSH.
-- Requests to the server IP alone have no application route and return 404.
-- Host nginx is disabled. Its previous configurations are retained in migration backups only.
-- Coolify's maintenance API port 8000 and realtime ports 6001/6002 are loopback-only. Browser access and realtime connections use the native proxy on HTTPS 443.
-
-## Backups and recovery
-
-Migration backups and the original checkout are retained under `/root/coolify-migration` and `/root/artemis_livekit-letta`. The cutover backup includes verified workspace and Letta archives plus `SHA256SUMS`. The original checkout's containers must remain stopped while Coolify is running.
-
-For recovery, stop writers before restoring data. Restore the workspace to `/data/artemis/workspace` and Letta files into the existing external volume, preserving ownership. Restore a matching Coolify database backup together with `/data/coolify/source/.env`; its `APP_KEY` is required to decrypt the saved application secrets. Never run both the legacy and Coolify applications against the same data simultaneously.
-
-The loopback port override is `/data/coolify/source/docker-compose.custom.yml`. Keep it when upgrading Coolify. Native proxy configuration is saved in Coolify and rendered under `/data/coolify/proxy`; use the Coolify interface to change it.
+Install the scripts and systemd units using the deployment instructions for the
+host. Keep token files readable only by the deployment service account. No
+deployment or token rotation is run by these tests.

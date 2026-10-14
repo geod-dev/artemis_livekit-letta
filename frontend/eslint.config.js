@@ -16,15 +16,15 @@ export default tseslint.config(
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
       ],
-      // The API types are the backend's; the frontend may only import their types.
+      // Shared API contracts may only be imported as types by the frontend.
       '@typescript-eslint/no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['@backend/*'],
+              group: ['@shared/*'],
               allowTypeImports: true,
-              message: 'Import backend API types with `import type`.',
+              message: 'Import shared API contracts with `import type`.',
             },
           ],
         },

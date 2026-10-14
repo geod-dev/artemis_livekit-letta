@@ -7,13 +7,29 @@ import { McpCatalog, searchCatalog, toCatalogTools } from './catalog.ts';
 import type { McpClientPort } from './client.ts';
 import { BRIDGE_TOOL_SPECS, bridgeHandlers, resolveTool } from './tools.ts';
 
-const WEB: McpServer = { name: 'web', transport: 'http', url: 'https://web.example.com/mcp' };
-const NOTES: McpServer = { name: 'notes', transport: 'sse', url: 'https://notes.example.com/sse' };
-const LOCAL: McpServer = { name: 'local', transport: 'stdio', command: 'local-mcp' };
+const WEB: McpServer = {
+  name: 'web',
+  transport: 'http',
+  url: 'https://web.example.com/mcp',
+};
+const NOTES: McpServer = {
+  name: 'notes',
+  transport: 'sse',
+  url: 'https://notes.example.com/sse',
+};
+const LOCAL: McpServer = {
+  name: 'local',
+  transport: 'stdio',
+  command: 'local-mcp',
+};
 
 const LISTED: Record<string, { name: string; description: string; readOnly?: boolean }[]> = {
   web: [
-    { name: 'web_search', description: 'Search the web for pages.', readOnly: true },
+    {
+      name: 'web_search',
+      description: 'Search the web for pages.',
+      readOnly: true,
+    },
     { name: 'fetch_page', description: 'Read one web page.', readOnly: true },
   ],
   notes: [
@@ -39,7 +55,10 @@ function fakeClient(calls: string[] = []): McpClientPort {
 
 function handlers(calls: string[] = []) {
   const client = fakeClient(calls);
-  const catalog = new McpCatalog({ servers: async () => [WEB, NOTES, LOCAL], client });
+  const catalog = new McpCatalog({
+    servers: async () => [WEB, NOTES, LOCAL],
+    client,
+  });
   return bridgeHandlers(catalog, client);
 }
 
@@ -54,7 +73,10 @@ describe('catalog', () => {
   });
 
   test('lists http and sse servers only: stdio stays on the skill wrapper', async () => {
-    const catalog = new McpCatalog({ servers: async () => [WEB, LOCAL], client: fakeClient() });
+    const catalog = new McpCatalog({
+      servers: async () => [WEB, LOCAL],
+      client: fakeClient(),
+    });
     const tools = await catalog.refresh();
     assert.deepEqual(new Set(tools.map((tool) => tool.server.name)), new Set(['web']));
   });
@@ -76,7 +98,10 @@ describe('catalog', () => {
   });
 
   test('search ranks name matches first', async () => {
-    const catalog = new McpCatalog({ servers: async () => [WEB, NOTES], client: fakeClient() });
+    const catalog = new McpCatalog({
+      servers: async () => [WEB, NOTES],
+      client: fakeClient(),
+    });
     const hits = searchCatalog(await catalog.refresh(), 'search the web');
     assert.equal(hits[0]?.qualified, 'mcp__web__web_search');
   });
@@ -84,7 +109,10 @@ describe('catalog', () => {
 
 describe('bridge tools', () => {
   test('a bare tool name resolves when only one server has it', async () => {
-    const catalog = new McpCatalog({ servers: async () => [WEB, NOTES], client: fakeClient() });
+    const catalog = new McpCatalog({
+      servers: async () => [WEB, NOTES],
+      client: fakeClient(),
+    });
     const tools = await catalog.refresh();
     assert.equal(
       (resolveTool(tools, 'fetch_page') as { qualified: string }).qualified,
@@ -101,7 +129,9 @@ describe('bridge tools', () => {
       arguments: { query: 'x' },
     });
     assert.deepEqual(read, { text: 'ran web_search', isError: false });
-    const write = await tools.get('mcp_call')!({ tool: 'mcp__notes__create_note' });
+    const write = await tools.get('mcp_call')!({
+      tool: 'mcp__notes__create_note',
+    });
     assert.equal(write.isError, true);
     assert.match(write.text, /mcp_call_write/);
     assert.deepEqual(calls, ['web.web_search {"query":"x"}']);
@@ -125,7 +155,11 @@ describe('bridge tools', () => {
   });
 
   test('more hits are listed one line each, marked read-only or writes', async () => {
-    const many: McpServer = { name: 'many', transport: 'http', url: 'https://many.example.com' };
+    const many: McpServer = {
+      name: 'many',
+      transport: 'http',
+      url: 'https://many.example.com',
+    };
     const client: McpClientPort = {
       listTools: async () =>
         Array.from({ length: 6 }, (_, i) => ({
@@ -135,7 +169,9 @@ describe('bridge tools', () => {
       callTool: async () => ({ text: '', isError: false }),
     };
     const catalog = new McpCatalog({ servers: async () => [many], client });
-    const answer = await bridgeHandlers(catalog, client).get('mcp_search')!({ query: 'note' });
+    const answer = await bridgeHandlers(catalog, client).get('mcp_search')!({
+      query: 'note',
+    });
     assert.match(answer.text, /- mcp__many__note_tool_0: Note tool 0\. \[writes\]/);
     assert.doesNotMatch(answer.text, /More details|Parameters/);
     assert.match(answer.text, /Next: mcp_describe for parameters/);
@@ -144,7 +180,10 @@ describe('bridge tools', () => {
 
 describe('bridge mod', () => {
   test('registers the four tools, calling the backend with the Letta token', () => {
-    const source = renderToolsMod({ title: 'mcp-bridge v1', tools: BRIDGE_TOOL_SPECS });
+    const source = renderToolsMod({
+      title: 'mcp-bridge v1',
+      tools: BRIDGE_TOOL_SPECS,
+    });
     for (const spec of BRIDGE_TOOL_SPECS) assert.ok(source.includes(`"name": "${spec.name}"`));
     assert.ok(source.includes('/api/letta/tools/'));
     assert.ok(source.includes('process.env.LETTA_SERVER_TOKEN'));
@@ -171,5 +210,19 @@ describe('bridge mod', () => {
     assert.equal(await syncMods(io, mods), 'reloaded');
     assert.equal(await syncMods(io, mods), 'unchanged');
     assert.equal(reloads, 1);
+  });
+
+  test('retries a failed reload even when the rendered file is unchanged', async () => {
+    const files = new Map<string, string>();
+    let reloads = 0;
+    const io = {
+      read: async (path: string) => files.get(path) ?? null,
+      write: async (path: string, content: string) => void files.set(path, content),
+      reloadMods: async () => ++reloads > 1,
+    };
+    const mods = [{ path: '/m.mjs', source: 'a' }];
+    assert.equal(await syncMods(io, mods), 'reload-pending');
+    assert.equal(await syncMods(io, mods), 'reloaded');
+    assert.equal(reloads, 2);
   });
 });

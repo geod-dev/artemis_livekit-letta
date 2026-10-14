@@ -9,8 +9,8 @@ import type { ToolSpec } from './types';
  * subagents do not (they run a providers-only capability profile).
  *
  * The mod is a thin shape: each tool POSTs its arguments to the backend's
- * `/api/letta/tools/<name>` (see routes/letta.ts) at `ASSISTANT_GATEWAY_URL`,
- * with the shared Letta token like `letta/notifications.mjs`, and returns what
+ * `/api/letta/tools/<name>` (see routes/letta-callbacks.ts) at `ASSISTANT_GATEWAY_URL`,
+ * with the shared Letta token like `infrastructure/letta/extensions/notifications.mjs`, and returns what
  * the backend answers. The work lives in the backend; a mod needs a `reload`
  * to change (`install.ts`) and cannot import npm packages, so it holds as
  * little as possible.

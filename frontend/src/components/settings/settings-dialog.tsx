@@ -11,6 +11,7 @@ import { McpServers } from '@/components/settings/mcp-servers';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/shadcn/utils';
 import { type Theme, applyTheme, getStoredTheme } from '@/lib/theme';
+import { isRecord, responseJson } from '@/lib/api';
 
 type SettingsSection = 'appearance' | 'mcp';
 
@@ -48,6 +49,8 @@ export function SettingsDialog({
   const contentRef = useRef<HTMLElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
+  const [signOutError, setSignOutError] = useState('');
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     try {
@@ -70,8 +73,24 @@ export function SettingsDialog({
     applyTheme(nextTheme);
   }
 
-  function signOut() {
-    void fetch('/api/auth/logout', { method: 'POST' }).then(() => window.location.reload());
+  async function signOut() {
+    setSigningOut(true);
+    setSignOutError('');
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      const result = await responseJson(
+        response,
+        (value): value is { authenticated: false } =>
+          isRecord(value) && value.authenticated === false,
+        'Sign out failed. Try again.'
+      );
+      if (!result) throw new Error('Sign out failed. Try again.');
+      window.location.reload();
+    } catch (error) {
+      setSignOutError(error instanceof Error ? error.message : 'Sign out failed. Try again.');
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   function closeSettings() {
@@ -89,7 +108,7 @@ export function SettingsDialog({
     >
       <DialogContent
         showCloseButton={false}
-        className="settings-page top-0 left-0 flex w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none duration-0 sm:max-w-none"
+        className="glass-panel settings-page top-0 left-0 flex w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none duration-0 sm:max-w-none"
       >
         <DialogHeader className="border-border/70 shrink-0 border-b px-4 py-3 text-start sm:px-8">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4">
@@ -138,13 +157,18 @@ export function SettingsDialog({
             })}
             <button
               type="button"
-              onClick={signOut}
-              title="Sign out"
+              onClick={() => void signOut()}
+              disabled={signingOut}
               className={cn(NAV_BUTTON, 'mt-auto')}
             >
               <LogOutIcon aria-hidden="true" className="size-4 shrink-0" />
-              <span>Sign out</span>
+              <span>{signingOut ? 'Signing out…' : 'Sign out'}</span>
             </button>
+            {signOutError && (
+              <p role="alert" className="text-destructive px-4 text-sm">
+                {signOutError}
+              </p>
+            )}
           </nav>
           <section
             ref={contentRef}

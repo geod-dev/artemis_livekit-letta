@@ -1,5 +1,5 @@
 import type { ThreadMessageLike } from '@assistant-ui/react';
-import type { ChatAttachment, ChatMessage } from '@backend/chat-types';
+import type { ChatAttachment, ChatMessage } from '@shared/chat-types';
 import { workspaceUrl } from './attachments.ts';
 
 type AssistantPart = Extract<ThreadMessageLike['content'], readonly unknown[]>[number];

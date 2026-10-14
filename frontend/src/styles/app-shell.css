@@ -1,0 +1,168 @@
+/* App canvas, wallpapers, glass panels, and primary shell layout. */
+/* Fit the visible webview, including keyboards and device cutouts. */
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  overscroll-behavior: none;
+}
+.app-shell {
+  --wallpaper-position: center 54%;
+  position: relative;
+  overflow: hidden;
+  height: var(--app-height, 100dvh);
+  gap: 12px;
+  padding: max(env(safe-area-inset-top), 12px) max(env(safe-area-inset-right), 12px)
+    max(env(safe-area-inset-bottom), 12px) max(env(safe-area-inset-left), 12px);
+  background: transparent;
+}
+.app-shell::before,
+.app-shell::after {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  content: '';
+}
+.auth-screen {
+  --wallpaper-position: center;
+  position: relative;
+  isolation: isolate;
+  background: var(--background);
+}
+.auth-screen::before,
+.auth-screen::after {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  content: '';
+}
+.auth-screen::before,
+.app-shell::before {
+  inset: -24px;
+  background: var(--wallpaper-image) var(--wallpaper-position) / cover no-repeat;
+  filter: blur(var(--wallpaper-blur)) saturate(0.82);
+  transform: scale(1.04);
+}
+@layer components {
+  .glass-panel,
+  [data-streamdown='code-block'],
+  [data-streamdown='mermaid-block'],
+  .aui-generative-root [data-aui='markdown'] pre,
+  .aui-generative-root [data-aui='card'][data-aui-surface],
+  .aui-generative-root [data-aui='carousel'] [data-aui='card'] {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-surface);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  }
+}
+/* Syntax highlighting supplies ink colours; the shared panel supplies the glass. */
+[data-streamdown='code-block'],
+[data-streamdown='mermaid-block'] {
+  background: var(--glass-surface);
+  border-color: var(--glass-border);
+}
+[data-streamdown='code-block-body'],
+[data-streamdown='code-block-body'] pre,
+[data-streamdown='code-block-body'] code,
+[data-streamdown='mermaid-block'] > [data-streamdown='mermaid'] {
+  background: transparent !important;
+}
+[data-streamdown='code-block-body'] {
+  border: 0;
+}
+[data-streamdown='code-block-actions'],
+[data-streamdown='mermaid-block-actions'] {
+  background: var(--glass-surface);
+  border-color: var(--glass-border);
+}
+.aui-md [data-streamdown='code-block-actions'] {
+  background: transparent !important;
+  border-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.auth-card {
+  position: relative;
+  z-index: 1;
+}
+.auth-card input[type='password'] {
+  min-height: 2.75rem;
+  border-color: var(--glass-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--glass-surface) 72%, transparent);
+  outline-color: var(--ring);
+}
+.auth-card button[type='submit'] {
+  min-height: 2.75rem;
+  border-radius: var(--radius-md);
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--primary) 23%, transparent);
+  transition:
+    transform 180ms var(--ease-out-soft),
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+.auth-card button[type='submit']:hover:not(:disabled) {
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--primary) 30%, transparent);
+  transform: translateY(-1px);
+}
+.auth-screen::after,
+.app-shell::after {
+  inset: 0;
+  background: var(--wallpaper-wash);
+}
+.app-sidebar {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  margin-block: 2px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--surface-radius);
+}
+.app-main {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: calc(0px - max(env(safe-area-inset-bottom), 12px));
+  background: transparent;
+}
+.app-topbar {
+  min-height: 3.75rem;
+  background: transparent;
+}
+.settings-page [data-slot='dialog-title'] {
+  font-weight: 500;
+}
+.app-topbar-title {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.app-main .aui-root,
+.app-main [data-slot='aui_thread-viewport'] {
+  background: transparent;
+}
+.app-sidebar [data-slot='aui_thread-list-item'] {
+  border-radius: var(--control-radius);
+  transition: background-color 150ms ease;
+}
+.app-sidebar [data-slot='aui_thread-list-item'][data-active='true'] .sidebar-item,
+.app-sidebar [data-slot='aui_thread-list-new'][data-active='true'] {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+.app-sidebar [data-slot='aui_thread-list-item-trigger'] {
+  border-radius: inherit;
+}
+.app-sidebar [data-slot='aui_thread-list-new'] {
+  text-decoration: none;
+}
+[data-slot='aui_composer-shell'] {
+  border-radius: var(--surface-radius) !important;
+  transition:
+    border-color 180ms ease,
+    box-shadow 220ms var(--ease-out-soft),
+    background-color 180ms ease;
+}

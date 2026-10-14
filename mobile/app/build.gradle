@@ -16,6 +16,28 @@ android {
         versionCode 1
         versionName '1.0'
     }
+    def configuredHomeUrl = providers.gradleProperty('artemisUrl')
+        .orElse(providers.environmentVariable('ARTEMIS_URL')).getOrNull()?.trim()
+    if (!configuredHomeUrl) {
+        throw new org.gradle.api.GradleException('Set -PartemisUrl=https://your-host or ARTEMIS_URL to the HTTPS origin this app should load.')
+    }
+    def homeUri
+    try {
+        homeUri = new java.net.URI(configuredHomeUrl)
+    } catch (java.net.URISyntaxException error) {
+        throw new org.gradle.api.GradleException('ARTEMIS_URL must be a valid HTTPS origin with no path, query, or fragment.', error)
+    }
+    if (!homeUri.isAbsolute() || !'https'.equalsIgnoreCase(homeUri.scheme)
+            || !homeUri.host || homeUri.rawUserInfo != null
+            || (homeUri.rawPath && homeUri.rawPath != '/')
+            || homeUri.rawQuery != null || homeUri.rawFragment != null
+            || homeUri.port == 0 || homeUri.port > 65535) {
+        throw new org.gradle.api.GradleException('ARTEMIS_URL must be an HTTPS origin (host and optional port only), without credentials, path, query, or fragment.')
+    }
+    configuredHomeUrl = "https://${homeUri.rawAuthority}"
+    def escapedHomeUrl = configuredHomeUrl.replace('\\', '\\\\').replace('"', '\\"')
+    buildFeatures { buildConfig true }
+    defaultConfig.buildConfigField 'String', 'HOME_URL', '"' + escapedHomeUrl + '"'
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

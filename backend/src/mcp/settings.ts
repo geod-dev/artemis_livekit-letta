@@ -13,7 +13,8 @@
  * on every call. One synthetic agent id holds the list, which makes it global:
  * every agent passes the same `--agent`.
  *
- * The backend owns this file outright, so it is rendered whole, never merged.
+ * The backend owns this file. Valid entries are rendered together while
+ * malformed stored entries are preserved for diagnosis until a human repairs them.
  * The design follows lettuce (github.com/dmarcelino/lettuce, bff/src/mcp/).
  */
 import type { McpServer, McpTransport } from '../chat-types';
@@ -45,9 +46,21 @@ export class SettingsUnreadableError extends Error {}
 /** A payload we refuse to write. Surfaced to the caller as a 400. */
 export class InvalidMcpServersError extends Error {}
 
+export interface InvalidMcpServerEntry {
+  index: number;
+  value: unknown;
+  diagnostic: string;
+}
+
 function isStringRecord(value: unknown): value is Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return Object.values(value).every((entry) => typeof entry === 'string');
+  return Object.entries(value).every(
+    ([key, entry]) =>
+      key.trim().length > 0 &&
+      !/[\r\n]/.test(key) &&
+      typeof entry === 'string' &&
+      !/[\r\n]/.test(entry)
+  );
 }
 
 /**
@@ -62,6 +75,18 @@ function validateServer(value: unknown, index: number): McpServer {
     throw new InvalidMcpServersError(`Server ${index} is not an object`);
   }
   const raw = value as Record<string, unknown>;
+  const allowed = new Set([
+    'name',
+    'transport',
+    'command',
+    'args',
+    'url',
+    'env',
+    'headers',
+    'managed',
+  ]);
+  const extra = Object.keys(raw).find((key) => !allowed.has(key));
+  if (extra) throw new InvalidMcpServersError(`Server ${index} has an unsupported field: ${extra}`);
   if (raw.managed !== undefined) {
     throw new InvalidMcpServersError('Connected devices cannot be edited in MCP settings');
   }
@@ -85,6 +110,9 @@ function validateServer(value: unknown, index: number): McpServer {
     const command = typeof raw.command === 'string' ? raw.command.trim() : '';
     if (!command) throw new InvalidMcpServersError(`Server "${name}" has no command`);
     server.command = command;
+    if (raw.args !== undefined && !Array.isArray(raw.args)) {
+      throw new InvalidMcpServersError(`Server "${name}" arguments must be an array`);
+    }
     if (Array.isArray(raw.args)) {
       if (!raw.args.every((arg) => typeof arg === 'string')) {
         throw new InvalidMcpServersError(`Server "${name}" has non-string arguments`);
@@ -92,10 +120,17 @@ function validateServer(value: unknown, index: number): McpServer {
       if (raw.args.length > 0) server.args = raw.args as string[];
     }
   } else {
+    if (raw.command !== undefined || raw.args !== undefined || raw.env !== undefined) {
+      throw new InvalidMcpServersError(
+        `Server "${name}" has stdio-only fields for a remote transport`
+      );
+    }
     const url = typeof raw.url === 'string' ? raw.url.trim() : '';
     if (!url) throw new InvalidMcpServersError(`Server "${name}" has no url`);
     try {
-      new URL(url);
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+        throw new Error('unsupported protocol');
     } catch {
       throw new InvalidMcpServersError(`Server "${name}" has an invalid url: ${url}`);
     }
@@ -106,20 +141,59 @@ function validateServer(value: unknown, index: number): McpServer {
     if (!isStringRecord(raw.env)) {
       throw new InvalidMcpServersError(`Server "${name}" has non-string env values`);
     }
+    if (Object.keys(raw.env).some((key) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))) {
+      throw new InvalidMcpServersError(`Server "${name}" has an invalid env variable name`);
+    }
     if (Object.keys(raw.env).length > 0) server.env = raw.env;
   }
   if (raw.headers !== undefined) {
     if (!isStringRecord(raw.headers)) {
       throw new InvalidMcpServersError(`Server "${name}" has non-string header values`);
     }
+    if (Object.keys(raw.headers).some((key) => !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(key))) {
+      throw new InvalidMcpServersError(`Server "${name}" has an invalid HTTP header name`);
+    }
     if (Object.keys(raw.headers).length > 0) server.headers = raw.headers;
   }
+  return server;
+}
+
+function validateStoredServer(value: unknown, index: number): McpServer {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return validateServer(value, index);
+  const raw = value as Record<string, unknown>;
+  if (raw.managed === undefined) return validateServer(value, index);
+  const managed = raw.managed;
+  if (!managed || typeof managed !== 'object' || Array.isArray(managed)) {
+    throw new InvalidMcpServersError(`Server ${index} has an invalid managed marker`);
+  }
+  const device = managed as Record<string, unknown>;
+  if (
+    device.type !== 'device' ||
+    typeof device.deviceName !== 'string' ||
+    !device.deviceName.trim() ||
+    typeof device.connectedAt !== 'string' ||
+    !Number.isFinite(Date.parse(device.connectedAt)) ||
+    !Number.isInteger(device.tools) ||
+    (device.tools as number) < 0
+  ) {
+    throw new InvalidMcpServersError(`Server ${index} has an invalid managed marker`);
+  }
+  const server = validateServer({ ...raw, managed: undefined }, index);
+  server.managed = {
+    type: 'device',
+    deviceName: device.deviceName,
+    connectedAt: device.connectedAt,
+    tools: device.tools as number,
+  };
   return server;
 }
 
 /** Validate a whole list and return normalised copies. */
 export function validateMcpServers(value: unknown): McpServer[] {
   if (!Array.isArray(value)) throw new InvalidMcpServersError('servers must be an array');
+  if (value.length > 100)
+    throw new InvalidMcpServersError('At most 100 MCP servers can be configured');
   const servers = value.map(validateServer);
   const names = new Set<string>();
   for (const server of servers) {
@@ -139,21 +213,26 @@ export function validateMcpServers(value: unknown): McpServer[] {
  * every agent's `letta mcp` call would rewrite this file, racing the backend's
  * own writes. With it set, the CLI only ever reads.
  */
-export function renderMcpSettings(servers: McpServer[]): string {
+export function renderMcpSettings(servers: McpServer[], invalidEntries: unknown[] = []): string {
   const settings = {
     autoConversationTitles: false,
     autoConversationTitlesRollbackApplied: true,
-    agents: [{ agentId: GLOBAL_MCP_AGENT, baseUrl: LOCAL_BASE_URL, mcpServers: servers }],
+    agents: [
+      {
+        agentId: GLOBAL_MCP_AGENT,
+        baseUrl: LOCAL_BASE_URL,
+        mcpServers: [...invalidEntries, ...servers],
+      },
+    ],
   };
   return `${JSON.stringify(settings, null, 2)}\n`;
 }
 
 /**
- * The configured servers, as written. Returned unvalidated on purpose:
- * refusing to display a server that is on disk would hide it rather than show
- * it. Validation happens on write.
+ * Read the shared settings object. Bad JSON is unreadable, while malformed
+ * server entries are returned separately for diagnosis and preservation.
  */
-export function readMcpServers(raw: string): McpServer[] {
+function globalServerEntries(raw: string): unknown[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -173,8 +252,37 @@ export function readMcpServers(raw: string): McpServer[] {
       typeof agent === 'object' &&
       (agent as { agentId?: unknown }).agentId === GLOBAL_MCP_AGENT
   ) as { mcpServers?: unknown } | undefined;
-  if (!Array.isArray(entry?.mcpServers)) return [];
-  return entry.mcpServers.filter(
-    (server): server is McpServer => Boolean(server) && typeof server === 'object'
-  );
+  return Array.isArray(entry?.mcpServers) ? entry.mcpServers : [];
+}
+
+/** Valid operational entries plus diagnostics for malformed disk values. */
+export function readMcpSettings(raw: string): {
+  servers: McpServer[];
+  invalidEntries: InvalidMcpServerEntry[];
+} {
+  const entries = globalServerEntries(raw);
+  const servers: McpServer[] = [];
+  const invalidEntries: InvalidMcpServerEntry[] = [];
+  const names = new Set<string>();
+  entries.forEach((entry, index) => {
+    try {
+      const server = validateStoredServer(entry, index);
+      if (!server || names.has(server.name))
+        throw new InvalidMcpServersError(`Duplicate server name: ${server?.name ?? ''}`);
+      names.add(server.name);
+      servers.push(server);
+    } catch (error) {
+      invalidEntries.push({
+        index,
+        value: entry,
+        diagnostic: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  return { servers, invalidEntries };
+}
+
+/** Only fully validated server entries are eligible for operational use. */
+export function readMcpServers(raw: string): McpServer[] {
+  return readMcpSettings(raw).servers;
 }

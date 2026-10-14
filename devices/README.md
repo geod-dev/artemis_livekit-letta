@@ -20,6 +20,8 @@ python devices/artemis-device.py laptop --scopes filesystem --active-folder ~/Do
 python devices/artemis-device.py laptop --scopes terminal --active-folder ~/Projects
 ```
 
+The client is also an importable `artemis_device` package. From the `devices` directory, run `python -m artemis_device laptop --scopes browser`. Run its tests from the repository root with `python -m unittest discover -s devices/tests -p test_device.py`.
+
 - `browser` exposes `open_url`, which accepts only HTTP and HTTPS URLs. It opens Firefox when available (or the configured `--firefox`), otherwise the system's default URL handler.
 - `media` exposes `media_control` for play, pause, current track/status, and volume. Linux uses `playerctl`; macOS uses the Music app via `osascript`; Windows uses system media controls and Windows Core Audio for volume. Linux requires `playerctl` on PATH.
 - `filesystem` exposes `filesystem_list`, `filesystem_read`, and `filesystem_write`. It can access any location on the device; every tool call must supply an absolute path. `--active-folder` adds context to the tool descriptions but does not limit access. Reads and writes are limited to UTF-8 text files up to 1 MB; parent directories must already exist.

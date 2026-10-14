@@ -9,5 +9,7 @@ RUN apt-get update \
 
 # Use Pi's existing instruction-role conversion only for Groq-hosted Qwen.
 # Keep this tied to the inspected release; upgrades must revalidate the patch.
-COPY patch-groq-qwen.mjs /opt/letta-patches/patch-groq-qwen.mjs
+COPY patching/groq-qwen.mjs /opt/letta-patches/patch-groq-qwen.mjs
 RUN node /opt/letta-patches/patch-groq-qwen.mjs /usr/local/lib/node_modules/@letta-ai/letta-code
+COPY entrypoint.sh /opt/assistant/entrypoint.sh
+RUN chmod 755 /opt/assistant/entrypoint.sh

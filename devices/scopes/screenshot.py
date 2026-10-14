@@ -6,10 +6,11 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from .settings import ScopeSettings
 
 MAX_IMAGE_BYTES = 10_000_000
 
-def register(args):
+def register(args: ScopeSettings):
     def capture(_arguments):
         fd, output = tempfile.mkstemp(suffix='.png')
         os.close(fd)

@@ -1,0 +1,21 @@
+/* Global element defaults and typography. */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-medium;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-semibold tracking-tight;
+  }
+  /* Keep button feedback quick and reserve the press scale for touch input. */
+  button {
+    transition-property: color, background-color, border-color, opacity;
+    transition-duration: 140ms;
+    transition-timing-function: ease-out;
+  }
+}
+

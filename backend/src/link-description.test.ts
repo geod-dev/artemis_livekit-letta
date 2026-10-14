@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { linkDescription, linkMetadata } from './link-description.ts';
+import { linkMetadata } from './link-description.ts';
 
 test('prefers social preview titles and decodes their text', () => {
   assert.equal(
@@ -32,29 +32,29 @@ test('falls back through Twitter, meta title and document title', () => {
 
 test('prefers meta description and decodes entities regardless of attribute order', () => {
   assert.equal(
-    linkDescription(
+    linkMetadata(
       `<head><meta property="og:description" content="Fallback"><meta content='Hello &amp; &#x1f600; world' NAME='description'></head>`
-    ),
+    ).description,
     'Hello & 😀 world'
   );
 });
 test('falls back to social descriptions and ignores scripts, comments and body', () => {
   assert.equal(
-    linkDescription(
+    linkMetadata(
       `<head><!-- <meta name="description" content="Comment"> --><script>'<meta name="description" content="Script">'</script><meta property="og:description" content="Social preview"></head><meta name="description" content="Body">`
-    ),
+    ).description,
     'Social preview'
   );
   assert.equal(
-    linkDescription('<meta name="twitter:description" content="Twitter preview">'),
+    linkMetadata('<meta name="twitter:description" content="Twitter preview">').description,
     'Twitter preview'
   );
-  assert.equal(linkDescription('<html>No metadata</html>'), undefined);
+  assert.equal(linkMetadata('<html>No metadata</html>').description, undefined);
 });
 test('limits excerpts to the first 24 words', () => {
   const words = Array.from({ length: 30 }, (_, i) => `word${i}`);
   assert.equal(
-    linkDescription(`<meta name="description" content="${words.join(' ')}">`),
+    linkMetadata(`<meta name="description" content="${words.join(' ')}">`).description,
     `${words.slice(0, 24).join(' ')}…`
   );
 });

@@ -1,0 +1,233 @@
+/*
+ * Fonts. UI and body text: Figtree, round and open, friendly at small sizes.
+ * Display (greetings and headings): Bricolage Grotesque, with a bit of
+ * character. Code: Commit Mono. Figtree and Bricolage come from Fontsource
+ * (imported in main.tsx).
+ */
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('../fonts/CommitMono-400-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('../fonts/CommitMono-700-Regular.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('../fonts/CommitMono-400-Italic.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('../fonts/CommitMono-700-Italic.otf') format('opentype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  --font-figtree: 'Figtree Variable';
+  --font-bricolage: 'Bricolage Grotesque Variable';
+  --font-commit-mono: 'Commit Mono';
+}
+
+/*
+ * A quiet glass palette over the mountain wallpaper. Keep colour atmospheric;
+ * reserve stronger colour for actions and live state.
+ */
+:root {
+  /* Shared geometry: app shells are large; controls use the compact scale. */
+  --radius: 0.75rem;
+  --surface-radius: 1.75rem;
+  --surface-inset: 0.75rem;
+  --control-radius: calc(var(--surface-radius) - var(--surface-inset));
+  --popover-radius: 1.125rem;
+  --menu-item-radius: 0.6875rem;
+  /* One translucent surface for all panels in both themes. */
+  --glass-blur: 26px;
+  --glass-saturation: 155%;
+  --background: #f3f3ef;
+  --foreground: #151816;
+  --glass-surface: rgba(255, 255, 255, 0.58);
+  --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-shadow: 0 18px 60px rgba(31, 43, 40, 0.12);
+  --card: var(--glass-surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--glass-surface);
+  --popover-foreground: var(--foreground);
+  --surface-alternate: rgba(255, 255, 255, 0.38);
+  --wallpaper-wash: rgba(248, 250, 248, 0.7);
+  --wallpaper-blur: 44px;
+  --wallpaper-image: url('/wallpaper-light.jpg');
+  --primary: #0575f0;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(238, 242, 238, 0.78);
+  --secondary-foreground: var(--foreground);
+  --muted: rgba(235, 240, 236, 0.72);
+  --muted-foreground: #4b5550;
+  --accent: rgba(220, 233, 224, 0.82);
+  --accent-foreground: var(--foreground);
+  --destructive: #e5383b;
+  --border: rgba(88, 105, 96, 0.16);
+  --input: rgba(88, 105, 96, 0.2);
+  --ring: var(--primary);
+  --mint: #0e9f6e;
+  --pink: #e83e8c;
+  --sky: #2563eb;
+  --sunny: #ffb020;
+  --chart-1: var(--primary);
+  --chart-2: var(--mint);
+  --chart-3: var(--sunny);
+  --chart-4: var(--pink);
+  --chart-5: var(--sky);
+  /* Generative UI tones (positive / warning facts and alerts). */
+  --aui-success: oklch(0.6 0.15 149);
+  --aui-warning: oklch(0.68 0.16 70);
+  color-scheme: light;
+}
+
+:root.dark {
+  --background: #171e22;
+  --foreground: #f1f4f1;
+  --glass-surface: rgba(15, 25, 30, 0.58);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 20px 64px rgba(0, 0, 0, 0.28);
+  --card: var(--glass-surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--glass-surface);
+  --popover-foreground: var(--foreground);
+  --surface-alternate: rgba(248, 250, 248, 0.15);
+  --wallpaper-wash: rgba(8, 16, 21, 0.5);
+  --wallpaper-blur: 34px;
+  --wallpaper-image: url('/wallpaper-dark.jpg');
+  --primary: #398cf5;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(235, 242, 238, 0.09);
+  --secondary-foreground: var(--foreground);
+  --muted: rgba(235, 242, 238, 0.09);
+  --muted-foreground: #bdc8c3;
+  --accent: rgba(151, 190, 169, 0.16);
+  --accent-foreground: var(--foreground);
+  --destructive: #f05255;
+  --border: rgba(235, 242, 238, 0.15);
+  --input: rgba(235, 242, 238, 0.2);
+  --ring: var(--primary);
+  --mint: #36c694;
+  --pink: #f16aa7;
+  --sky: #6290f4;
+  --sunny: #ffc04d;
+  --chart-1: var(--primary);
+  --chart-2: var(--mint);
+  --chart-3: var(--sunny);
+  --chart-4: var(--pink);
+  --chart-5: var(--sky);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans:
+    var(--font-figtree), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-display: var(--font-bricolage), var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    var(--font-commit-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-surface-alternate: var(--surface-alternate);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-mint: var(--mint);
+  --color-pink: var(--pink);
+  --color-sky: var(--sky);
+  --color-sunny: var(--sunny);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  /* Everything rounded: shadcn's radius scale follows --radius. */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /*
+   * Motion. The spring (with a visible overshoot) is only for button presses:
+   * a direct answer to the user's own action. Everything that moves on its
+   * own slides, with at most a hair of settle (--ease-slide).
+   */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-slide: cubic-bezier(0.25, 1.06, 0.4, 1);
+  --animate-pop-in: slide-in 320ms var(--ease-slide) both;
+  --animate-mascot-anticipate: mascot-anticipate 2.8s ease-in-out infinite;
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+  }
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+    to {
+      height: 0;
+    }
+  }
+  /* New messages, notes and chips slide up into place. */
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* One small expectant nod, then a pause while the assistant is thinking. */
+  @keyframes mascot-anticipate {
+    0%,
+    76%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    84% {
+      transform: translateY(-1px) rotate(-3deg);
+    }
+    90% {
+      transform: translateY(0) rotate(2deg);
+    }
+    94% {
+      transform: translateY(0) rotate(0deg);
+    }
+  }
+}

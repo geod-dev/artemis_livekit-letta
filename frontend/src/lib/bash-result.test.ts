@@ -22,6 +22,16 @@ test('takes the exit code from a failed command', () => {
   });
 });
 
+test('reads shell output from a preserved MCP result envelope', () => {
+  assert.deepEqual(
+    parseBashResult(
+      JSON.stringify({ content: [{ type: 'text', text: 'Exit code: 4\nfailed' }] }),
+      true
+    ),
+    { lines: ['failed'], exitCode: 4, truncated: false }
+  );
+});
+
 test('strips the truncation notice', () => {
   const result =
     'line 1\nline 2\n\n[Output truncated: showing 2 of 9,000 characters.]\n[Full output written to: /tmp/x]';

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TokenSource } from 'livekit-client';
-import { PlusIcon } from 'lucide-react';
+import { MessageCirclePlusIcon } from 'lucide-react';
 import { AssistantRuntimeProvider, AuiConfig, Tools } from '@assistant-ui/react';
-import type { ConversationSummary, TextEffort } from '@backend/chat-types';
 import { RoomAudioRenderer, SessionProvider, useSession } from '@livekit/components-react';
+import type { ConversationSummary, TextEffort } from '@shared/chat-types';
 import { StartAudioButton } from '@/components/agents-ui/start-audio-button';
-import { generativeUIToolkit } from '@/components/assistant-ui/elements/generative-ui';
-import { Thread } from '@/components/assistant-ui/elements/thread.aui';
-import { WorkspaceFilePanelContext } from '@/components/assistant-ui/elements/workspace-file';
-import { WorkspaceFilePanel } from '@/components/assistant-ui/elements/workspace-file-panel';
+import { Thread } from '@/components/assistant-ui/chat/thread';
+import { WorkspaceFilePanelContext } from '@/components/assistant-ui/files/workspace-file';
+import { WorkspaceFilePanel } from '@/components/assistant-ui/files/workspace-file-panel';
+import { generativeUIToolkit } from '@/components/assistant-ui/tools/generative-ui';
 import { CallBar } from '@/components/chat/call-bar';
 import { LoadingBar } from '@/components/chat/loading-bar';
 import { Sidebar } from '@/components/chat/sidebar';
@@ -18,8 +18,8 @@ import {
   THREAD_COMPONENTS,
 } from '@/components/chat/thread-slots';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
+import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
-import { TooltipProvider } from '@/components/ui/tooltip';
 import { useChatRuntime } from '@/hooks/use-chat-runtime';
 import { useConversation } from '@/hooks/use-conversation';
 import { useConversations } from '@/hooks/use-conversations';
@@ -67,7 +67,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
   const { upsert, create } = list;
   const [activeId, select] = useSelectedConversation();
   const conversation = useConversation(activeId, upsert);
-  const { expectNew } = conversation;
+  const { expectNew, setError } = conversation;
   const [effort, setEffort] = useState<TextEffort>('medium');
   const [effortLoaded, setEffortLoaded] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -81,21 +81,32 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
   useEffect(() => setOpenFile(null), [activeId]);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem('text-effort');
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem('text-effort');
+    } catch {
+      // Storage can be disabled by the browser; use the in-memory default.
+    }
     if (saved === 'fast' || saved === 'low' || saved === 'medium' || saved === 'high') {
       setEffort(saved);
     }
     setEffortLoaded(true);
   }, []);
   useEffect(() => {
-    if (effortLoaded) window.localStorage.setItem('text-effort', effort);
+    if (effortLoaded) {
+      try {
+        window.localStorage.setItem('text-effort', effort);
+      } catch {
+        // The preference still applies for this session.
+      }
+    }
   }, [effort, effortLoaded]);
 
   useEffect(() => {
     const onShortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === 'k') {
+      if (key === 'k' || key === 'p') {
         event.preventDefault();
         setSearchOpen(true);
       } else if (key === 'n') {
@@ -157,9 +168,10 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       await session.start({ tracks: { microphone: { enabled: true } } });
     } catch (error) {
       console.error(error);
+      setError(error instanceof Error ? error.message : 'Could not start the call');
       setCallConversationId(null);
     }
-  }, [activeId, create, expectNew, select, session]);
+  }, [activeId, create, expectNew, select, session, setError]);
 
   const endCall = useCallback(async () => {
     await session.end();
@@ -189,7 +201,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
   const callOnCurrentConversation = inCall && callConversationId === activeId;
   const callButton = useMemo(
     () => ({
-      tooltip: inCall
+      label: inCall
         ? callOnCurrentConversation
           ? 'End call'
           : callConversationId
@@ -243,66 +255,68 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
     <SessionProvider session={session}>
       <RoomAudioRenderer />
       <AssistantRuntimeProvider runtime={runtime} config={AUI_CONFIG}>
-        <TooltipProvider>
-          <LoadingBar active={conversation.loading} />
-          <div className="app-shell text-foreground flex">
-            <Sidebar
-              assistantName={assistantName}
-              error={list.error}
-              searchOpen={searchOpen}
-              onSearchOpenChange={setSearchOpen}
-              newChatActive={activeId === null}
-              onNewChat={newChat}
-              onSettings={openSettings}
-            />
-            <main className="bg-background flex min-w-0 flex-1 flex-col">
-              <header className="flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-3 lg:gap-3 lg:px-6">
+        <LoadingBar active={conversation.loading} />
+        <div className="app-shell text-foreground flex">
+          <Sidebar
+            assistantName={assistantName}
+            error={list.error}
+            searchOpen={searchOpen}
+            onSearchOpenChange={setSearchOpen}
+            newChatActive={activeId === null}
+            settingsActive={settingsOpen}
+            onNewChat={newChat}
+            onSettings={openSettings}
+          />
+          <main className="app-main flex min-w-0 flex-1 flex-col">
+            <header className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6">
+              <div className="app-topbar-title min-w-0">
                 {!conversation.blank && shownId && (
                   <h1
                     key={shownId}
-                    className="font-display animate-rise-in min-w-0 truncate text-base font-extrabold sm:text-xl"
+                    className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
                   >
                     {shownTitle ?? 'Conversation'}
                   </h1>
                 )}
-                {!conversation.blank && shownId && (
-                  <button
-                    type="button"
-                    aria-label="New chat"
-                    title="New chat"
-                    onClick={newChat}
-                    className="text-muted-foreground hover:bg-muted hover:text-foreground ms-auto inline-flex size-10 items-center justify-center rounded-full lg:hidden"
-                  >
-                    <PlusIcon className="size-5" />
-                  </button>
-                )}
-              </header>
-              {inCall && <CallBar />}
-              <div className="min-h-0 flex-1">
-                <ChatThreadContext.Provider value={threadState}>
-                  <WorkspaceFilePanelContext.Provider value={setOpenFile}>
-                    <Thread
-                      autoFocus={window.matchMedia('(hover: hover) and (pointer: fine)').matches}
-                      components={THREAD_COMPONENTS}
-                      placeholder={
-                        inCall
-                          ? 'Type here too, I’m still listening…'
-                          : `Tell ${assistantName} what’s up…`
-                      }
-                    />
-                  </WorkspaceFilePanelContext.Provider>
-                </ChatThreadContext.Provider>
               </div>
-            </main>
-            {openFile && (
-              // Workspace files linked from a markdown document open in the panel too.
-              <WorkspaceFilePanelContext.Provider value={setOpenFile}>
-                <WorkspaceFilePanel path={openFile} onClose={closeFile} />
-              </WorkspaceFilePanelContext.Provider>
-            )}
-          </div>
-          <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-        </TooltipProvider>
+              {!conversation.blank && shownId && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="New chat"
+                  onClick={newChat}
+                  className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
+                >
+                  <MessageCirclePlusIcon className="size-5" />
+                </Button>
+              )}
+            </header>
+            {inCall && <CallBar />}
+            <div className="min-h-0 flex-1">
+              <ChatThreadContext.Provider value={threadState}>
+                <WorkspaceFilePanelContext.Provider value={setOpenFile}>
+                  <Thread
+                    autoFocus={window.matchMedia('(hover: hover) and (pointer: fine)').matches}
+                    components={THREAD_COMPONENTS}
+                    placeholder={
+                      inCall
+                        ? 'Type here too, I’m still listening…'
+                        : `Tell ${assistantName} what’s up…`
+                    }
+                  />
+                </WorkspaceFilePanelContext.Provider>
+              </ChatThreadContext.Provider>
+            </div>
+          </main>
+          {openFile && (
+            // Workspace files linked from a markdown document open in the panel too.
+            <WorkspaceFilePanelContext.Provider value={setOpenFile}>
+              <WorkspaceFilePanel path={openFile} onClose={closeFile} />
+            </WorkspaceFilePanelContext.Provider>
+          )}
+        </div>
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </AssistantRuntimeProvider>
       <StartAudioButton
         label="Allow audio playback"

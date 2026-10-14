@@ -1,11 +1,11 @@
-import type { McpServer, McpTransport } from '@backend/chat-types';
+import type { McpServer, McpTransport } from '@shared/chat-types';
 
 /** The editor's form: free text where the server stores lists and maps. */
 export interface McpServerDraft {
   name: string;
   transport: McpTransport;
   command: string;
-  /** Space separated. */
+  /** JSON array, preserving spaces and quotes inside arguments. */
   args: string;
   url: string;
   /** One `KEY=value` per line (stdio). */
@@ -34,14 +34,20 @@ function formatPairs(pairs: Record<string, string> | undefined, separator: strin
     .join('\n');
 }
 
-/** `KEY=value` / `Name: value` lines; blank lines and lines without the separator are skipped. */
+/** `KEY=value` / `Name: value` lines. Malformed nonblank lines are rejected. */
 export function parsePairs(text: string, separator: '=' | ':'): Record<string, string> {
   const pairs: Record<string, string> = {};
-  for (const line of text.split('\n')) {
+  for (const [index, line] of text.split('\n').entries()) {
+    if (!line.trim()) continue;
     const at = line.indexOf(separator);
-    if (at <= 0) continue;
+    if (at <= 0)
+      throw new Error(
+        `Line ${index + 1} must contain ${separator === '=' ? 'KEY=value' : 'Name: value'}.`
+      );
     const key = line.slice(0, at).trim();
-    if (key) pairs[key] = line.slice(at + 1).trim();
+    if (!key) throw new Error(`Line ${index + 1} has an empty name.`);
+    if (Object.hasOwn(pairs, key)) throw new Error(`Line ${index + 1} repeats ${key}.`);
+    pairs[key] = line.slice(at + 1).trim();
   }
   return pairs;
 }
@@ -51,7 +57,7 @@ export function toDraft(server: McpServer): McpServerDraft {
     name: server.name,
     transport: server.transport ?? 'stdio',
     command: server.command ?? '',
-    args: (server.args ?? []).join(' '),
+    args: JSON.stringify(server.args ?? [], null, 2),
     url: server.url ?? '',
     env: formatPairs(server.env, '='),
     headers: formatPairs(server.headers, ': '),
@@ -60,15 +66,21 @@ export function toDraft(server: McpServer): McpServerDraft {
 
 /** The server to save; fields of the other transport are left out. */
 export function fromDraft(draft: McpServerDraft): McpServer {
-  const server: McpServer = { name: draft.name.trim(), transport: draft.transport };
+  const server: McpServer = {
+    name: draft.name.trim(),
+    transport: draft.transport,
+  };
   if (isRemote(draft.transport)) {
     server.url = draft.url.trim();
     const headers = parsePairs(draft.headers, ':');
     if (Object.keys(headers).length > 0) server.headers = headers;
   } else {
     server.command = draft.command.trim();
-    const args = draft.args.trim();
-    if (args) server.args = args.split(/\s+/);
+    const args: unknown = JSON.parse(draft.args || '[]');
+    if (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string')) {
+      throw new Error('Arguments must be a JSON array of strings.');
+    }
+    if (args.length > 0) server.args = args;
     const env = parsePairs(draft.env, '=');
     if (Object.keys(env).length > 0) server.env = env;
   }

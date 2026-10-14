@@ -23,6 +23,9 @@ export interface RenderedMod {
 
 export type ModSyncResult = 'unchanged' | 'reloaded' | 'reload-pending';
 
+// A failed reload remains work to do even when the rendered files now match.
+const reloadPending = new WeakSet<ModsIo>();
+
 export async function syncMods(io: ModsIo, mods: readonly RenderedMod[]): Promise<ModSyncResult> {
   let changed = false;
   for (const mod of mods) {
@@ -30,6 +33,11 @@ export async function syncMods(io: ModsIo, mods: readonly RenderedMod[]): Promis
     await io.write(mod.path, mod.source);
     changed = true;
   }
-  if (!changed) return 'unchanged';
-  return (await io.reloadMods()) ? 'reloaded' : 'reload-pending';
+  if (!changed && !reloadPending.has(io)) return 'unchanged';
+  if (await io.reloadMods()) {
+    reloadPending.delete(io);
+    return 'reloaded';
+  }
+  reloadPending.add(io);
+  return 'reload-pending';
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { type AgentState } from '@livekit/components-react';
 
 function generateConnectingSequenceBar(columns: number): number[][] {
@@ -24,26 +24,26 @@ export function useAgentAudioVisualizerBarAnimator(
   interval: number
 ): number[] {
   const [index, setIndex] = useState(0);
-  const [sequence, setSequence] = useState<number[][]>([[]]);
-
-  useEffect(() => {
-    if (state === 'thinking') {
-      setSequence(generateListeningSequenceBar(columns));
-    } else if (state === 'connecting' || state === 'initializing') {
-      const sequence = [...generateConnectingSequenceBar(columns)];
-      setSequence(sequence);
-    } else if (state === 'listening') {
-      setSequence(generateListeningSequenceBar(columns));
-    } else if (state === undefined || state === 'speaking') {
-      setSequence([new Array(columns).fill(0).map((_, idx) => idx)]);
-    } else {
-      setSequence([[]]);
+  const sequence = useMemo(() => {
+    if (state === 'thinking' || state === 'listening') {
+      return generateListeningSequenceBar(columns);
     }
-    setIndex(0);
+    if (state === 'connecting' || state === 'initializing') {
+      return generateConnectingSequenceBar(columns);
+    }
+    if (state === undefined || state === 'speaking') {
+      return [Array.from({ length: columns }, (_, idx) => idx)];
+    }
+    return [[]];
   }, [state, columns]);
+
+  useEffect(() => setIndex(0), [sequence]);
 
   const animationFrameId = useRef<number | null>(null);
   useEffect(() => {
+    // A single-step sequence has no animation. Avoid scheduling frames and
+    // React renders for idle and speaking states.
+    if (sequence.length < 2) return;
     let startTime = performance.now();
 
     const animate = (time: DOMHighResTimeStamp) => {
@@ -64,7 +64,7 @@ export function useAgentAudioVisualizerBarAnimator(
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [interval, columns, state, sequence.length]);
+  }, [interval, sequence]);
 
   return sequence[index % sequence.length] ?? [];
 }

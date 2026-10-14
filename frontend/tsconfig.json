@@ -14,7 +14,7 @@
     "resolveJsonModule": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@backend/*": ["../backend/src/*"]
+      "@shared/*": ["../shared/contracts/*"]
     }
   },
   "include": ["src", "scripts", "vite.config.ts"]

@@ -1,25 +1,53 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { isRecord, requestJson, responseJson } from '@/lib/api';
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sessionRetry, setSessionRetry] = useState(0);
+  const checkRevision = useRef(0);
+  const authenticatedRef = useRef(false);
+  authenticatedRef.current = authenticated === true;
   useEffect(() => {
-    const check = () =>
-      fetch('/api/auth/session')
-        .then((r) => r.json())
-        .then((r) => setAuthenticated(r.authenticated === true))
-        .catch(() => {
-          setError('Unable to connect to the server.');
-          setAuthenticated(false);
+    const check = () => {
+      const revision = ++checkRevision.current;
+      void requestJson(
+        '/api/auth/session',
+        {},
+        (value): value is { authenticated: boolean } =>
+          isRecord(value) && typeof value.authenticated === 'boolean',
+        'Unable to check your session'
+      )
+        .then((result) => {
+          if (revision !== checkRevision.current) return;
+          setAuthenticated(result.authenticated);
+          setError('');
+        })
+        .catch((e: unknown) => {
+          if (revision !== checkRevision.current) return;
+          const status = e && typeof e === 'object' && 'status' in e ? e.status : null;
+          if (status === 401) {
+            setAuthenticated(false);
+            setError('');
+          } else {
+            // Keep an already running chat mounted during temporary outages.
+            if (!authenticatedRef.current) setAuthenticated(false);
+            setError('Unable to connect to the server. Check your connection and try again.');
+          }
         });
+    };
     void check();
     window.addEventListener('focus', check);
-    return () => window.removeEventListener('focus', check);
-  }, []);
+    return () => {
+      checkRevision.current += 1;
+      window.removeEventListener('focus', check);
+    };
+  }, [sessionRetry]);
   async function login(e: FormEvent) {
     e.preventDefault();
+    checkRevision.current += 1;
     setBusy(true);
     setError('');
     try {
@@ -28,8 +56,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error('Incorrect password.');
+      const body = await responseJson(
+        response,
+        (value): value is { authenticated: boolean } =>
+          isRecord(value) && typeof value.authenticated === 'boolean',
+        'Unable to sign in'
+      );
+      if (!body.authenticated) throw new Error('Sign in was not accepted.');
       setPassword('');
       setAuthenticated(true);
     } catch (e) {
@@ -38,12 +71,32 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }
-  if (authenticated) return children;
+  if (authenticated)
+    return (
+      <>
+        {children}
+        {error && (
+          <div
+            role="alert"
+            className="glass-panel fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 text-sm"
+          >
+            <span>{error}</span>
+            <button
+              type="button"
+              className="underline"
+              onClick={() => setSessionRetry((n) => n + 1)}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+      </>
+    );
   return (
-    <main className="bg-background flex h-dvh items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <main className="auth-screen flex h-dvh items-center justify-center overflow-y-auto p-4 sm:p-6">
       <form
         onSubmit={login}
-        className="bg-card my-auto w-full max-w-sm shrink-0 space-y-5 rounded-2xl border p-8 shadow-sm"
+        className="glass-panel auth-card my-auto w-full max-w-sm shrink-0 space-y-5 rounded-[var(--control-radius)] p-8"
       >
         <h1 className="text-2xl font-semibold">{import.meta.env.ASSISTANT_NAME}</h1>
         {authenticated === null ? (

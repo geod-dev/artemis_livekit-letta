@@ -1,14 +1,13 @@
 import { Hono } from 'hono';
 import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
 import { randomUUID } from 'node:crypto';
-import { markRead, takeQueuedUpdate } from '../assistant/background';
-import { callState, endCall, openCallChannel, takeUpdate } from '../assistant/calls';
+import { claimQueuedUpdate, completeDelivery, markRead, rollbackDelivery } from '../assistant/background/service.ts';
+import { activeCallId, callState, endCall, openCallChannel, takeUpdate } from '../assistant/calls/state.ts';
 import { config } from '../assistant/config';
-import { conversationHasAttachments, getConversation } from '../assistant/conversations';
+import { conversationHasAttachments, requireConversation } from '../assistant/conversations/service.ts';
 import { conversationRuntime } from '../assistant/runtime';
-import { newVoiceInput } from '../assistant/voice-input';
-import type { CallMode } from '../chat-types';
-import { errorResponse, eventStream, isVoiceAgent } from '../http';
+import { forgetVoiceInput, newVoiceInput, rememberVoiceInput, voiceInputMessageId, voiceInputMessageIds } from '../assistant/calls/voice-input.ts';
+import { errorResponse, eventStream, isVoiceAgent, jsonObject } from '../http';
 
 /**
  * Voice calls: tokens for the browser, and the endpoints of the voice agent
@@ -32,13 +31,14 @@ const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
  */
 voice.post('/token', async (c) => {
   try {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      conversationId?: string;
-      mode?: CallMode;
-    };
-    if (!body.conversationId) return Response.json(await warmupToken(), NO_STORE);
-    const conversation = await getConversation(body.conversationId);
-    if (!conversation) return errorResponse('Conversation not found', 404);
+    const body = await jsonObject(c.req.raw);
+    if (!body) return errorResponse('Body must be a JSON object', 400);
+    const conversationId = body.conversationId;
+    const mode = body.mode;
+    if (mode !== undefined && mode !== 'short' && mode !== 'long') return errorResponse('mode must be short or long', 400);
+    if (conversationId === undefined) return Response.json(await warmupToken(), NO_STORE);
+    if (typeof conversationId !== 'string' || conversationId.length > 200) return errorResponse('conversationId is invalid', 400);
+    const conversation = await requireConversation(conversationId);
     // Calls run on the fast model, which reads no images.
     if (await conversationHasAttachments(conversation.id)) {
       return errorResponse('Calls are not available in conversations with attachments', 409);
@@ -70,7 +70,7 @@ voice.post('/token', async (c) => {
           agentName: config.livekit.agentName,
           metadata: JSON.stringify({
             conversation_id: conversation.id,
-            call_mode: body.mode === 'long' ? 'long' : 'short',
+            call_mode: mode === 'long' ? 'long' : 'short',
           }),
         }),
       ],
@@ -126,8 +126,19 @@ voice.use('/conversations/*', async (c, next) => {
 voice.post('/conversations/:id/v1/chat/completions', async (c) => {
   const id = c.req.param('id');
   const req = c.req.raw;
-  const body = (await c.req.json().catch(() => null)) as { messages?: unknown[] } | null;
-  const text = newVoiceInput(id, body?.messages ?? []);
+  const body = await jsonObject(req);
+  if (!body || !Array.isArray(body.messages) || body.messages.length > 100 || body.messages.some((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
+    const row = item as Record<string, unknown>;
+    return typeof row.role !== 'string' || row.role.length > 32 || (row.content !== undefined && typeof row.content !== 'string' && !Array.isArray(row.content)) || (typeof row.content === 'string' && row.content.length > 100_000) || (Array.isArray(row.content) && (row.content.length > 100 || row.content.some((part) => !part || typeof part !== 'object' || Array.isArray(part) || (('text' in part) && typeof (part as { text?: unknown }).text !== 'string'))));
+  })) return errorResponse('messages must be a valid list with at most 100 entries', 400);
+  try { await requireConversation(id); } catch (error) { return errorResponse(error); }
+  const messages = body.messages as unknown[];
+  const suppliedCallId = req.headers.get('x-voice-call-id');
+  if (suppliedCallId && suppliedCallId.length > 200) return errorResponse('x-voice-call-id is too long', 400);
+  const callId = suppliedCallId || activeCallId(id);
+  const text = newVoiceInput(id, messages, callId);
+  const identity = voiceInputMessageId(messages);
 
   const completionId = `chatcmpl-${randomUUID()}`;
   const created = Math.floor(Date.now() / 1000);
@@ -141,23 +152,31 @@ voice.post('/conversations/:id/v1/chat/completions', async (c) => {
     })}\n\n`;
 
   const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const queued: string[] = [];
+  const write = (value: string) => {
+    if (!controller) { queued.push(value); return; }
+    try { controller.enqueue(encoder.encode(value)); } catch { /* client disconnected */ }
+  };
+  const admitted = text ? conversationRuntime(id).tryRun({
+    text,
+    modality: 'voice',
+    signal: req.signal,
+    ...(identity ? { clientMessageId: identity } : {}),
+    onText: (delta) => write(chunk({ content: delta })),
+  }) : null;
+  if (text && !admitted) return errorResponse('Conversation is busy; retry the voice input', 429);
+  const admittedMessageIds = admitted ? voiceInputMessageIds(messages) : [];
+  for (const messageId of admittedMessageIds) rememberVoiceInput(id, callId, messageId);
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const write = (s: string) => {
-        try {
-          controller.enqueue(encoder.encode(s));
-        } catch {
-          // client went away; the abort signal stops the turn
-        }
-      };
+    start(streamController) {
+      controller = streamController;
+      for (const value of queued.splice(0)) write(value);
+      void (async () => {
       write(chunk({ role: 'assistant', content: '' }));
-      if (text) {
-        const outcome = await conversationRuntime(id).run({
-          text,
-          modality: 'voice',
-          signal: req.signal,
-          onText: (delta) => write(chunk({ content: delta })),
-        });
+      if (admitted) {
+        const outcome = await admitted;
+        if (!outcome.success) for (const messageId of admittedMessageIds) forgetVoiceInput(id, callId, messageId);
         if (!outcome.success && outcome.error !== 'aborted' && !outcome.text) {
           console.error('[voice] turn failed:', outcome.error);
           write(chunk({ content: "Sorry, I couldn't process that." }));
@@ -168,6 +187,11 @@ voice.post('/conversations/:id/v1/chat/completions', async (c) => {
       try {
         controller.close();
       } catch {}
+      })().catch((error) => {
+        console.error('[voice] stream failed:', error);
+        for (const messageId of admittedMessageIds) forgetVoiceInput(id, callId, messageId);
+        try { controller?.error(error); } catch {}
+      });
     },
   });
 
@@ -181,50 +205,54 @@ voice.post('/conversations/:id/v1/chat/completions', async (c) => {
  * while it is open; it carries notices of spoken updates to deliver.
  * `?mode=long` opens a new call in long mode (default: short).
  */
-voice.get('/conversations/:id/call', (c) => {
+voice.get('/conversations/:id/call', async (c) => {
+  const id = c.req.param('id');
+  try { await requireConversation(id); } catch (error) { return errorResponse(error); }
   const mode = c.req.query('mode') === 'long' ? 'long' : 'short';
-  return eventStream(c.req.raw, (send) => openCallChannel(c.req.param('id'), send, mode));
+  return eventStream(c.req.raw, (send) => openCallChannel(id, send, mode));
 });
 
 /** The call mode, and whether the call ends once the latest response has played. */
-voice.get('/conversations/:id/call/state', (c) => Response.json(callState(c.req.param('id'))));
+voice.get('/conversations/:id/call/state', async (c) => {
+  try { const id = c.req.param('id'); await requireConversation(id); return Response.json(callState(id)); }
+  catch (error) { return errorResponse(error); }
+});
 
 /**
  * The voice agent speaks a queued background update: this runs the update's
  * voice turn and streams its text as plain text. Closing the request (the user
  * interrupted) aborts the turn. Each update is generated once.
  */
-voice.post('/conversations/:id/call/updates/:updateId', (c) => {
+voice.post('/conversations/:id/call/updates/:updateId', async (c) => {
   const { id, updateId } = c.req.param();
   const req = c.req.raw;
-  const update = takeUpdate(id, updateId) ? takeQueuedUpdate(id, updateId) : null;
+  try { await requireConversation(id); } catch (error) { return errorResponse(error); }
+  const update = await claimQueuedUpdate(id, updateId);
   if (!update) return errorResponse('No such pending update', 404);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const outcome = await conversationRuntime(id).run({
-        kind: 'update',
-        modality: 'voice',
-        text: '',
-        updates: [update],
-        signal: req.signal,
-        onText: (delta) => {
-          try {
-            controller.enqueue(encoder.encode(delta));
-          } catch {
-            // the agent went away; the abort signal stops the turn
-          }
-        },
-      });
-      if (!outcome.success && outcome.error !== 'aborted') {
-        console.error('[voice] update turn failed:', outcome.error);
-        controller.error(new Error(outcome.error ?? 'update failed'));
-        return;
-      }
       try {
-        controller.close();
-      } catch {}
+        const outcome = await conversationRuntime(id).run({
+          kind: 'update', modality: 'voice', text: '', updates: [update], signal: req.signal,
+          onText: (delta) => { try { controller.enqueue(encoder.encode(delta)); } catch {} },
+        });
+        if (outcome.success) {
+          await completeDelivery(id, update.id, update.deliveryToken!);
+          takeUpdate(id, updateId);
+        }
+        else await rollbackDelivery(id, update.id, update.deliveryToken!);
+        if (!outcome.success && outcome.error !== 'aborted') {
+          console.error('[voice] update turn failed:', outcome.error);
+          controller.error(new Error(outcome.error ?? 'update failed'));
+          return;
+        }
+        try { controller.close(); } catch {}
+      } catch (error) {
+        await rollbackDelivery(id, update.id, update.deliveryToken!);
+        try { controller.error(error); } catch {}
+      }
     },
   });
   return new Response(stream, {
@@ -238,8 +266,11 @@ voice.post('/conversations/:id/call/updates/:updateId', (c) => {
  */
 voice.post('/conversations/:id/call/updates/:updateId/ack', async (c) => {
   const { id, updateId } = c.req.param();
-  const { heard } = (await c.req.json().catch(() => ({}))) as { heard?: boolean };
-  if (heard === true) markRead(id, [updateId]);
+  try { await requireConversation(id); } catch (error) { return errorResponse(error); }
+  const body = await jsonObject(c.req.raw);
+  if (!body || typeof body.heard !== 'boolean') return errorResponse('heard must be a boolean', 400);
+  const heard = body.heard;
+  if (heard) await markRead(id, [updateId]);
   return Response.json({ heard: heard === true });
 });
 
@@ -249,8 +280,9 @@ voice.post('/conversations/:id/call/updates/:updateId/ack', async (c) => {
  * Letta launches a background reflection subagent that reviews the call
  * transcript and commits memory updates.
  */
-voice.post('/conversations/:id/ended', (c) => {
+voice.post('/conversations/:id/ended', async (c) => {
   const id = c.req.param('id');
+  try { await requireConversation(id); } catch (error) { return errorResponse(error); }
   endCall(id);
   void conversationRuntime(id)
     .reflect()

@@ -6,7 +6,7 @@ import {
   createMessageQueue,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
-import type { TextEffort } from '@backend/chat-types';
+import type { TextEffort } from '@shared/chat-types';
 import type { useConversation } from '@/hooks/use-conversation';
 import type { useConversations } from '@/hooks/use-conversations';
 import { attachmentAdapter, sentAttachments } from '@/lib/attachment-adapter';
@@ -29,6 +29,7 @@ interface ChatRuntimeOptions {
 }
 
 const identity = (message: ThreadMessageLike) => message;
+type ComposerContentPart = { type: string; text?: string };
 
 /**
  * Bridges the conversation hooks (Letta history + SSE events) to assistant-ui
@@ -44,7 +45,9 @@ export function useChatRuntime({
   effort,
 }: ChatRuntimeOptions) {
   const { create, rename, remove, deleteFromMessage } = list;
-  const { send, cancel, showPending, expectNew, keepPending, rewind, setError } = conversation;
+  const { send, cancel, showPending, expectNew, keepPending, rewind, setErrorFor } = conversation;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
 
   const cache = useRef<ThreadMessageCache>(new Map());
   const messages = useMemo(() => {
@@ -57,7 +60,9 @@ export function useChatRuntime({
   const toTurn = useCallback(
     (message: AppendMessage) => {
       const text = message.content
-        .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+        .flatMap((part: ComposerContentPart) =>
+          part.type === 'text' && typeof part.text === 'string' ? [part.text] : []
+        )
         .join('\n\n')
         .trim();
       const attachments = sentAttachments(message.attachments);
@@ -76,6 +81,7 @@ export function useChatRuntime({
     async (message: AppendMessage): Promise<boolean> => {
       const { text, attachments, effort: turnEffort } = toTurn(message);
       if (!text && attachments.length === 0) return false;
+      if (activeId !== conversation.shownId) return false;
       showPending({ text, attachments });
       let id = activeId;
       if (!id) {
@@ -91,7 +97,7 @@ export function useChatRuntime({
       }
       return send(id, text, turnEffort, attachments);
     },
-    [activeId, create, expectNew, select, send, showPending, toTurn]
+    [activeId, conversation.shownId, create, expectNew, select, send, showPending, toTurn]
   );
 
   /**
@@ -103,7 +109,13 @@ export function useChatRuntime({
     async (message: AppendMessage) => {
       const { text, attachments, effort: turnEffort } = toTurn(message);
       const sourceId = message.sourceId;
-      if (!activeId || !sourceId || (!text && attachments.length === 0)) return;
+      if (
+        !activeId ||
+        conversation.shownId !== activeId ||
+        !sourceId ||
+        (!text && attachments.length === 0)
+      )
+        return;
       const restore = rewind(sourceId);
       showPending({ text, attachments });
       let id: string;
@@ -117,16 +129,23 @@ export function useChatRuntime({
           expectNew(id);
         }
       } catch (error) {
-        restore();
-        showPending(null);
-        setError(error instanceof Error ? error.message : 'Could not edit the message');
+        if (activeIdRef.current === activeId) {
+          restore();
+          showPending(null);
+          setErrorFor(
+            activeId,
+            error instanceof Error ? error.message : 'Could not edit the message'
+          );
+        }
         return;
       }
+      if (activeIdRef.current !== activeId) return;
       select(id);
       await send(id, text, turnEffort, attachments);
     },
     [
       activeId,
+      conversation.shownId,
       create,
       deleteFromMessage,
       expectNew,
@@ -134,7 +153,7 @@ export function useChatRuntime({
       rewind,
       select,
       send,
-      setError,
+      setErrorFor,
       showPending,
       toTurn,
     ]
@@ -154,7 +173,7 @@ export function useChatRuntime({
   submitRef.current = submit;
   const [queue] = useState(() => {
     const created = createMessageQueue({
-      run: (message) =>
+      run: (message: AppendMessage) =>
         void submitRef
           .current(message)
           .catch(() => false)
@@ -196,19 +215,27 @@ export function useChatRuntime({
     messages,
     convertMessage: identity,
     isRunning,
-    isLoading: conversation.blank,
+    isLoading: conversation.loading,
     onNew,
     onEdit,
     onCancel: async () => {
-      if (activeId) await cancel(activeId);
+      if (activeId && conversation.shownId === activeId) await cancel(activeId);
     },
     queue: queue.adapter,
     // Deleting a user message rolls the conversation back to before it (the
     // history moves to a new conversation, or the conversation goes away).
-    onDelete: async (messageId) => {
-      if (!activeId) return;
-      const next = await deleteFromMessage(activeId, messageId);
-      select(next?.id ?? null);
+    onDelete: async (messageId: string) => {
+      if (!activeId || conversation.shownId !== activeId) return;
+      try {
+        const next = await deleteFromMessage(activeId, messageId);
+        if (activeIdRef.current !== activeId) return;
+        select(next?.id ?? null);
+      } catch (error) {
+        setErrorFor(
+          activeId,
+          error instanceof Error ? error.message : 'Could not delete the message'
+        );
+      }
     },
     adapters: {
       // No attachments during a call on this conversation: calls run on the fast model.
@@ -218,11 +245,11 @@ export function useChatRuntime({
         isLoading: list.loading,
         threads,
         onSwitchToNewThread: () => select(null),
-        onSwitchToThread: (id) => select(id),
-        onRename: (id, title) => rename(id, title),
-        onArchive: async (id) => {
+        onSwitchToThread: (id: string) => select(id),
+        onRename: (id: string, title: string) => rename(id, title),
+        onArchive: async (id: string) => {
           await remove(id);
-          if (id === activeId) select(null);
+          if (id === activeIdRef.current) select(null);
         },
       },
     },

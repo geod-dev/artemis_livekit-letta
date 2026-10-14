@@ -41,6 +41,10 @@ class FakeSession:
     def on(self, event: str, handler: Any) -> None:
         self.handlers[event] = handler
 
+    def off(self, event: str, handler: Any) -> None:
+        if self.handlers.get(event) is handler:
+            del self.handlers[event]
+
     def emit(self, event: str, payload: Any) -> None:
         self.handlers[event](payload)
 
@@ -170,4 +174,71 @@ async def test_interrupted_update_is_not_heard() -> None:
     await gateway.notices.put({"type": "update", "id": "u2"})
     await asyncio.sleep(0.3)
     assert gateway.acks == [("u2", False)]
+    await gateway.notices.put({"type": "update", "id": "u2"})
+    await asyncio.sleep(0.15)
+    assert len(session.said) == 1  # fully generated; only the heard/read ack is false
+    await controller.aclose()
+
+
+async def test_repeated_final_reply_replaces_the_hangup_timer() -> None:
+    controller, _, ctx, _ = setup(CallState(mode="short", next="end"))
+    await controller._after_response()
+    await asyncio.sleep(0.03)
+    await controller._after_response()
+    await asyncio.sleep(0.03)
+    assert not ctx.deleted
+    await asyncio.sleep(0.04)
+    assert ctx.deleted
+    await controller.aclose()
+
+
+async def test_close_cancels_all_tasks_and_detaches_event_handlers() -> None:
+    controller, session, _, _ = setup(CallState(mode="long", next="listen"))
+    await controller._after_response()
+    assert controller._tasks
+    await controller.aclose()
+    assert not controller._tasks
+    assert session.handlers == {}
+
+
+async def test_failed_update_retries_after_an_early_rollback_announcement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(call_module, "UPDATE_RETRY_BASE_SECONDS", 0.01)
+    controller, session, _, gateway = setup(CallState(mode="long", next="listen"))
+    original = gateway.update_text
+    attempts = 0
+    started = asyncio.Event()
+    fail_now = asyncio.Event()
+
+    async def fail_once(update_id: str) -> AsyncIterator[str]:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            started.set()
+            await fail_now.wait()
+            raise RuntimeError("temporary stream failure")
+        async for chunk in original(update_id):
+            yield chunk
+
+    gateway.update_text = fail_once  # type: ignore[method-assign]
+    gateway.update_texts["u3"] = ["Recovered"]
+    await gateway.notices.put({"type": "update", "id": "u3"})
+    await asyncio.wait_for(started.wait(), timeout=0.5)
+    # The backend may rollback and reannounce before the failed HTTP stream has
+    # unwound in this worker. It must not start a simultaneous generation.
+    await gateway.notices.put({"type": "update", "id": "u3"})
+    await asyncio.sleep(0.02)
+    assert attempts == 1
+    assert len(session.said) == 1
+    fail_now.set()
+    for _ in range(100):
+        if attempts == 2:
+            break
+        await asyncio.sleep(0.01)
+    assert attempts == 2
+    assert session.said[-1].spoken == "Recovered"
+    await gateway.notices.put({"type": "update", "id": "u3"})
+    await asyncio.sleep(0.03)
+    assert attempts == 2  # completed generation and read state are independent
     await controller.aclose()

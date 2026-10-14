@@ -9,13 +9,22 @@ import {
   validateMcpServers,
 } from './settings';
 
-const manual: McpServer = { name: 'search', transport: 'http', url: 'https://example.com/mcp' };
+const manual: McpServer = {
+  name: 'search',
+  transport: 'http',
+  url: 'https://example.com/mcp',
+};
 const device: McpServer = {
   name: 'device_laptop',
   transport: 'http',
   url: 'http://backend:3000/internal/mcp/devices/laptop',
   headers: { Authorization: 'Bearer internal-only' },
-  managed: { type: 'device', deviceName: 'laptop', connectedAt: '2026-10-12T00:00:00Z', tools: 1 },
+  managed: {
+    type: 'device',
+    deviceName: 'laptop',
+    connectedAt: '2026-10-12T00:00:00Z',
+    tools: 1,
+  },
 };
 function fixture(initial: McpServer[], devices: () => McpServer[]) {
   const files = new Map([[MCP_SETTINGS_PATH, renderMcpSettings(initial)]]);
@@ -27,11 +36,11 @@ function fixture(initial: McpServer[], devices: () => McpServer[]) {
     enableSkill: async () => {},
     disableSkill: async () => {},
   };
-  return new McpRegistry(io, devices, async () => {});
+  return { registry: new McpRegistry(io, devices, async () => {}), files };
 }
 test('manual saves preserve connection-managed servers; disconnect and restart remove only devices', async () => {
   let connected = [device];
-  const registry = fixture([manual], () => connected);
+  const { registry } = fixture([manual], () => connected);
   await Promise.all([
     registry.reconcile(),
     registry.saveManual([{ ...manual, name: 'new_search' }]),
@@ -46,13 +55,13 @@ test('manual saves preserve connection-managed servers; disconnect and restart r
     (await registry.list()).map((s) => s.name),
     ['new_search']
   );
-  const restarted = fixture([manual, device], () => []);
+  const { registry: restarted } = fixture([manual, device], () => []);
   await restarted.reconcile();
   assert.deepEqual(await restarted.list(), [manual]);
 });
 test('API cannot create managed entries or overwrite a connected device namespace', async () => {
   assert.throws(() => validateMcpServers([device]), /cannot be edited/);
-  const registry = fixture([manual], () => [device]);
+  const { registry } = fixture([manual], () => [device]);
   await registry.reconcile();
   await assert.rejects(
     registry.saveManual([{ ...manual, name: 'device_laptop' }]),
@@ -62,5 +71,15 @@ test('API cannot create managed entries or overwrite a connected device namespac
   assert.deepEqual(
     (await registry.list()).map((s) => s.name),
     ['search', 'device_laptop']
+  );
+});
+
+test('stale full-list saves are rejected by revision', async () => {
+  const { registry, files } = fixture([manual], () => []);
+  const stale = (await registry.snapshot()).revision;
+  files.set(MCP_SETTINGS_PATH, renderMcpSettings([{ ...manual, url: 'https://new.example/mcp' }]));
+  await assert.rejects(
+    registry.saveManual([{ ...manual, name: 'renamed' }], stale),
+    /changed since/
   );
 });

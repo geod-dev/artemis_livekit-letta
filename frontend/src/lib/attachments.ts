@@ -1,5 +1,5 @@
 /** Attachments and other files of the agent's workspace, as the browser sees them. */
-import type { ChatMessage } from '@backend/chat-types';
+import type { ChatMessage } from '@shared/chat-types';
 
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 

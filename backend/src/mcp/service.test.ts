@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { type McpIo, ensureMcpServers, loadMcpServers, saveMcpServers } from './service.ts';
+import { type McpIo, loadMcpServers, saveMcpServers } from './service.ts';
 import { MCP_SETTINGS_PATH, type McpServer, renderMcpSettings } from './settings.ts';
 import { MCP_SKILL_DIR, MCP_SKILL_NAME, renderMcpSkill } from './skill.ts';
 
-const SEARCH: McpServer = { name: 'search', transport: 'http', url: 'https://mcp.example.com/mcp' };
+const SEARCH: McpServer = {
+  name: 'search',
+  transport: 'http',
+  url: 'https://mcp.example.com/mcp',
+};
 
 /**
  * The same line-based parse Letta's frontmatter reader does: each unindented
@@ -42,18 +46,21 @@ function memoryIo(initial: Record<string, string> = {}) {
   return { io, files, events };
 }
 
-describe('ensureMcpServers', () => {
-  test('a fresh volume starts with an empty list and no skill', async () => {
+describe('service paths used by the registry', () => {
+  test('a fresh volume loads empty and save initializes settings plus no skill', async () => {
     const { io, files, events } = memoryIo();
-    assert.deepEqual(await ensureMcpServers(io), []);
     assert.deepEqual(await loadMcpServers(io), []);
+    await saveMcpServers(io, []);
     assert.ok(files.has(MCP_SETTINGS_PATH));
     assert.equal(events.at(-1), `disable ${MCP_SKILL_NAME}`);
   });
 
   test('a configured server gets the skill, linked after its files exist', async () => {
-    const { io, files, events } = memoryIo({ [MCP_SETTINGS_PATH]: renderMcpSettings([SEARCH]) });
-    assert.deepEqual(await ensureMcpServers(io), [SEARCH]);
+    const { io, files, events } = memoryIo({
+      [MCP_SETTINGS_PATH]: renderMcpSettings([SEARCH]),
+    });
+    assert.deepEqual(await loadMcpServers(io), [SEARCH]);
+    await saveMcpServers(io, [SEARCH]);
     assert.ok(files.has(`${MCP_SKILL_DIR}/SKILL.md`));
     assert.ok(files.has(`${MCP_SKILL_DIR}/scripts/mcp.sh`));
     // Linked only after its files exist: skill_enable validates SKILL.md.
@@ -64,7 +71,8 @@ describe('ensureMcpServers', () => {
     const other: McpServer = { name: 'notes', command: 'notes-mcp' };
     const settings = renderMcpSettings([other]);
     const { io, files } = memoryIo({ [MCP_SETTINGS_PATH]: settings });
-    assert.deepEqual(await ensureMcpServers(io), [other]);
+    assert.deepEqual(await loadMcpServers(io), [{ ...other, transport: 'stdio' }]);
+    await saveMcpServers(io, [other]);
     assert.equal(files.get(MCP_SETTINGS_PATH), settings);
     assert.match(files.get(`${MCP_SKILL_DIR}/SKILL.md`) ?? '', /notes/);
   });
@@ -75,6 +83,28 @@ describe('saveMcpServers', () => {
     const { io, events } = memoryIo();
     await saveMcpServers(io, []);
     assert.deepEqual(events, [`write ${MCP_SETTINGS_PATH}`, `disable ${MCP_SKILL_NAME}`]);
+  });
+
+  test('keeps malformed disk entries while saving valid servers', async () => {
+    const malformed = { name: 'broken' };
+    const { io, files } = memoryIo({
+      [MCP_SETTINGS_PATH]: JSON.stringify({
+        agents: [{ agentId: 'agent-local-mcp-global', mcpServers: [malformed] }],
+      }),
+    });
+    await saveMcpServers(io, [SEARCH]);
+    const saved = JSON.parse(files.get(MCP_SETTINGS_PATH) ?? '{}');
+    assert.deepEqual(saved.agents[0].mcpServers, [malformed, SEARCH]);
+  });
+
+  test('reports skill sync failure after the settings have already been saved', async () => {
+    const { io, files } = memoryIo();
+    io.enableSkill = async () => {
+      throw new Error('skill link failed');
+    };
+    const result = await saveMcpServers(io, [SEARCH]);
+    assert.deepEqual(result, { skill: 'failed', error: 'skill link failed' });
+    assert.deepEqual(JSON.parse(files.get(MCP_SETTINGS_PATH) ?? '{}').agents[0].mcpServers, [SEARCH]);
   });
 });
 

@@ -35,6 +35,8 @@ type Box = { x: number; y: number; s: number };
 const INLINE_SIZE = 23;
 const GAP_AFTER_TEXT = 6;
 const MAX_EYE_SHIFT = 4;
+const MOODS = ['neutral', 'curious', 'pleased'] as const;
+const SLEEPY_AFTER = 12_000;
 /** Frames of unchanged scroll required before the mascot travels. */
 const STABLE_FRAMES = 3;
 
@@ -109,11 +111,99 @@ export function Mascot({
     let lastScrollTop = viewport.scrollTop;
     let lastThreadId = threadIdRef.current;
     const eye = { x: 0, y: 0 };
+    const eyeVelocity = { x: 0, y: 0 };
+    let gazeOffset = { x: 0, y: 0 };
+    let nextSaccadeAt = 0;
+    let nextMoodAt = 0;
+    let moodIndex = 0;
+    let previousFrameAt = 0;
     let mouse: { x: number; y: number } | null = null;
+    let pointerActiveUntil = 0;
+    let frame = 0;
+    let lastActivityAt = performance.now();
+    let sleepyTimer = 0;
+    const setMoodForMode = () => {
+      const currentMode = modeRef.current;
+      root.dataset.mood =
+        currentMode === 'writing' ? 'curious' : currentMode === 'waiting' ? 'attentive' : 'neutral';
+    };
+    const updateSleepiness = () => {
+      const sleepy =
+        document.visibilityState !== 'visible' ||
+        !document.hasFocus() ||
+        performance.now() - lastActivityAt >= SLEEPY_AFTER;
+      if (sleepy) {
+        root.dataset.mood = 'sleepy';
+      } else if (root.dataset.mood === 'sleepy') {
+        setMoodForMode();
+      }
+      return sleepy;
+    };
+    const scheduleSleepiness = () => {
+      window.clearTimeout(sleepyTimer);
+      const remaining = SLEEPY_AFTER - (performance.now() - lastActivityAt);
+      if (remaining <= 0) {
+        updateSleepiness();
+      } else if (document.visibilityState === 'visible' && document.hasFocus()) {
+        sleepyTimer = window.setTimeout(updateSleepiness, remaining);
+      }
+    };
+    const onActivity = () => {
+      lastActivityAt = performance.now();
+      updateSleepiness();
+      scheduleSleepiness();
+    };
+    const scheduleFrame = () => {
+      if (!frame && document.visibilityState === 'visible') frame = requestAnimationFrame(tick);
+    };
     const onPointerMove = (e: PointerEvent) => {
       mouse = { x: e.clientX, y: e.clientY };
+      pointerActiveUntil = performance.now() + 250;
+      onActivity();
+      scheduleFrame();
     };
     window.addEventListener('pointermove', onPointerMove, { passive: true });
+    const onScroll = () => {
+      onActivity();
+      scheduleFrame();
+    };
+    const onFocus = () => {
+      onActivity();
+      scheduleFrame();
+    };
+    const onBlur = () => {
+      updateSleepiness();
+      window.clearTimeout(sleepyTimer);
+    };
+    const onKeyDown = () => onActivity();
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('pointerdown', onActivity, { passive: true });
+    window.addEventListener('keydown', onKeyDown);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        updateSleepiness();
+        window.clearTimeout(sleepyTimer);
+        cancelAnimationFrame(frame);
+        frame = 0;
+      } else {
+        scheduleSleepiness();
+        updateSleepiness();
+        scheduleFrame();
+      }
+    };
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('visibilitychange', onVisibility);
+    const resizeObserver = new ResizeObserver(scheduleFrame);
+    resizeObserver.observe(viewport);
+    resizeObserver.observe(container);
+    const mutationObserver = new MutationObserver(scheduleFrame);
+    mutationObserver.observe(viewport, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
 
     let wrappedMessage: Element | null = null;
     const markWrapped = (message: Element | null) => {
@@ -123,9 +213,11 @@ export function Mascot({
       wrappedMessage = message;
     };
 
-    let frame = 0;
     const tick = () => {
-      frame = requestAnimationFrame(tick);
+      frame = 0;
+      const now = performance.now();
+      const dt = Math.min((now - (previousFrameAt || now)) / 1000, 0.05);
+      previousFrameAt = now;
       const settingsAnchor = document.querySelector<HTMLElement>('[data-mascot-anchor="settings"]');
       container.style.zIndex = settingsAnchor ? '60' : '10';
       const switched = threadIdRef.current !== lastThreadId;
@@ -164,6 +256,18 @@ export function Mascot({
       // The effective mode drives the CSS animation (spin while waiting).
       if (root.dataset.mode !== spot.mode) root.dataset.mode = spot.mode;
       root.classList.toggle('mascot-wrapped', spot.mode === 'idle' && wrappedMessage !== null);
+      if (updateSleepiness()) {
+        root.dataset.mood = 'sleepy';
+      } else if (spot.mode === 'waiting') {
+        root.dataset.mood = 'attentive';
+      } else if (spot.mode === 'writing') {
+        root.dataset.mood = 'curious';
+      } else if (!reduceMotion && now >= nextMoodAt) {
+        // Change expression slowly so it reads as a mood, not a slot machine.
+        moodIndex = (moodIndex + 1 + Math.floor(Math.random() * (MOODS.length - 1))) % MOODS.length;
+        root.dataset.mood = MOODS[moodIndex];
+        nextMoodAt = now + 9000 + Math.random() * 7000;
+      }
       const target = settingsAnchor ? spot.box : clampToViewport(spot.box, container, viewport);
 
       pos ??= { ...target };
@@ -177,38 +281,87 @@ export function Mascot({
           if (Math.abs(target[key] - pos[key]) < 0.3) pos[key] = target[key];
         }
       }
+      const moving =
+        Math.abs(target.x - pos.x) >= 0.3 ||
+        Math.abs(target.y - pos.y) >= 0.3 ||
+        Math.abs(target.s - pos.s) >= 0.3;
 
       root.style.transform = `translate3d(${pos.x}px, ${pos.y}px, 0)`;
       root.style.width = `${pos.s}px`;
       root.style.height = `${pos.s}px`;
 
-      // Eyes: a glance at the new text while writing, centred while spinning,
-      // otherwise a subtle look towards the pointer.
+      // Small, irregular saccades keep the gaze from looking painted on.
+      if (!reduceMotion && now >= nextSaccadeAt) {
+        gazeOffset = {
+          x: Math.random() * 2.4 - 1.2,
+          y: Math.random() * 1.8 - 0.9,
+        };
+        nextSaccadeAt = now + 280 + Math.random() * 620;
+      }
+
+      // Eyes glance at new text while writing, centre while waiting, and
+      // otherwise follow the pointer with a little involuntary movement.
       let ex = 0;
       let ey = 0;
       if (spot.mode === 'writing') {
         ex = -MAX_EYE_SHIFT;
         ey = 1;
-      } else if (spot.mode !== 'waiting' && mouse) {
-        const origin = container.getBoundingClientRect();
-        const dx = mouse.x - (origin.left + pos.x + pos.s / 2);
-        const dy = mouse.y - (origin.top + pos.y + pos.s / 2);
-        const distance = Math.hypot(dx, dy) || 1;
-        const reach = Math.min(1, distance / 240) * MAX_EYE_SHIFT;
-        ex = (dx / distance) * reach;
-        ey = (dy / distance) * reach;
+      } else if (spot.mode !== 'waiting') {
+        if (mouse) {
+          const origin = container.getBoundingClientRect();
+          const dx = mouse.x - (origin.left + pos.x + pos.s / 2);
+          const dy = mouse.y - (origin.top + pos.y + pos.s / 2);
+          const distance = Math.hypot(dx, dy) || 1;
+          const reach = Math.min(1, distance / 240) * (MAX_EYE_SHIFT - 1);
+          ex = (dx / distance) * reach;
+          ey = (dy / distance) * reach;
+        }
+        ex += gazeOffset.x;
+        ey += gazeOffset.y;
       }
-      eye.x += (ex - eye.x) * (reduceMotion ? 1 : 0.15);
-      eye.y += (ey - eye.y) * (reduceMotion ? 1 : 0.15);
+      const gazeDistance = Math.hypot(ex, ey);
+      if (gazeDistance > MAX_EYE_SHIFT) {
+        ex = (ex / gazeDistance) * MAX_EYE_SHIFT;
+        ey = (ey / gazeDistance) * MAX_EYE_SHIFT;
+      }
+      if (reduceMotion) {
+        eye.x = ex;
+        eye.y = ey;
+        eyeVelocity.x = 0;
+        eyeVelocity.y = 0;
+      } else {
+        // A damped spring makes quick gaze jumps settle with a tiny overshoot.
+        const stiffness = 150;
+        const damping = 0.82;
+        const drag = 2 * Math.sqrt(stiffness) * damping;
+        eyeVelocity.x += (stiffness * (ex - eye.x) - drag * eyeVelocity.x) * dt;
+        eyeVelocity.y += (stiffness * (ey - eye.y) - drag * eyeVelocity.y) * dt;
+        eye.x += eyeVelocity.x * dt;
+        eye.y += eyeVelocity.y * dt;
+      }
       eyesRef.current?.setAttribute(
         'transform',
         `translate(${eye.x.toFixed(2)} ${eye.y.toFixed(2)})`
       );
+      const eyesSettling =
+        !reduceMotion && (Math.abs(eyeVelocity.x) > 0.02 || Math.abs(eyeVelocity.y) > 0.02);
+      if (moving || eyesSettling || (!reduceMotion && pointerActiveUntil > now)) scheduleFrame();
     };
-    frame = requestAnimationFrame(tick);
+    scheduleSleepiness();
+    updateSleepiness();
+    scheduleFrame();
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('pointerdown', onActivity);
+      window.removeEventListener('keydown', onKeyDown);
+      viewport.removeEventListener('scroll', onScroll);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearTimeout(sleepyTimer);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
       markWrapped(null);
     };
   }, [viewportRef]);
@@ -232,12 +385,12 @@ export function Mascot({
         }}
         data-mode={mode}
         className={cn(
-          'group/mascot text-mascot absolute top-0 left-0 z-10 transition-opacity duration-200',
+          'group/mascot text-foreground absolute top-0 left-0 z-10 transition-opacity duration-200',
           easterEggEnabled ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'
         )}
         style={{ width: 0, height: 0, opacity: 0 }}
       >
-        <MascotMark className="group-data-[mode=waiting]/mascot:animate-mascot-turn size-full">
+        <MascotMark className="group-data-[mode=waiting]/mascot:animate-mascot-anticipate size-full">
           <g ref={eyesRef}>
             {showXMarks ? (
               <g fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round">
@@ -245,8 +398,10 @@ export function Mascot({
               </g>
             ) : (
               <g className={blinking ? 'mascot-blink' : undefined}>
-                <rect x="29" y="32.5" width="16" height="35" rx="8" fill="currentColor" />
-                <rect x="55" y="32.5" width="16" height="35" rx="8" fill="currentColor" />
+                <g className="mascot-expression-eyes" fill="currentColor">
+                  <rect x="29" y="32.5" width="16" height="35" rx="8" />
+                  <rect x="55" y="32.5" width="16" height="35" rx="8" />
+                </g>
               </g>
             )}
           </g>
@@ -382,8 +537,8 @@ function useRandomBlink(): boolean {
         setBlinking(true);
         timer = window.setTimeout(() => {
           setBlinking(false);
-          schedule(Math.random() < 0.2 ? 180 : 2200 + Math.random() * 4300);
-        }, 150);
+          schedule(Math.random() < 0.18 ? 240 : 2200 + Math.random() * 4300);
+        }, 170);
       }, delay);
     };
     schedule(1500 + Math.random() * 3000);

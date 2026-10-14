@@ -1,3 +1,5 @@
+import { toolOutputText } from './tool-output.ts';
+
 /** A finished Bash call as a terminal shows it. */
 export interface BashOutput {
   /** stdout and stderr, which Letta returns merged. */
@@ -21,13 +23,14 @@ const TRUNCATION = /\n*\[Output truncated: [^\]]*\](?:\n\[Full output written to
  * output (background commands), which keep the generic tool display.
  */
 export function parseBashResult(result: unknown, isError = false): BashOutput | null {
-  if (typeof result !== 'string') return null;
-  if (BACKGROUND.test(result)) return null;
-  if (isError && result.trim() === INTERRUPTED) {
+  const outputText = toolOutputText(result);
+  if (outputText === null) return null;
+  if (BACKGROUND.test(outputText)) return null;
+  if (isError && outputText.trim() === INTERRUPTED) {
     return { lines: [INTERRUPTED], exitCode: 130, truncated: false };
   }
 
-  let text = result;
+  let text = outputText;
   let exitCode = 0;
   if (isError) {
     const code = EXIT_CODE.exec(text);

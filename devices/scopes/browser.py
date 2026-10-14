@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import urllib.parse
+from .settings import ScopeSettings
 
 def open_url(arguments, firefox=None):
     url = arguments.get('url')
@@ -22,6 +23,6 @@ def open_url(arguments, firefox=None):
     subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return {'content': [{'type': 'text', 'text': 'Opened URL in the browser.'}]}
 
-def register(args):
+def register(args: ScopeSettings):
     tool = {'name': 'open_url', 'description': 'Open an HTTP or HTTPS URL in the device browser.', 'inputSchema': {'type': 'object', 'properties': {'url': {'type': 'string'}}, 'required': ['url'], 'additionalProperties': False}, 'annotations': {'readOnlyHint': False}}
     return [tool], {'open_url': lambda arguments: open_url(arguments, args.firefox)}

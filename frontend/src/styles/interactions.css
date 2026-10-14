@@ -1,0 +1,65 @@
+/* Reusable interaction feedback and mascot motion. */
+@media (hover: none) and (pointer: coarse) {
+  button:active:not(:disabled) {
+    transform: scale(0.98);
+    transition: transform 100ms ease-out;
+  }
+}
+
+@layer components {
+  /* The mascot's eyes close for a blink (the rotation is applied to the svg). */
+  .mascot-blink {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: mascot-blink 170ms ease-in-out;
+  }
+  @keyframes mascot-blink {
+    41% {
+      transform: scaleY(0.1);
+    }
+  }
+
+  /* Tiny expression changes give the eyes a mood without changing the mark. */
+  .mascot-expression-eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  [data-mood='curious'] .mascot-expression-eyes {
+    transform: rotate(-3deg) scaleX(1.04);
+  }
+  [data-mood='pleased'] .mascot-expression-eyes {
+    transform: scaleY(0.86);
+  }
+  [data-mood='sleepy'] .mascot-expression-eyes {
+    transform: translateY(8px) scaleY(0.38);
+  }
+
+  /* The mascot below a finished reply, beside its action bar. */
+  .mascot-wrapped {
+    translate: 10px 7px;
+  }
+
+  /* Lift on hover, squish on press: for the main actions. */
+  .bouncy {
+    transition:
+      transform 220ms var(--ease-spring),
+      background-color 150ms ease;
+  }
+  .bouncy:hover:not(:disabled) {
+    transform: translateY(-1px) scale(1.05);
+  }
+  .bouncy:active:not(:disabled) {
+    transform: scale(0.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

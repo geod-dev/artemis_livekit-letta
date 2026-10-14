@@ -1,11 +1,12 @@
 """Filesystem access using absolute paths across the device's filesystem."""
 import json
 from pathlib import Path
+from .settings import ScopeSettings
 
 MAX_FILE_BYTES = 1_000_000
 
 
-def register(args):
+def register(args: ScopeSettings):
     active_folder = Path(args.active_folder).resolve()
 
     def resolve(user_path):

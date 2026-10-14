@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
-import type { McpServer, McpSettingsResponse, McpTransport } from '@backend/chat-types';
+import type { McpServer, McpSettingsResponse, McpTransport } from '@shared/chat-types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -25,7 +25,9 @@ const FIELD_LABEL = 'flex flex-col gap-1.5 text-sm font-medium';
 const FIELD_HINT = 'text-muted-foreground text-xs font-normal';
 
 async function errorText(response: Response, fallback: string): Promise<string> {
-  const body = (await response.json().catch(() => null)) as { error?: string } | null;
+  const body = (await response.json().catch(() => null)) as {
+    error?: string;
+  } | null;
   return body?.error ?? fallback;
 }
 
@@ -41,9 +43,17 @@ export function McpServers({ active }: { active: boolean }) {
   const [status, setStatus] = useState('');
   const [draft, setDraft] = useState<McpServerDraft | null>(null);
   const [draftIndex, setDraftIndex] = useState<number | null>(null);
+  const [draftRevision, setDraftRevision] = useState<string | null>(null);
+  const [retryableSync, setRetryableSync] = useState<McpSettingsResponse['sync'] | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
   const servers = settings?.servers ?? [];
   const editableServers = servers.filter((server) => !server.managed);
+  const syncNeedsRetry = Boolean(
+    retryableSync &&
+    [retryableSync.skill, retryableSync.catalog, retryableSync.prompt, retryableSync.mod].some(
+      (state) => state === 'failed' || state === 'pending'
+    )
+  );
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setStatus('Loading…');
@@ -69,20 +79,43 @@ export function McpServers({ active }: { active: boolean }) {
     return () => clearInterval(timer);
   }, [active, load]);
 
-  const persist = async (next: McpServer[]): Promise<boolean> => {
+  const persist = async (next: McpServer[], revision: string | null): Promise<boolean> => {
+    if (!revision) {
+      setStatus('Reload settings before saving.');
+      return false;
+    }
     setStatus('Saving and connecting…');
     try {
       const response = await fetch('/api/mcp', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ servers: next.filter((server) => !server.managed) }),
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': `"${revision}"`,
+        },
+        body: JSON.stringify({
+          servers: next.filter((server) => !server.managed),
+        }),
       });
       if (!response.ok) {
         setStatus(await errorText(response, 'Save failed'));
         return false;
       }
-      setSettings((await response.json()) as McpSettingsResponse);
-      setStatus('Saved. Agents see the change on their next turn.');
+      const saved = (await response.json()) as McpSettingsResponse;
+      setSettings(saved);
+      const sync = saved.sync;
+      setRetryableSync(
+        sync &&
+          [sync.skill, sync.catalog, sync.prompt, sync.mod].some(
+            (state) => state === 'failed' || state === 'pending'
+          )
+          ? sync
+          : null
+      );
+      setStatus(
+        sync && Object.values(sync).some((value) => value === 'failed' || value === 'pending')
+          ? 'Saved. Some MCP updates are still syncing and can be retried.'
+          : 'Saved. Agents see the change on their next turn.'
+      );
       return true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
@@ -93,19 +126,27 @@ export function McpServers({ active }: { active: boolean }) {
   const openEditor = (server: McpServer | null, index: number | null) => {
     setDraft(server ? toDraft(server) : { ...BLANK_DRAFT });
     setDraftIndex(index);
+    setDraftRevision(settings?.revision ?? null);
   };
 
   const commit = async () => {
     if (!draft?.name.trim()) return;
     const next = [...editableServers];
-    if (draftIndex === null) next.push(fromDraft(draft));
-    else next[draftIndex] = fromDraft(draft);
-    if (await persist(next)) setDraft(null);
+    try {
+      if (draftIndex === null) next.push(fromDraft(draft));
+      else next[draftIndex] = fromDraft(draft);
+      if (await persist(next, draftRevision)) setDraft(null);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const remove = async (index: number) => {
     setRemoving(null);
-    await persist(editableServers.filter((_, i) => i !== index));
+    await persist(
+      editableServers.filter((_, i) => i !== index),
+      settings?.revision ?? null
+    );
   };
 
   return (
@@ -121,7 +162,6 @@ export function McpServers({ active }: { active: boolean }) {
           size="icon-sm"
           onClick={() => void load()}
           aria-label="Reload MCP servers"
-          title="Reload MCP servers"
         >
           <RefreshCwIcon />
         </Button>
@@ -135,7 +175,33 @@ export function McpServers({ active }: { active: boolean }) {
         automatically while connected and are managed by their connections.
       </p>
 
-      {status && <p className="text-muted-foreground text-sm">{status}</p>}
+      {(status || syncNeedsRetry) && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {status && <p className="text-muted-foreground">{status}</p>}
+          {syncNeedsRetry && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void persist(editableServers, retryableSync?.retryableRevision ?? null)
+              }
+            >
+              Retry sync
+            </Button>
+          )}
+        </div>
+      )}
+
+      {settings?.diagnostics.map((entry) => (
+        <p
+          key={`invalid-${entry.index}`}
+          className="text-destructive rounded-md border px-3 py-2 text-sm"
+        >
+          Invalid saved MCP entry {entry.index + 1}: {entry.diagnostic}. It is excluded from tools
+          and preserved when saving.
+        </p>
+      ))}
 
       <ul className="flex flex-col gap-2">
         {servers.map((server) => {
@@ -182,7 +248,6 @@ export function McpServers({ active }: { active: boolean }) {
                     size="icon-sm"
                     onClick={() => openEditor(server, index)}
                     aria-label={`Edit ${server.name}`}
-                    title="Edit"
                   >
                     <PencilIcon />
                   </Button>
@@ -192,7 +257,6 @@ export function McpServers({ active }: { active: boolean }) {
                     size="icon-sm"
                     onClick={() => setRemoving(index)}
                     aria-label={`Remove ${server.name}`}
-                    title="Remove"
                   >
                     <Trash2Icon />
                   </Button>
@@ -242,7 +306,7 @@ function ServerStatus({
   const failure = bridge.failures[server.name];
   if (failure) {
     return (
-      <p className="text-destructive mt-1 truncate text-xs" title={failure}>
+      <p className="text-destructive mt-1 truncate text-xs">
         Not reachable: {failure}
       </p>
     );
@@ -301,7 +365,10 @@ function ServerDialog({
             <select
               value={draft.transport}
               onChange={(event) =>
-                onChange({ ...draft, transport: event.target.value as McpTransport })
+                onChange({
+                  ...draft,
+                  transport: event.target.value as McpTransport,
+                })
               }
               className="border-input bg-background h-9 rounded-md border px-3 text-sm"
             >
@@ -344,12 +411,15 @@ function ServerDialog({
               </label>
               <label className={FIELD_LABEL}>
                 Arguments
-                <Input
+                <Textarea
                   value={draft.args}
-                  placeholder="-y @modelcontextprotocol/server-everything"
+                  placeholder={'["-y", "@modelcontextprotocol/server-everything"]'}
                   onChange={(event) => onChange({ ...draft, args: event.target.value })}
+                  className="min-h-24 font-mono text-xs"
                 />
-                <span className={FIELD_HINT}>Space separated.</span>
+                <span className={FIELD_HINT}>
+                  Enter a JSON array of strings to preserve spaces and quotes.
+                </span>
               </label>
               <label className={FIELD_LABEL}>
                 Environment

@@ -2,9 +2,10 @@
 import shutil
 import subprocess
 import sys
+from .settings import ScopeSettings
 
 
-def register(args):
+def register(args: ScopeSettings):
     playerctl = shutil.which('playerctl') if sys.platform.startswith('linux') else None
     osascript = shutil.which('osascript') if sys.platform == 'darwin' else None
     windows = sys.platform == 'win32'
@@ -49,10 +50,11 @@ def register(args):
                 'play': 'tell application "Music" to play', 'pause': 'tell application "Music" to pause',
                 'play_pause': 'tell application "Music" to playpause',
                 'info': 'tell application "Music" to get (name of current track) & " — " & (artist of current track)',
-                'volume': f'tell application "Music" to set sound volume to {round(volume)}',
                 'volume_up': 'tell application "Music" to set v to (sound volume + 5); if v > 100 then set v to 100; set sound volume to v',
                 'volume_down': 'tell application "Music" to set v to (sound volume - 5); if v < 0 then set v to 0; set sound volume to v',
             }
+            if action == 'volume':
+                scripts['volume'] = f'tell application "Music" to set sound volume to {round(volume)}'
             command = [osascript, '-e', scripts[action]]
         result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
         if result.returncode: raise RuntimeError(result.stderr.strip() or 'Media command failed')

@@ -1,5 +1,5 @@
 import type { AttachmentAdapter, CompleteAttachment } from '@assistant-ui/react';
-import type { ChatAttachment } from '@backend/chat-types';
+import type { ChatAttachment } from '@shared/chat-types';
 import { MAX_ATTACHMENT_BYTES } from './attachments';
 import { toThreadAttachment } from './thread-messages';
 
@@ -32,7 +32,13 @@ export const attachmentAdapter: AttachmentAdapter = {
     if (!res.ok) throw new Error(body?.error ?? `Could not upload ${attachment.name}`);
     return toThreadAttachment(body as ChatAttachment) as CompleteAttachment;
   },
-  async remove() {},
+  async remove(attachment) {
+    if (!attachment.id.startsWith('data/attachments/')) return;
+    await fetch(`/api/attachments?path=${encodeURIComponent(attachment.id)}`, {
+      method: 'DELETE',
+      keepalive: true,
+    }).catch(() => {});
+  },
 };
 
 /** The uploaded attachments of a sent message. */

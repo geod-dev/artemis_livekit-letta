@@ -1,6 +1,15 @@
 .env
 .env.local
-.env.pre-https.*
+.env.*
+!.env.example
+*.log
+*.log.*
+*.keystore
+*.jks
+mobile/.signing/
+mobile/app/build/
+mobile/.gradle/
+mobile/local.properties
 node_modules/
 .venv/
 __pycache__/
@@ -9,3 +18,7 @@ __pycache__/
 .ruff_cache/
 .pnpm-store/
 .codex-tmp/
+**/__pycache__/
+**/*.py[codc]
+**/.pytest_cache/
+**/.ruff_cache/

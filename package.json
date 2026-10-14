@@ -1,0 +1,21 @@
+{
+  "name": "livekit-letta",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "24.19.0"
+  },
+  "packageManager": "pnpm@10.18.0",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "check:backend": "node scripts/check.mjs backend",
+    "check:frontend": "node scripts/check.mjs frontend",
+    "check:voice": "node scripts/check.mjs voice",
+    "check:devices": "node scripts/check.mjs devices",
+    "check:letta": "node scripts/check.mjs letta",
+    "check:letta-bundle": "node scripts/check.mjs letta-bundle",
+    "check:operations": "node scripts/check.mjs operations",
+    "check:schema": "node scripts/check.mjs schema",
+    "generate:present-tool": "node --experimental-strip-types --no-warnings frontend/scripts/generate-present-tool.ts"
+  }
+}

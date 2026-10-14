@@ -1,0 +1,153 @@
+/* Shared composer and effort controls. */
+.effort-popover {
+  border-radius: var(--popover-radius);
+}
+.effort-popover-arrow {
+  fill: var(--glass-surface);
+}
+.effort-slider {
+  appearance: none;
+  margin: 0;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+.effort-slider-wrap {
+  --effort-transition: 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.effort-slider-track {
+  position: absolute;
+  top: 50%;
+  right: 18px;
+  left: 18px;
+  height: 32px;
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--foreground) 14%, transparent);
+  transform: translateY(-50%);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+.effort-slider-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--effort-progress);
+  overflow: hidden;
+  border-radius: var(--control-radius) 0 0 var(--control-radius);
+  background: var(--primary);
+  transition: width var(--effort-transition);
+}
+.effort-slider-thumb {
+  position: absolute;
+  top: 50%;
+  left: var(--effort-progress);
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, #000 28%, transparent);
+  translate: -50% -50%;
+  pointer-events: none;
+  transition:
+    left var(--effort-transition),
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 160ms ease;
+}
+.effort-slider-particle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: var(--particle-size);
+  height: var(--particle-size);
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 7px color-mix(in srgb, white 80%, transparent);
+  opacity: var(--particle-opacity);
+  pointer-events: none;
+  animation: effort-particle-left var(--particle-duration) linear var(--particle-delay) infinite;
+}
+@keyframes effort-particle-left {
+  0% {
+    right: 0;
+    transform: translate(50%, calc(-50% + var(--particle-y-start))) scale(1);
+  }
+  100% {
+    right: 100%;
+    transform: translate(50%, calc(-50% + var(--particle-y-end))) scale(0.55);
+  }
+}
+.effort-slider::-webkit-slider-runnable-track {
+  height: 32px;
+  border-radius: 999px;
+  background: transparent;
+}
+.effort-slider::-moz-range-track {
+  height: 32px;
+  border-radius: 999px;
+  background: transparent;
+}
+.effort-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  margin-top: -2px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+.effort-slider::-moz-range-thumb {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+.effort-slider-wrap:has(.effort-slider:hover) .effort-slider-thumb,
+.effort-slider-wrap:has(.effort-slider:focus-visible) .effort-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 3px 12px color-mix(in srgb, #000 34%, transparent);
+}
+.effort-slider-wrap:has(.effort-slider:active) .effort-slider-thumb {
+  transform: scale(0.94);
+}
+@media (prefers-reduced-motion: reduce) {
+  .effort-slider-fill,
+  .effort-slider-thumb,
+  .effort-slider-particle {
+    transition: none;
+    animation: none;
+  }
+}
+.aui-composer-input::placeholder {
+  color: color-mix(in srgb, var(--foreground) 48%, transparent);
+}
+.aui-composer-send,
+.aui-composer-call,
+.aui-composer-cancel {
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.aui-user-message-content {
+  border-color: var(--glass-border) !important;
+  background: var(--glass-surface) !important;
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+.dark .aui-user-message-content {
+  color: var(--foreground) !important;
+  border-color: var(--glass-border) !important;
+}
+.aui-generative-root [data-aui='card'][data-aui-surface],
+.aui-generative-root [data-aui='carousel'] [data-aui='card'] {
+  border-color: color-mix(in srgb, var(--glass-border) 70%, transparent) !important;
+  background: var(--surface-alternate) !important;
+  box-shadow: none;
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+.aui-thread-welcome-message-inner,
+.aui-welcome-title {
+  font-weight: 500 !important;
+  letter-spacing: -0.035em;
+}
+.app-shell :is(button, a, input, textarea, [role='button']):focus-visible {
+  outline-color: color-mix(in srgb, var(--primary) 76%, white);
+}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { ChatMessage } from '@backend/chat-types';
+import type { ChatMessage } from '@shared/chat-types';
 import { toThreadMessages } from './thread-messages.ts';
 
 const user = (id: string, text: string, modality: 'text' | 'voice' = 'text'): ChatMessage => ({

@@ -5,11 +5,12 @@ import {
   JSONGenerativeUI,
   defaultGenerativeUILibrary,
 } from '@assistant-ui/react-generative-ui';
+import { type PresentValidation, validatePresentTree } from '../../../shared/present-validation.ts';
 
 /**
  * Generative UI: the assistant calls the `present` tool with a JSON tree of
  * components (`{ $type, ...props, children }`) and the chat renders it. The
- * backend registers the tool with Letta from `backend/src/assistant/present-tool.json`,
+ * backend registers the tool with Letta from `shared/generated/present-tool.json`,
  * generated from this library by `pnpm generate:present-tool`; a test fails
  * when the two differ.
  */
@@ -19,6 +20,20 @@ export const PRESENT_TOOL = 'present';
 export const REPLY_ACTION = 'reply';
 
 const markdown = defaultGenerativeUILibrary.Markdown!;
+
+/** Validate and decode a completed `present` call before handing it to React. */
+export function validatePresent(node: unknown): PresentValidation {
+  return validatePresentTree(node, (type, props) => {
+    const component = defaultGenerativeUILibrary[type];
+    if (!component) return false;
+    const parsed = component.properties.safeParse(props);
+    return (
+      parsed.success &&
+      Object.keys(parsed.data).length === Object.keys(props).length &&
+      Object.keys(props).every((key) => Object.hasOwn(parsed.data, key))
+    );
+  });
+}
 
 /**
  * The components `present` can use: assistant-ui's default vocabulary, with
@@ -54,24 +69,9 @@ export function presentToolSchema(library: GenerativeUILibrary) {
  * encodes components is read as those components.
  */
 export function presentTree(node: unknown): unknown {
-  if (Array.isArray(node)) return node.map(presentTree);
-  if (node === null || typeof node !== 'object' || !('children' in node)) return node;
-  const { children, ...props } = node as Record<string, unknown>;
-  return { ...props, children: presentTree(decodeChildren(children)) };
+  const result = validatePresent(node);
+  return result.ok ? result.tree : undefined;
 }
-
-function decodeChildren(children: unknown): unknown {
-  if (typeof children !== 'string' || !/^\s*[[{]/.test(children)) return children;
-  try {
-    const parsed: unknown = JSON.parse(children);
-    const encodesNodes = Array.isArray(parsed) ? parsed.some(isNode) : isNode(parsed);
-    return encodesNodes ? parsed : children;
-  } catch {
-    return children;
-  }
-}
-
-const isNode = (value: unknown) => value !== null && typeof value === 'object' && '$type' in value;
 
 /**
  * The chat message a `reply` action sends: its `text`, then the value of the

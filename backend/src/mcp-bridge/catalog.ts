@@ -21,6 +21,7 @@ export interface CatalogTool {
 }
 
 const DEFAULT_TTL_MS = 10 * 60_000;
+const SERVER_FANOUT = 5;
 
 function serverSlug(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]+/g, '_');
@@ -110,17 +111,27 @@ export class McpCatalog {
     this.inflight ??= (async () => {
       try {
         const servers = (await this.deps.servers()).filter(isBridgeable);
+        if (servers.length > 100)
+          throw new Error('MCP bridge is limited to 100 configured servers');
         const failures = new Map<string, string>();
-        const lists = await Promise.all(
-          servers.map(async (server) => {
-            try {
-              return toCatalogTools(server, await this.deps.client.listTools(server));
-            } catch (error) {
-              failures.set(server.name, error instanceof Error ? error.message : String(error));
-              return [];
+        const lists: CatalogTool[][] = Array.from({ length: servers.length }, () => []);
+        let nextIndex = 0;
+        const workers = Array.from(
+          { length: Math.min(SERVER_FANOUT, servers.length) },
+          async () => {
+            while (true) {
+              const index = nextIndex++;
+              const server = servers[index];
+              if (!server) return;
+              try {
+                lists[index] = toCatalogTools(server, await this.deps.client.listTools(server));
+              } catch (error) {
+                failures.set(server.name, error instanceof Error ? error.message : String(error));
+              }
             }
-          })
+          }
         );
+        await Promise.all(workers);
         this.tools = lists.flat();
         this.failures = failures;
         this.fetchedAt = this.now();
@@ -145,7 +156,10 @@ export class McpCatalog {
   }
 
   /** What the last refresh saw, without refreshing. */
-  snapshot(): { tools: readonly CatalogTool[]; failures: ReadonlyMap<string, string> } {
+  snapshot(): {
+    tools: readonly CatalogTool[];
+    failures: ReadonlyMap<string, string>;
+  } {
     return { tools: this.tools, failures: this.failures };
   }
 }

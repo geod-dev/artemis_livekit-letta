@@ -1,3 +1,5 @@
+import { toolOutputText } from './tool-output.ts';
+
 /** One result of an Exa web search. */
 export interface WebResult {
   title: string;
@@ -30,9 +32,10 @@ const SNIPPET_CHARS = 280;
  * Returns null when no result can be read.
  */
 export function parseWebSearchResult(result: unknown): WebSearchOutput | null {
-  if (typeof result !== 'string') return null;
-  const truncated = TRUNCATION.test(result);
-  const body = result.replace(TRUNCATION, '');
+  const outputText = toolOutputText(result);
+  if (outputText === null) return null;
+  const truncated = TRUNCATION.test(outputText);
+  const body = outputText.replace(TRUNCATION, '');
   const results = searchText(body)
     .split(/\n-{3,}\n/)
     .flatMap((block) => {

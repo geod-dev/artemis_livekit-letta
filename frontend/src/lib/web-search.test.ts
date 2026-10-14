@@ -39,6 +39,19 @@ test('reads result blocks as the MCP bridge returns them (plain text)', () => {
   assert.equal(parseWebSearchResult(blocks)?.results.length, 2);
 });
 
+test('reads the new MCP envelope with structured content and ignores binary artifacts', () => {
+  const output = parseWebSearchResult(
+    JSON.stringify({
+      structuredContent: { count: 2 },
+      content: [
+        { type: 'image', data: 'not display text', mimeType: 'image/png' },
+        { type: 'text', text: blocks },
+      ],
+    })
+  );
+  assert.equal(output?.results.length, 2);
+});
+
 test("notices the MCP bridge's cut", () => {
   const output = parseWebSearchResult(
     `${blocks}\n\n[Cut at 30000 characters: ask the tool for less, e.g. a smaller page.]`

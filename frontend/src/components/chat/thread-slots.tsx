@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, createContext, useContext, useEffect, useRef, useState } from 'react';
 import { BrainIcon, PartyPopperIcon, XIcon } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { Streamdown } from 'streamdown';
@@ -8,14 +8,15 @@ import {
   QueueItemPrimitive,
   useAuiState,
 } from '@assistant-ui/react';
-import type { TextEffort } from '@backend/chat-types';
+import type { TextEffort } from '@shared/chat-types';
+import type { ThreadComponents } from '@/components/assistant-ui/chat/thread';
 import {
   MARKDOWN_COMPONENTS,
   MARKDOWN_REHYPE_PLUGINS,
-} from '@/components/assistant-ui/elements/markdown-text';
-import type { ThreadComponents } from '@/components/assistant-ui/elements/thread.aui';
-import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button';
+} from '@/components/assistant-ui/markdown/markdown-text';
+import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import type { TaskStatus } from '@/hooks/use-conversation';
 import { greetingsFor, pickGreeting } from '@/lib/greetings';
 import { cn } from '@/lib/shadcn/utils';
@@ -28,7 +29,7 @@ export interface ChatThreadState {
   /** The conversation has attachments: Instant (the fast model) is unavailable. */
   withAttachments: boolean;
   callButton: {
-    tooltip: string;
+    label: string;
     disabled: boolean;
     active: boolean;
     onClick: () => void;
@@ -82,7 +83,7 @@ function Welcome() {
         key={greeting ?? 'pending'}
         onDoubleClick={chooseAnotherGreeting}
         className={cn(
-          'font-display max-w-full text-[clamp(1.75rem,6.5vw,3rem)] leading-[1.05] font-extrabold tracking-tight text-balance select-none',
+          'aui-welcome-title font-display max-w-full text-[clamp(1.75rem,6.5vw,3rem)] leading-[1.05] font-medium tracking-tight text-balance select-none',
           greeting ? 'animate-pop-in [animation-delay:90ms]' : 'invisible'
         )}
       >
@@ -95,9 +96,9 @@ function Welcome() {
 const EFFORT_VALUES: TextEffort[] = ['fast', 'low', 'medium', 'high'];
 const EFFORT_LABELS: Record<TextEffort, string> = {
   fast: 'Instant',
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
+  low: 'Medium',
+  medium: 'High',
+  high: 'Max',
 };
 
 function ComposerEffortControl() {
@@ -107,64 +108,134 @@ function ComposerEffortControl() {
   const locked = withAttachments || composerAttachments;
   const effort = locked && chosen === 'fast' ? 'low' : chosen;
   const index = EFFORT_VALUES.indexOf(effort);
+  const particleCount = [16, 14, 16, 18][index];
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  );
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(false);
+  const [particleStyles] = useState(() =>
+    Array.from({ length: 18 }, () => {
+      const random = (min: number, max: number) => min + Math.random() * (max - min);
+      return {
+        size: random(1.5, 4.5),
+        yStart: random(-12, 12),
+        yEnd: random(-12, 12),
+        speedFactor: random(0.75, 1.25),
+        phase: random(-1, 0),
+        opacity: random(0.35, 0.95),
+      };
+    })
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const update = () => {
+      setIsMobile(query.matches);
+      setMobileOpen(false);
+      setDesktopOpen(false);
+    };
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  const pickerContent = (
+    <>
+      <p className="mb-3 text-center text-sm font-bold">{EFFORT_LABELS[effort]}</p>
+      <div
+        className="effort-slider-wrap relative flex h-[68px] items-center"
+        style={
+          {
+            '--effort-progress': `${(index / (EFFORT_VALUES.length - 1)) * 100}%`,
+          } as CSSProperties
+        }
+      >
+        <div className="effort-slider-track" aria-hidden="true">
+          <span className="effort-slider-fill">
+            {particleStyles.slice(0, particleCount).map((style, particleIndex) => (
+              <i
+                key={particleIndex}
+                className="effort-slider-particle"
+                style={
+                  {
+                    '--particle-size': `${style.size}px`,
+                    '--particle-y-start': `${style.yStart}px`,
+                    '--particle-y-end': `${style.yEnd}px`,
+                    '--particle-duration': `${950 * style.speedFactor}ms`,
+                    '--particle-delay': `${950 * style.phase}ms`,
+                    '--particle-opacity': style.opacity,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </span>
+          <span className="effort-slider-thumb" />
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={3}
+          step={1}
+          value={index}
+          onChange={(event) =>
+            setEffort(EFFORT_VALUES[Math.max(locked ? 1 : 0, Number(event.target.value))])
+          }
+          aria-label="Text response effort"
+          aria-valuetext={EFFORT_LABELS[effort]}
+          className="effort-slider absolute inset-0 z-10 h-full w-full cursor-pointer"
+        />
+      </div>
+      {locked && (
+        <p className="text-muted-foreground mt-2 text-xs">
+          Can't use Instant with attachments.
+        </p>
+      )}
+    </>
+  );
 
   return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={`Response effort: ${EFFORT_LABELS[effort]}`}
-          title={`Response effort: ${EFFORT_LABELS[effort]}`}
-          className="text-muted-foreground hover:bg-muted hover:text-foreground h-7 rounded-full px-2.5 text-xs font-semibold"
+    <>
+      <Popover.Root open={!isMobile && desktopOpen} onOpenChange={setDesktopOpen}>
+        <Popover.Anchor asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            title={`Response effort: ${EFFORT_LABELS[effort]}`}
+            aria-haspopup="dialog"
+            aria-expanded={isMobile ? mobileOpen : desktopOpen}
+            onClick={() => {
+              if (isMobile) setMobileOpen(true);
+              else setDesktopOpen((open) => !open);
+            }}
+            className="aui-composer-effort-trigger text-muted-foreground hover:bg-muted hover:text-foreground h-7 rounded-full bg-transparent px-2.5 text-xs font-semibold"
+          >
+            {EFFORT_LABELS[effort]}
+          </Button>
+        </Popover.Anchor>
+        <Popover.Portal>
+          <Popover.Content
+            side="top"
+            align="end"
+            sideOffset={10}
+            className="glass-panel effort-popover text-popover-foreground z-50 w-72 p-3 outline-none"
+          >
+            {pickerContent}
+            <Popover.Arrow className="effort-popover-arrow" />
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
+      <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+        <DialogContent
+          showCloseButton={false}
+          aria-label="Response effort"
+          className="effort-mobile-dialog gap-2 p-5"
         >
-          {EFFORT_LABELS[effort]}
-        </Button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          side="top"
-          align="end"
-          sideOffset={10}
-          className="bg-popover text-popover-foreground z-50 w-60 rounded-2xl border p-4 shadow-lg outline-none"
-        >
-          <p className="mb-3 text-sm font-bold">Response effort</p>
-          <div className="text-muted-foreground mb-1 flex justify-between text-[10px] whitespace-nowrap">
-            <span
-              className={cn(
-                effort === 'fast' && 'text-primary font-semibold',
-                locked && 'line-through opacity-50'
-              )}
-            >
-              Instant
-            </span>
-            <span className={cn(effort === 'low' && 'text-primary font-semibold')}>Low</span>
-            <span className={cn(effort === 'medium' && 'text-primary font-semibold')}>Medium</span>
-            <span className={cn(effort === 'high' && 'text-primary font-semibold')}>High</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={3}
-            step={1}
-            value={index}
-            onChange={(event) =>
-              setEffort(EFFORT_VALUES[Math.max(locked ? 1 : 0, Number(event.target.value))])
-            }
-            aria-label="Text response effort"
-            aria-valuetext={EFFORT_LABELS[effort]}
-            className="accent-primary h-5 w-full cursor-pointer"
-          />
-          {locked && (
-            <p className="text-muted-foreground mt-2 text-xs">
-              Can't use Instant with attachments.
-            </p>
-          )}
-          <Popover.Arrow className="fill-popover" />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+          {pickerContent}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -295,9 +366,9 @@ function BeforeComposer() {
             </span>
             <span className="shrink-0">sends when I’m done</span>
             <QueueItemPrimitive.Remove asChild>
-              <TooltipIconButton tooltip="Remove from queue" className="size-6 rounded-full">
+              <IconButton label="Remove from queue" className="size-6 rounded-full">
                 <XIcon className="size-3.5" />
-              </TooltipIconButton>
+              </IconButton>
             </QueueItemPrimitive.Remove>
           </div>
         )}

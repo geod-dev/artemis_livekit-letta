@@ -1,0 +1,991 @@
+{
+  "Header": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "The heading text."
+      },
+      "size": {
+        "description": "Heading size; defaults to `lg`.",
+        "type": "string",
+        "enum": [
+          "sm",
+          "md",
+          "lg",
+          "xl",
+          "2xl",
+          "3xl"
+        ]
+      }
+    },
+    "required": [
+      "text"
+    ],
+    "additionalProperties": false
+  },
+  "Text": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "string",
+        "description": "The text content."
+      },
+      "size": {
+        "description": "Text size; defaults to `md`.",
+        "type": "string",
+        "enum": [
+          "sm",
+          "md",
+          "lg",
+          "xl",
+          "2xl",
+          "3xl"
+        ]
+      },
+      "weight": {
+        "description": "Font weight.",
+        "type": "string",
+        "enum": [
+          "normal",
+          "medium",
+          "semibold",
+          "bold"
+        ]
+      },
+      "color": {
+        "description": "Foreground color token.",
+        "type": "string",
+        "enum": [
+          "emphasis",
+          "secondary",
+          "alpha-70",
+          "white",
+          "white-70",
+          "white-50"
+        ]
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "Caption": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "string",
+        "description": "The caption text."
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "Image": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "src": {
+        "type": "string",
+        "description": "Image URL."
+      },
+      "alt": {
+        "type": "string",
+        "description": "Alt text for accessibility."
+      },
+      "size": {
+        "description": "Size token or pixel value.",
+        "anyOf": [
+          {
+            "type": "string",
+            "enum": [
+              "sm",
+              "md",
+              "lg"
+            ]
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "round": {
+        "description": "Render as a circular avatar (fully rounded, cropped to a square).",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "src",
+      "alt"
+    ],
+    "additionalProperties": false
+  },
+  "Divider": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "flush": {
+        "description": "Whether the divider spans the full width with no inset.",
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false
+  },
+  "Fact": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "description": "The fact label (key)."
+      },
+      "value": {
+        "type": "string",
+        "description": "The fact value."
+      },
+      "delta": {
+        "description": "Change from before.",
+        "type": "string"
+      },
+      "trend": {
+        "description": "Change direction.",
+        "type": "string",
+        "enum": [
+          "up",
+          "down",
+          "flat"
+        ]
+      },
+      "upIsGood": {
+        "description": "Whether up is good.",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "label",
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "Button": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "description": "Button label."
+      },
+      "buttonStyle": {
+        "description": "Visual style.",
+        "type": "string",
+        "enum": [
+          "primary",
+          "secondary",
+          "outline",
+          "ghost",
+          "danger"
+        ]
+      },
+      "block": {
+        "description": "Whether the button spans the full width.",
+        "type": "boolean"
+      },
+      "submit": {
+        "description": "Render as a submit button for an ancestor Form/Card instead of a click button.",
+        "type": "boolean"
+      },
+      "undoable": {
+        "description": "Delay the action with an undo control, for sends and other hard-to-reverse actions.",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "label"
+    ],
+    "additionalProperties": false
+  },
+  "Select": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "options": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Selectable options."
+      },
+      "placeholder": {
+        "description": "Placeholder shown when nothing is selected.",
+        "type": "string"
+      },
+      "label": {
+        "description": "Accessible label for the control.",
+        "type": "string"
+      },
+      "name": {
+        "description": "Field name used inside a Form.",
+        "type": "string"
+      },
+      "defaultValue": {
+        "description": "Initially selected value.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "options"
+    ],
+    "additionalProperties": false
+  },
+  "Input": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "inputType": {
+        "description": "Single-line input type. Values remain strings.",
+        "type": "string",
+        "enum": [
+          "text",
+          "password",
+          "number"
+        ]
+      },
+      "placeholder": {
+        "description": "Placeholder text.",
+        "type": "string"
+      },
+      "multiline": {
+        "description": "Render a textarea instead of a single-line input; ignored when `inputType` is `\"password\"` or `\"number\"`.",
+        "type": "boolean"
+      },
+      "label": {
+        "description": "Accessible label for the control.",
+        "type": "string"
+      },
+      "name": {
+        "description": "Field name used inside a Form.",
+        "type": "string"
+      },
+      "defaultValue": {
+        "description": "Initial text.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "DatePicker": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "inputType": {
+        "description": "Temporal input type. Defaults to \"date\". Values remain strings.",
+        "type": "string",
+        "enum": [
+          "date",
+          "datetime",
+          "time"
+        ]
+      },
+      "value": {
+        "description": "Initial value: YYYY-MM-DD for date, HH:mm or HH:mm:ss with optional fraction of at most 9 digits for time, YYYY-MM-DDTHH:mm with optional :ss and fraction of at most 9 digits for datetime. A datetime with Z or ±HH:mm is an instant, displayed in the viewer's time zone and submitted with the same offset and precision. A datetime without an offset is local and submitted unchanged. An empty datetime submits with the viewer's offset and seconds.",
+        "type": "string"
+      },
+      "min": {
+        "description": "Minimum value: YYYY-MM-DD for date, HH:mm or HH:mm:ss with optional fraction of at most 9 digits for time, YYYY-MM-DDTHH:mm with optional :ss and fraction of at most 9 digits for datetime. Datetimes with Z or ±HH:mm are converted to the viewer's time zone.",
+        "type": "string"
+      },
+      "max": {
+        "description": "Maximum value: YYYY-MM-DD for date, HH:mm or HH:mm:ss with optional fraction of at most 9 digits for time, YYYY-MM-DDTHH:mm with optional :ss and fraction of at most 9 digits for datetime. Datetimes with Z or ±HH:mm are converted to the viewer's time zone.",
+        "type": "string"
+      },
+      "label": {
+        "description": "Accessible label for the control.",
+        "type": "string"
+      },
+      "name": {
+        "description": "Field name used inside a Form.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "Checkbox": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "description": "Label text next to the checkbox."
+      },
+      "name": {
+        "description": "Field name used inside a Form.",
+        "type": "string"
+      },
+      "defaultChecked": {
+        "description": "Whether the checkbox starts checked.",
+        "type": "boolean"
+      },
+      "variant": {
+        "description": "Whether to render a checkbox or switch.",
+        "type": "string",
+        "enum": [
+          "checkbox",
+          "switch"
+        ]
+      }
+    },
+    "required": [
+      "label"
+    ],
+    "additionalProperties": false
+  },
+  "Slider": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "name": {
+        "description": "Field name used inside a Form.",
+        "type": "string"
+      },
+      "label": {
+        "description": "Accessible label for the control.",
+        "type": "string"
+      },
+      "min": {
+        "type": "number",
+        "description": "Minimum value."
+      },
+      "max": {
+        "type": "number",
+        "description": "Maximum value."
+      },
+      "step": {
+        "description": "Value increment. Defaults to 1.",
+        "type": "number"
+      },
+      "defaultValue": {
+        "description": "Initial value.",
+        "type": "number"
+      },
+      "unit": {
+        "description": "Unit shown with the value.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "min",
+      "max"
+    ],
+    "additionalProperties": false
+  },
+  "RadioGroup": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "options": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Selectable options."
+      },
+      "name": {
+        "description": "Field name used inside a Form.",
+        "type": "string"
+      },
+      "label": {
+        "description": "Accessible name for the group.",
+        "type": "string"
+      },
+      "defaultValue": {
+        "description": "Initially selected value.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "options"
+    ],
+    "additionalProperties": false
+  },
+  "CheckboxGroup": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "options": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Selectable options."
+      },
+      "name": {
+        "description": "Field name used inside a Form.",
+        "type": "string"
+      },
+      "label": {
+        "description": "Accessible name for the group.",
+        "type": "string"
+      },
+      "defaultValue": {
+        "description": "Initially checked values.",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "options"
+    ],
+    "additionalProperties": false
+  },
+  "Form": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "gap": {
+        "description": "Gap between children in 4px units. 0 to 8 is the supported range.",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 8
+      }
+    },
+    "additionalProperties": false
+  },
+  "Card": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "title": {
+        "description": "Optional card title.",
+        "type": "string"
+      },
+      "padding": {
+        "description": "Padding in 4px units (e.g. 2 = 8px). 0 to 8 is the supported range.",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 8
+      },
+      "background": {
+        "description": "Background color or gradient (any CSS background value). Setting this also switches the card's own text to white, since a custom background makes the card a tinted surface; children can still opt into a different color explicitly.",
+        "type": "string"
+      },
+      "asForm": {
+        "description": "Render as a form; submitting it fires `confirm.$action` with every named child control's value, keyed by `name`.",
+        "type": "boolean"
+      },
+      "confirm": {
+        "description": "Confirm button shown in the footer.",
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Footer button label."
+          },
+          "$action": {
+            "description": "Action fired when the button is activated.",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "The action type, resolved by the host's action registry."
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "cancel": {
+        "description": "Cancel button shown in the footer.",
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Footer button label."
+          },
+          "$action": {
+            "description": "Action fired when the button is activated.",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "The action type, resolved by the host's action registry."
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "Col": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "gap": {
+        "description": "Gap between children in 4px units. 0 to 8 is the supported range.",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 8
+      },
+      "align": {
+        "description": "Cross-axis alignment.",
+        "type": "string",
+        "enum": [
+          "start",
+          "center",
+          "end"
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "Row": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "gap": {
+        "description": "Gap between children in 4px units. 0 to 8 is the supported range.",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 8
+      },
+      "align": {
+        "description": "Cross-axis alignment.",
+        "type": "string",
+        "enum": [
+          "start",
+          "center",
+          "end"
+        ]
+      },
+      "justify": {
+        "description": "Main-axis distribution.",
+        "type": "string",
+        "enum": [
+          "start",
+          "center",
+          "end",
+          "between"
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "Spacer": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "Badge": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "string",
+        "description": "Badge text."
+      },
+      "variant": {
+        "description": "Visual variant token.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "Box": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "width": {
+        "description": "Width; a number is pixels.",
+        "type": [
+          "string",
+          "number"
+        ]
+      },
+      "height": {
+        "description": "Height; a number is pixels.",
+        "type": [
+          "string",
+          "number"
+        ]
+      },
+      "radius": {
+        "description": "Corner radius; \"full\" is a pill/circle, a number is pixels.",
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "full"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "background": {
+        "description": "Background color or gradient (any CSS background value).",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "ListView": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "ListViewItem": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "Table": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "columns": {
+        "description": "Column definitions.",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "description": "Column header label."
+            },
+            "align": {
+              "description": "Cell alignment.",
+              "type": "string",
+              "enum": [
+                "start",
+                "end"
+              ]
+            },
+            "format": {
+              "description": "Cell value format.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "number",
+                    "currency",
+                    "percent",
+                    "date"
+                  ],
+                  "description": "Format kind. `percent` takes a fraction, so 0.25 renders as 25%."
+                },
+                "currency": {
+                  "description": "Currency code.",
+                  "type": "string"
+                },
+                "decimals": {
+                  "description": "Decimal places.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "rows": {
+        "description": "Rows of cells.",
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "description": "A cell value.",
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "sortable": {
+        "description": "Allow header sorting.",
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false
+  },
+  "Markdown": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "string",
+        "description": "Markdown source."
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "Chart": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "variant": {
+        "type": "string",
+        "enum": [
+          "bar",
+          "line",
+          "sparkline",
+          "area"
+        ],
+        "description": "Chart variant."
+      },
+      "data": {
+        "description": "Data points for a single series.",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "description": "Point label.",
+              "type": "string"
+            },
+            "value": {
+              "type": "number",
+              "description": "Point value."
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "series": {
+        "description": "Multiple named series; takes precedence over `data` when present.",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "description": "Series label, shown in the legend.",
+              "type": "string"
+            },
+            "color": {
+              "description": "Series color. One of `emphasis`, `secondary`, `alpha-70`, `white`, `white-70`, or `white-50`, matching Text's `color` tokens; other values have no visual effect.",
+              "type": "string"
+            },
+            "data": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "description": "Point label.",
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "number",
+                    "description": "Point value."
+                  }
+                },
+                "required": [
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Data points for this series."
+            }
+          },
+          "required": [
+            "data"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "stacked": {
+        "description": "Accumulate series values instead of overlaying them (bar and area variants; ignored for line and sparkline).",
+        "type": "boolean"
+      },
+      "showAxis": {
+        "description": "Show y-axis ticks and x-axis point labels.",
+        "type": "boolean"
+      },
+      "showLegend": {
+        "description": "Show a legend mapping each series to its color.",
+        "type": "boolean"
+      },
+      "color": {
+        "description": "Series color (single-series mode only). One of `emphasis`, `secondary`, `alpha-70`, `white`, `white-70`, or `white-50`, matching Text's `color` tokens; other values have no visual effect.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "variant"
+    ],
+    "additionalProperties": false
+  },
+  "Alert": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "title": {
+        "description": "Alert title.",
+        "type": "string"
+      },
+      "description": {
+        "description": "Supporting description text.",
+        "type": "string"
+      },
+      "tone": {
+        "description": "Severity tone; defaults to `info`.",
+        "type": "string",
+        "enum": [
+          "info",
+          "success",
+          "warning",
+          "danger"
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "Carousel": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "label": {
+        "description": "Accessible label for the carousel.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "Icon": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "enum": [
+          "sun",
+          "moon",
+          "cloud",
+          "rain",
+          "snow",
+          "wind",
+          "play",
+          "pause",
+          "check",
+          "x",
+          "star",
+          "heart",
+          "arrow-right",
+          "arrow-up-right",
+          "chevron-right",
+          "calendar",
+          "clock",
+          "map-pin",
+          "plane",
+          "truck",
+          "credit-card",
+          "user",
+          "search",
+          "bell"
+        ],
+        "description": "Which built-in icon to render."
+      },
+      "size": {
+        "description": "Icon size; defaults to `md` (16px).",
+        "type": "string",
+        "enum": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false
+  }
+}

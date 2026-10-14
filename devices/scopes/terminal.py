@@ -5,6 +5,7 @@ import signal
 import subprocess
 import threading
 from pathlib import Path
+from .settings import ScopeSettings
 
 MAX_OUTPUT_BYTES = 64_000
 
@@ -21,7 +22,7 @@ def command_line(command, argv):
     return ['/bin/sh', '-c', command]
 
 
-def register(args):
+def register(args: ScopeSettings):
     active_folder = Path(args.active_folder).resolve()
 
     def execute(arguments):
@@ -39,6 +40,7 @@ def register(args):
         if not cwd.is_dir(): raise ValueError('Working directory does not exist')
         process = subprocess.Popen(command_line(command, argv), cwd=str(cwd), shell=False, start_new_session=os.name != 'nt', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         captured = {'stdout': bytearray(), 'stderr': bytearray()}
+        truncated = {'stdout': False, 'stderr': False}
 
         def drain(stream, destination):
             while True:
@@ -46,6 +48,7 @@ def register(args):
                 if not chunk: return
                 remaining = MAX_OUTPUT_BYTES - len(destination)
                 if remaining > 0: destination.extend(chunk[:remaining])
+                if len(chunk) > remaining: truncated['stdout' if destination is captured['stdout'] else 'stderr'] = True
 
         readers = [threading.Thread(target=drain, args=(process.stdout, captured['stdout']), daemon=True), threading.Thread(target=drain, args=(process.stderr, captured['stderr']), daemon=True)]
         for reader in readers: reader.start()
@@ -66,7 +69,9 @@ def register(args):
             process.stderr.close()
         stdout = bytes(captured['stdout']).decode('utf-8', errors='replace')
         stderr = bytes(captured['stderr']).decode('utf-8', errors='replace')
-        return {'content': [{'type': 'text', 'text': f'exit_code: {return_code}\nstdout:\n{stdout}\nstderr:\n{stderr}'}]}
+        stdout_note = '\n[stdout truncated at 64 KB]' if truncated['stdout'] else ''
+        stderr_note = '\n[stderr truncated at 64 KB]' if truncated['stderr'] else ''
+        return {'content': [{'type': 'text', 'text': f'exit_code: {return_code}\nstdout:\n{stdout}{stdout_note}\nstderr:\n{stderr}{stderr_note}'}]}
 
     shell_name = 'PowerShell (cmd fallback)' if os.name == 'nt' else '/bin/sh'
     description = f'Execute commands on this PC using {shell_name}. Put the full command line in command and omit arguments (or use an empty list) for shell syntax, quoting, pipes and redirection. Use syntax for this device\'s OS: Windows PowerShell does not accept Linux ls flags. With a non-empty arguments list, command must be only an executable name or path; arguments are passed literally without shell interpretation. Access is system-wide under the device client account\'s OS permissions: there is no folder sandbox or restriction to the active folder. Commands can read and write absolute paths anywhere, regardless of cwd. Set cwd to any existing absolute directory on any drive. Default starting directory (context only): {active_folder}. Commands run for up to 30 seconds; output is capped at 64 KB per stream.'

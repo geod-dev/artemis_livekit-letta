@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       '@hono/node-server':
         specifier: ^1.19.5
         version: 1.19.17(hono@4.13.13)
@@ -57,6 +60,9 @@ importers:
       typescript-eslint:
         specifier: ^8
         version: 8.71.1(eslint@9.39.5)(typescript@5.9.3)
+      undici-types:
+        specifier: 7.24.6
+        version: 7.24.6
 
 packages:
 

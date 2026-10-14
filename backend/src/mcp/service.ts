@@ -1,4 +1,4 @@
-import { MCP_SETTINGS_PATH, type McpServer, readMcpServers, renderMcpSettings } from './settings';
+import { MCP_SETTINGS_PATH, type McpServer, readMcpSettings, renderMcpSettings } from './settings';
 import { MCP_SKILL_DIR, MCP_SKILL_NAME, renderMcpSkill } from './skill';
 
 /**
@@ -18,13 +18,39 @@ export interface McpIo {
 /** The configured servers. A missing file reads as an empty list. */
 export async function loadMcpServers(io: McpIo): Promise<McpServer[]> {
   const raw = await io.read(MCP_SETTINGS_PATH);
-  return raw === null ? [] : readMcpServers(raw);
+  return raw === null ? [] : readMcpSettings(raw).servers;
+}
+
+export async function loadMcpSettings(io: McpIo) {
+  const raw = await io.read(MCP_SETTINGS_PATH);
+  return {
+    raw,
+    ...(raw === null ? { servers: [], invalidEntries: [] } : readMcpSettings(raw)),
+  };
 }
 
 /** Write the list, then bring the skill in line with it. */
-export async function saveMcpServers(io: McpIo, servers: McpServer[]): Promise<void> {
-  await io.write(MCP_SETTINGS_PATH, renderMcpSettings(servers));
-  await syncMcpSkill(io, servers);
+export async function saveMcpServers(
+  io: McpIo,
+  servers: McpServer[]
+): Promise<{ skill: 'synced' | 'failed'; error?: string }> {
+  const previous = await loadMcpSettings(io);
+  await io.write(
+    MCP_SETTINGS_PATH,
+    renderMcpSettings(
+      servers,
+      previous.invalidEntries.map((entry) => entry.value)
+    )
+  );
+  try {
+    await syncMcpSkill(io, servers);
+    return { skill: 'synced' };
+  } catch (error) {
+    return {
+      skill: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 /**
@@ -33,17 +59,6 @@ export async function saveMcpServers(io: McpIo, servers: McpServer[]): Promise<v
  * leaves the current wrapper and wording in place. Returns the servers now
  * configured.
  */
-export async function ensureMcpServers(io: McpIo): Promise<McpServer[]> {
-  const raw = await io.read(MCP_SETTINGS_PATH);
-  if (raw === null) {
-    await saveMcpServers(io, []);
-    return [];
-  }
-  const servers = readMcpServers(raw);
-  await syncMcpSkill(io, servers);
-  return servers;
-}
-
 async function syncMcpSkill(io: McpIo, servers: McpServer[]): Promise<void> {
   if (servers.length === 0) {
     await io.disableSkill(MCP_SKILL_NAME);
