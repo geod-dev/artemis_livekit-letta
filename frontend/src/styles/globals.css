@@ -465,6 +465,57 @@ body,
   }
 }
 @media (max-width: 767px) {
+  button.sidebar-search-button {
+    flex: 0 0 44px;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px;
+    min-height: 44px;
+    aspect-ratio: 1;
+  }
+  button[aria-label].rounded-full:not([data-variant='default']):not([data-variant='destructive']),
+  button[data-size='icon'][data-variant='ghost'].rounded-full {
+    background-color: color-mix(in oklab, var(--color-foreground) 3%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-foreground) 12%, transparent);
+  }
+  .mobile-search-page {
+    position: fixed;
+    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--app-height, 100dvh);
+    max-width: none;
+    max-height: none;
+    gap: 1rem;
+    padding: 1rem;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: hidden;
+    translate: 0 0;
+  }
+  .mobile-search-page [data-slot='dialog-close'] {
+    display: none;
+  }
+  .mobile-search-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+  .mobile-search-back {
+    display: inline-flex;
+  }
+  .mobile-search-page > input {
+    flex-shrink: 0;
+  }
+  .mobile-search-results {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
   input,
   textarea,
   select {
@@ -494,6 +545,11 @@ body,
   [data-aui='table'] {
     display: block;
     overflow-x: auto;
+  }
+}
+@media (min-width: 768px) {
+  .mobile-search-back {
+    display: none;
   }
 }
 @media (hover: none) {

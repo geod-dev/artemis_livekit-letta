@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MenuIcon, PlusIcon, SearchIcon, SettingsIcon } from 'lucide-react';
+import { ArrowLeftIcon, MenuIcon, PlusIcon, SearchIcon, SettingsIcon } from 'lucide-react';
 import { useAuiState } from '@assistant-ui/react';
 import {
   ThreadListItems,
@@ -71,7 +71,7 @@ export function Sidebar({
           }}
           aria-label={`${assistantName} — new chat`}
           title="New chat"
-          className="font-display cursor-pointer rounded-md text-3xl font-extrabold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+          className="font-display focus-visible:outline-ring cursor-pointer rounded-md text-3xl font-extrabold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4"
         >
           {assistantName}
         </button>
@@ -84,7 +84,7 @@ export function Sidebar({
             setMobileOpen(false);
             onSearchOpenChange(true);
           }}
-          className={`${QUIET_ICON_BUTTON} [@media(hover:none)]:opacity-100`}
+          className={`${QUIET_ICON_BUTTON} sidebar-search-button shrink-0 [@media(hover:none)]:opacity-100`}
         >
           <SearchIcon className="size-5" />
         </Button>
@@ -144,7 +144,7 @@ export function Sidebar({
         <DialogContent
           showCloseButton={false}
           overlayClassName="mobile-chat-backdrop"
-          className="group/sidebar mobile-chat-drawer data-[state=open]:animate-none data-[state=closed]:animate-none top-0 left-0 h-full max-h-none w-[min(18rem,85vw)] max-w-none translate-x-0 translate-y-0 gap-0 rounded-none p-0 lg:hidden"
+          className="group/sidebar mobile-chat-drawer top-0 left-0 h-full max-h-none w-[min(18rem,85vw)] max-w-none translate-x-0 translate-y-0 gap-0 rounded-none p-0 data-[state=closed]:animate-none data-[state=open]:animate-none lg:hidden"
         >
           <DialogHeader className="sr-only">
             <DialogTitle>Chats</DialogTitle>
@@ -153,8 +153,17 @@ export function Sidebar({
         </DialogContent>
       </Dialog>
       <Dialog open={searchOpen} onOpenChange={onSearchOpenChange}>
-        <DialogContent className="gap-3 p-4 sm:max-w-xl">
-          <DialogHeader className="pe-8 text-start">
+        <DialogContent className="mobile-search-page flex flex-col gap-3 p-4 sm:max-w-xl">
+          <DialogHeader className="mobile-search-header text-start">
+            <Button
+              type="button"
+              variant="ghost"
+              aria-label="Back to chats"
+              onClick={() => onSearchOpenChange(false)}
+              className="mobile-search-back size-10 shrink-0 rounded-full p-0"
+            >
+              <ArrowLeftIcon className="size-5" />
+            </Button>
             <DialogTitle>Search chats</DialogTitle>
           </DialogHeader>
           <Input
@@ -166,7 +175,7 @@ export function Sidebar({
             aria-label="Search chats"
             className="h-11 rounded-xl"
           />
-          <div className="max-h-[min(55vh,26rem)] min-h-12 overflow-y-auto">
+          <div className="mobile-search-results max-h-[min(55vh,26rem)] min-h-12 overflow-y-auto">
             <ThreadListItems searchQuery={search} />
           </div>
         </DialogContent>

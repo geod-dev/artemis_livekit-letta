@@ -6,14 +6,14 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Insets;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
 import android.view.View;
-import android.view.WindowInsets;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -25,7 +25,7 @@ import android.widget.FrameLayout;
 import android.widget.Toast;
 import java.util.Arrays;
 
-/** A native browser window for the existing site; no bundled frontend or JS bridge. */
+/** Native browser wrapper for the hosted site, with a small theme bridge. */
 public final class MainActivity extends Activity {
     private static final String HOME = "https://artemis.is-an.ai";
     private static final int MICROPHONE = 1, FILE_PICKER = 2;
@@ -42,25 +42,21 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(Color.WHITE);
         webView = new WebView(this);
         frame.addView(webView, new FrameLayout.LayoutParams(-1, -1));
         setContentView(frame);
-        // Android 15 draws under system bars. Keep bars and the keyboard outside the site.
+        // Let WebView receive system and IME insets so visual viewport resizing keeps
+        // text-input focus. The frame background remains visible behind transparent bars.
         if (Build.VERSION.SDK_INT >= 30) {
             getWindow().setDecorFitsSystemWindows(false);
-            frame.setOnApplyWindowInsetsListener((view, insets) -> {
-                Insets edges = insets.getInsets(WindowInsets.Type.systemBars()
-                    | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
-                view.setPadding(edges.left, edges.top, edges.right, edges.bottom);
-                return WindowInsets.CONSUMED;
-            });
-            frame.requestApplyInsets();
         }
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setAllowFileAccess(false);
         webView.getSettings().setAllowContentAccess(true);
         webView.getSettings().setSupportMultipleWindows(true);
+        webView.addJavascriptInterface(new ThemeBridge(frame), "ArtemisNative");
         CookieManager.getInstance().setAcceptCookie(true);
         webView.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -148,6 +144,36 @@ public final class MainActivity extends Activity {
         try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
         catch (ActivityNotFoundException error) {
             Toast.makeText(this, "No app can open this link", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private final class ThemeBridge {
+        private final FrameLayout frame;
+
+        ThemeBridge(FrameLayout frame) {
+            this.frame = frame;
+        }
+
+        @JavascriptInterface
+        public void setSystemBarColor(String value) {
+            if (value == null || !value.matches("#[0-9a-fA-F]{6}")) return;
+            int color = Color.parseColor(value);
+            runOnUiThread(() -> {
+                frame.setBackgroundColor(color);
+                if (Build.VERSION.SDK_INT < 35) getWindow().setStatusBarColor(color);
+                boolean lightBackground = Color.luminance(color) > 0.5f;
+                if (Build.VERSION.SDK_INT >= 30) {
+                    getWindow().getInsetsController().setSystemBarsAppearance(
+                        lightBackground ? android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS : 0,
+                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+                } else {
+                    int flags = getWindow().getDecorView().getSystemUiVisibility();
+                    flags = lightBackground
+                        ? flags | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                        : flags & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                    getWindow().getDecorView().setSystemUiVisibility(flags);
+                }
+            });
         }
     }
 

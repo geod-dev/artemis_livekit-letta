@@ -301,8 +301,30 @@ export const ThreadListItem: FC = () => {
   const inCall = useAuiState((s) => s.threadListItem.custom?.inCall === true);
   const unread = useAuiState((s) => Number(s.threadListItem.custom?.unread ?? 0));
   const [isRenaming, setIsRenaming] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
+  const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const openMoreFromLongPress = () => {
+    if (longPressTriggeredRef.current) return;
+    longPressTriggeredRef.current = true;
+    setMoreOpen(true);
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate?.(12);
+    }
+  };
+
+  useEffect(() => clearLongPress, []);
 
   useEffect(() => {
     if (isRenaming || !restoreFocusRef.current) return;
@@ -314,6 +336,47 @@ export const ThreadListItem: FC = () => {
     <ThreadListItemPrimitive.Root
       data-slot="aui_thread-list-item"
       className="group hover:bg-foreground/[0.03] has-focus-visible:bg-foreground/[0.03] has-data-[state=open]:bg-foreground/[0.03] data-active:bg-foreground/[0.04] dark:data-active:bg-foreground/[0.06] relative flex w-full items-center rounded-xl text-[13.5px] transition-colors focus-visible:outline-none"
+      onPointerDown={(event) => {
+        if (event.pointerType !== 'touch' || isRenaming) return;
+        clearLongPress();
+        longPressTriggeredRef.current = false;
+        longPressOriginRef.current = { x: event.clientX, y: event.clientY };
+        longPressTimerRef.current = setTimeout(openMoreFromLongPress, 450);
+      }}
+      onPointerMove={(event) => {
+        if (event.pointerType !== 'touch') return;
+        const origin = longPressOriginRef.current;
+        if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) {
+          clearLongPress();
+        }
+      }}
+      onPointerUp={() => {
+        clearLongPress();
+        longPressOriginRef.current = null;
+      }}
+      onPointerCancel={() => {
+        clearLongPress();
+        longPressOriginRef.current = null;
+      }}
+      onContextMenu={(event) => {
+        if (window.matchMedia('(hover: none)').matches) {
+          event.preventDefault();
+          openMoreFromLongPress();
+        }
+      }}
+      onClickCapture={(event) => {
+        const target = event.target;
+        if (
+          !longPressTriggeredRef.current ||
+          !(target instanceof Element) ||
+          !target.closest('[data-slot="aui_thread-list-item-trigger"]')
+        ) {
+          return;
+        }
+        longPressTriggeredRef.current = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
     >
       {isRenaming ? (
         <ThreadListItemRename
@@ -355,7 +418,14 @@ export const ThreadListItem: FC = () => {
           {isRunning && <span className="sr-only">Running</span>}
         </ThreadListItemPrimitive.Trigger>
       )}
-      <ThreadListItemMore onRename={() => setIsRenaming(true)} />
+      <ThreadListItemMore
+        open={moreOpen}
+        onOpenChange={(open) => {
+          setMoreOpen(open);
+          if (!open) longPressTriggeredRef.current = false;
+        }}
+        onRename={() => setIsRenaming(true)}
+      />
     </ThreadListItemPrimitive.Root>
   );
 };
@@ -424,15 +494,19 @@ const ThreadListItemRename: FC<{
   );
 };
 
-const ThreadListItemMore: FC<{ onRename: () => void }> = ({ onRename }) => {
+const ThreadListItemMore: FC<{
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRename: () => void;
+}> = ({ open, onOpenChange, onRename }) => {
   return (
-    <ThreadListItemMorePrimitive.Root sharedFocusGroup>
+    <ThreadListItemMorePrimitive.Root open={open} onOpenChange={onOpenChange} sharedFocusGroup>
       <ThreadListItemMorePrimitive.Trigger asChild>
         <Button
           variant="ghost"
           size="icon"
           data-slot="aui_thread-list-item-more"
-          className="text-foreground/45 hover:bg-foreground/[0.06] hover:text-foreground/90 data-[state=open]:bg-foreground/[0.06] absolute end-2 top-1/2 size-6 -translate-y-1/2 rounded-full p-0 opacity-0 group-hover:opacity-100 group-has-focus-visible:opacity-100 group-data-active:opacity-100 data-[state=open]:opacity-100"
+          className="text-foreground/45 hover:bg-foreground/[0.06] hover:text-foreground/90 data-[state=open]:bg-foreground/[0.06] absolute end-2 top-1/2 size-6 -translate-y-1/2 rounded-full p-0 opacity-0 group-hover:opacity-100 group-has-focus-visible:opacity-100 group-data-active:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:pointer-events-none [@media(hover:none)]:!opacity-0"
         >
           <MoreHorizontalIcon className="size-3.5" />
           <span className="sr-only">More options</span>

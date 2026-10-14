@@ -27,6 +27,12 @@ export interface ChatThreadState {
   setEffort: (effort: TextEffort) => void;
   /** The conversation has attachments: Instant (the fast model) is unavailable. */
   withAttachments: boolean;
+  callButton: {
+    tooltip: string;
+    disabled: boolean;
+    active: boolean;
+    onClick: () => void;
+  };
   /** A turn is running in this conversation (text or voice). */
   busy: boolean;
   tasks: TaskStatus[];
@@ -38,7 +44,7 @@ export interface ChatThreadState {
 export const ChatThreadContext = createContext<ChatThreadState | null>(null);
 export const MascotEasterEggContext = createContext<(enabled: boolean) => void>(() => {});
 
-function useChatThread() {
+export function useChatThread() {
   const state = useContext(ChatThreadContext);
   if (!state) throw new Error('ChatThreadContext is missing');
   return state;

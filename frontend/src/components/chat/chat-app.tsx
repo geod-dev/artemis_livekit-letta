@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TokenSource } from 'livekit-client';
-import { PhoneIcon, PhoneOffIcon } from 'lucide-react';
+import { PlusIcon } from 'lucide-react';
 import { AssistantRuntimeProvider, AuiConfig, Tools } from '@assistant-ui/react';
 import type { ConversationSummary, TextEffort } from '@backend/chat-types';
 import { RoomAudioRenderer, SessionProvider, useSession } from '@livekit/components-react';
 import { StartAudioButton } from '@/components/agents-ui/start-audio-button';
 import { generativeUIToolkit } from '@/components/assistant-ui/elements/generative-ui';
 import { Thread } from '@/components/assistant-ui/elements/thread.aui';
-import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button';
 import { WorkspaceFilePanelContext } from '@/components/assistant-ui/elements/workspace-file';
 import { WorkspaceFilePanel } from '@/components/assistant-ui/elements/workspace-file-panel';
 import { CallBar } from '@/components/chat/call-bar';
@@ -187,6 +186,28 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
     [conversation.messages]
   );
   const callBlocked = !inCall && withAttachments;
+  const callOnCurrentConversation = inCall && callConversationId === activeId;
+  const callButton = useMemo(
+    () => ({
+      tooltip: inCall
+        ? callOnCurrentConversation
+          ? 'End call'
+          : callConversationId
+            ? 'Show active call'
+            : 'Call is connecting'
+        : callBlocked
+          ? 'Calls are not available in chats with attachments'
+          : 'Start a call',
+      disabled: (inCall && !callConversationId) || callBlocked,
+      active: callOnCurrentConversation,
+      onClick: () => {
+        if (!inCall) void startCall();
+        else if (callOnCurrentConversation) void endCall();
+        else if (callConversationId) select(callConversationId);
+      },
+    }),
+    [callBlocked, callConversationId, callOnCurrentConversation, endCall, inCall, select, startCall]
+  );
 
   const threadState = useMemo<ChatThreadState>(
     () => ({
@@ -194,6 +215,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       effort,
       setEffort,
       withAttachments,
+      callButton,
       busy: conversation.busy,
       tasks: conversation.tasks,
       error: conversation.error,
@@ -204,6 +226,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       effort,
       setEffort,
       withAttachments,
+      callButton,
       conversation.busy,
       conversation.tasks,
       conversation.error,
@@ -242,43 +265,17 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
                     {shownTitle ?? 'Conversation'}
                   </h1>
                 )}
-                <TooltipIconButton
-                  tooltip={
-                    inCall
-                      ? callConversationId === activeId
-                        ? 'End call'
-                        : 'Show active call'
-                      : callBlocked
-                        ? 'Calls are not available in chats with attachments'
-                        : 'Start a call'
-                  }
-                  side="bottom"
-                  type="button"
-                  aria-label={
-                    inCall
-                      ? callConversationId === activeId
-                        ? 'End call'
-                        : 'Show active call'
-                      : 'Start a call'
-                  }
-                  onClick={() => {
-                    if (!inCall) void startCall();
-                    else if (callConversationId === activeId) void endCall();
-                    else if (callConversationId) select(callConversationId);
-                  }}
-                  disabled={(inCall && !callConversationId) || callBlocked}
-                  className={
-                    inCall && callConversationId === activeId
-                      ? 'bg-mint hover:bg-destructive ms-auto size-9 rounded-full text-white hover:text-white'
-                      : 'text-muted-foreground hover:bg-mint ms-auto size-9 rounded-full hover:text-white'
-                  }
-                >
-                  {inCall && callConversationId === activeId ? (
-                    <PhoneOffIcon className="size-4" />
-                  ) : (
-                    <PhoneIcon className="size-4" />
-                  )}
-                </TooltipIconButton>
+                {!conversation.blank && shownId && (
+                  <button
+                    type="button"
+                    aria-label="New chat"
+                    title="New chat"
+                    onClick={newChat}
+                    className="text-muted-foreground hover:bg-muted hover:text-foreground ms-auto inline-flex size-10 items-center justify-center rounded-full lg:hidden"
+                  >
+                    <PlusIcon className="size-5" />
+                  </button>
+                )}
               </header>
               {inCall && <CallBar />}
               <div className="min-h-0 flex-1">

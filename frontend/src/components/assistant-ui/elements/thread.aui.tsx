@@ -11,6 +11,7 @@ import {
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  AudioLinesIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -19,6 +20,7 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   PhoneIcon,
+  PhoneOffIcon,
   RefreshCwIcon,
   SquareIcon,
   ThumbsDownIcon,
@@ -82,7 +84,7 @@ import {
 } from '@/components/assistant-ui/elements/tool-group.aui';
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button';
 import { Mascot } from '@/components/chat/mascot';
-import { MascotEasterEggContext } from '@/components/chat/thread-slots';
+import { MascotEasterEggContext, useChatThread } from '@/components/chat/thread-slots';
 import { Button } from '@/components/ui/button';
 import { useVoiceRecorder } from '@/hooks/use-voice-recorder';
 import { dayKey, dayLabel, timeLabel } from '@/lib/message-days';
@@ -531,6 +533,7 @@ const ComposerRoot: FC<{ autoFocus: boolean; placeholder: string }> = ({
             rows={1}
             autoFocus={autoFocus}
             enterKeyHint="send"
+            spellCheck
             aria-label="Message input"
           />
           <ComposerAction />
@@ -547,7 +550,14 @@ const ComposerAction: FC = () => {
       s.composer.submission !== undefined && !(s.thread.isRunning && s.thread.capabilities.cancel)
   );
   const { ComposerEffort } = useContext(ThreadComponentsContext);
+  const { callButton } = useChatThread();
   const recorder = useVoiceRecorder();
+  const composerEmpty = useAuiState((s: AssistantState) => s.composer.isEmpty);
+  const hasComposerAttachments = useAuiState(
+    (s: AssistantState) => s.composer.attachments.length > 0
+  );
+  const canCancel = useAuiState((s: AssistantState) => s.composer.canCancel);
+  const showCallButton = composerEmpty && !hasComposerAttachments && !canCancel;
 
   if (recorder.status !== 'idle') return <ComposerVoice recorder={recorder} />;
 
@@ -561,26 +571,46 @@ const ComposerAction: FC = () => {
       <div className="ms-auto flex items-center gap-1.5">
         {ComposerEffort && <ComposerEffort />}
         <ComposerVoiceButton recorder={recorder} />
-        <AuiIf
-          condition={(s) =>
-            !s.composer.canCancel ||
-            (s.thread.voice !== undefined && s.composer.submission === undefined)
-          }
-        >
-          <ComposerPrimitive.Send asChild>
-            <TooltipIconButton
-              tooltip="Send message"
-              side="bottom"
-              type="button"
-              variant="default"
-              size="icon"
-              className="aui-composer-send bouncy size-6 rounded-full sm:size-8"
-              aria-label="Send message"
-            >
-              <ArrowUpIcon className="aui-composer-send-icon size-3 sm:size-4" />
-            </TooltipIconButton>
-          </ComposerPrimitive.Send>
-        </AuiIf>
+        {showCallButton ? (
+          <TooltipIconButton
+            tooltip={callButton.tooltip}
+            side="top"
+            type="button"
+            variant="default"
+            size="icon"
+            className="aui-composer-call bouncy size-6 rounded-full sm:size-8"
+            aria-label={callButton.tooltip}
+            disabled={callButton.disabled || hasComposerAttachments}
+            onClick={callButton.onClick}
+          >
+            {callButton.active ? (
+              <PhoneOffIcon className="size-4" />
+            ) : (
+              <AudioLinesIcon className="size-4" />
+            )}
+          </TooltipIconButton>
+        ) : (
+          <AuiIf
+            condition={(s) =>
+              !s.composer.canCancel ||
+              (s.thread.voice !== undefined && s.composer.submission === undefined)
+            }
+          >
+            <ComposerPrimitive.Send asChild>
+              <TooltipIconButton
+                tooltip="Send message"
+                side="bottom"
+                type="button"
+                variant="default"
+                size="icon"
+                className="aui-composer-send bouncy size-6 rounded-full sm:size-8"
+                aria-label="Send message"
+              >
+                <ArrowUpIcon className="aui-composer-send-icon size-3 sm:size-4" />
+              </TooltipIconButton>
+            </ComposerPrimitive.Send>
+          </AuiIf>
+        )}
         <AuiIf
           condition={(s) =>
             s.composer.canCancel &&
