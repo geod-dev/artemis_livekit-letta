@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * A thin blue bar across the top of the window while the next page loads: it
+ * A thin cyan bar across the top of the window while the next page loads: it
  * fills towards the end without reaching it, then completes and fades out
  * once the page is there.
  */
@@ -30,7 +30,7 @@ export function LoadingBar({ active }: { active: boolean }) {
     <div
       ref={ref}
       aria-hidden
-      className="bg-sky pointer-events-none fixed inset-x-0 top-0 z-50 h-[3px] origin-left"
+      className="bg-primary pointer-events-none fixed inset-x-0 top-0 z-50 h-[3px] origin-left"
       style={{ opacity: 0, transform: 'scaleX(0)' }}
     />
   );

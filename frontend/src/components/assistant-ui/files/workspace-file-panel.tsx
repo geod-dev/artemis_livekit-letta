@@ -148,8 +148,8 @@ export function WorkspaceFilePanel({ path, onClose }: { path: string; onClose: (
       aria-label={name}
       className={
         mobile
-          ? 'glass-panel mobile-file-panel flex h-full w-full flex-col'
-          : 'glass-panel mobile-file-panel animate-in fade-in-0 slide-in-from-right-8 fixed inset-0 z-40 flex flex-col duration-200 ease-out motion-reduce:animate-none xl:static xl:inset-auto xl:z-auto xl:w-[min(42rem,45vw)] xl:shrink-0 xl:border-s'
+          ? 'surface-panel mobile-file-panel flex h-full w-full flex-col'
+          : 'surface-panel mobile-file-panel animate-in fade-in-0 slide-in-from-right-8 fixed inset-0 z-40 flex flex-col duration-200 ease-out motion-reduce:animate-none xl:static xl:inset-auto xl:z-auto xl:w-[min(42rem,45vw)] xl:shrink-0 xl:border-s'
       }
     >
       {mobile && <DialogTitle className="sr-only">{name}</DialogTitle>}

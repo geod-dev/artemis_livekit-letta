@@ -9,9 +9,9 @@ import {
 } from 'lucide-react';
 import { McpServers } from '@/components/settings/mcp-servers';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { isRecord, responseJson } from '@/lib/api';
 import { cn } from '@/lib/shadcn/utils';
 import { type Theme, applyTheme, getStoredTheme } from '@/lib/theme';
-import { isRecord, responseJson } from '@/lib/api';
 
 type SettingsSection = 'appearance' | 'mcp';
 
@@ -108,18 +108,8 @@ export function SettingsDialog({
     >
       <DialogContent
         showCloseButton={false}
-        className="glass-panel settings-page top-0 left-0 flex w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none duration-0 sm:max-w-none"
+        className="surface-panel settings-page top-0 left-0 flex w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none duration-0 sm:max-w-none"
       >
-        <DialogHeader className="border-border/70 shrink-0 border-b px-4 py-3 text-start sm:px-8">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4">
-            <DialogTitle className="font-display text-xl font-extrabold">Settings</DialogTitle>
-            <span
-              aria-hidden="true"
-              data-mascot-anchor="settings"
-              className="block size-6 shrink-0"
-            />
-          </div>
-        </DialogHeader>
         <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col md:flex-row">
           <nav
             ref={navigationRef}
@@ -129,6 +119,14 @@ export function SettingsDialog({
               !dashboard && 'hidden md:flex'
             )}
           >
+            <DialogHeader className="settings-navigation-heading flex-row items-center justify-between px-4 py-4 text-start">
+              <DialogTitle className="font-display ps-7 text-xl font-medium">Settings</DialogTitle>
+              <span
+                aria-hidden="true"
+                data-mascot-anchor="settings"
+                className="block size-6 shrink-0"
+              />
+            </DialogHeader>
             <button type="button" onClick={closeSettings} className={NAV_BUTTON}>
               <ArrowLeftIcon aria-hidden="true" className="size-4" />
               Back to app
@@ -218,33 +216,10 @@ export function SettingsDialog({
                             onChange={() => changeTheme(option)}
                             className="sr-only"
                           />
-                          <div
-                            aria-hidden="true"
-                            className={cn(
-                              'space-y-2 rounded-lg border p-3',
-                              option === 'dark'
-                                ? 'border-[#383541] bg-[#15141a]'
-                                : 'border-[#e7e5ee] bg-white'
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                'h-2 w-1/2 rounded-full',
-                                option === 'dark' ? 'bg-[#143d73]' : 'bg-[#0575f0]'
-                              )}
-                            />
-                            <div
-                              className={cn(
-                                'h-2 w-3/4 rounded-full',
-                                option === 'dark' ? 'bg-[#aaa6b7]' : 'bg-[#e7e5ee]'
-                              )}
-                            />
-                            <div
-                              className={cn(
-                                'h-2 w-2/3 rounded-full',
-                                option === 'dark' ? 'bg-[#383541]' : 'bg-[#e7e5ee]'
-                              )}
-                            />
+                          <div aria-hidden="true" className="theme-preview" data-theme={option}>
+                            <span />
+                            <span />
+                            <span />
                           </div>
                           <span className="flex items-center gap-2 text-sm font-semibold">
                             <Icon aria-hidden="true" className="size-4" />

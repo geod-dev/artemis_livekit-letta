@@ -1,0 +1,98 @@
+/* Desktop, dark mode, conversations only. All text and panel surfaces stay opaque. */
+.aui-thread-root {
+  isolation: isolate;
+}
+.conversation-atmosphere {
+  display: none;
+}
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  .dark .app-main:has(.conversation-atmosphere)::before {
+    background: none;
+  }
+  .dark .conversation-atmosphere {
+    --light-x: 32%;
+    --light-y: 35%;
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    display: block;
+    overflow: hidden;
+    pointer-events: none;
+    contain: strict;
+  }
+  .conversation-light {
+    position: absolute;
+    left: var(--light-x);
+    top: var(--light-y);
+    width: clamp(440px, 52vw, 800px);
+    aspect-ratio: 1.25;
+    transform: translate(-50%, -50%);
+    transition:
+      opacity 1800ms ease,
+      left 2200ms ease,
+      top 2200ms ease;
+  }
+  /* Wide radial falloff gives the blur without a live full-screen filter. */
+  .conversation-light-cyan {
+    background: radial-gradient(
+      ellipse,
+      rgb(42 153 166 / 24%),
+      rgb(34 95 128 / 9%) 44%,
+      transparent 72%
+    );
+    opacity: 0.12;
+  }
+  .conversation-light-violet {
+    width: clamp(400px, 46vw, 700px);
+    margin-left: 150px;
+    margin-top: -80px;
+    background: radial-gradient(
+      ellipse,
+      rgb(104 103 160 / 18%),
+      rgb(56 84 130 / 7%) 45%,
+      transparent 72%
+    );
+    opacity: 0;
+  }
+  .conversation-atmosphere[data-state='thinking'] .conversation-light-cyan {
+    opacity: 0.3;
+  }
+  .conversation-atmosphere[data-state='thinking'] .conversation-light-violet {
+    opacity: 0.24;
+  }
+  .conversation-atmosphere[data-state='tools'] .conversation-light-cyan {
+    opacity: 0.22;
+  }
+  .conversation-atmosphere[data-state='tools'] .conversation-light-violet {
+    opacity: 0.1;
+  }
+  .conversation-atmosphere[data-state='speaking'] .conversation-light-cyan {
+    opacity: calc(0.14 + var(--speech-light, 0) * 0.28);
+    transition:
+      opacity 220ms ease-out,
+      left 2200ms ease,
+      top 2200ms ease;
+  }
+}
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .conversation-atmosphere[data-state='thinking'] .conversation-light-cyan {
+    animation: conversation-light-drift 16s ease-in-out infinite alternate;
+  }
+  .conversation-atmosphere[data-state='thinking'] .conversation-light-violet {
+    animation: conversation-light-drift 20s ease-in-out -7s infinite alternate-reverse;
+  }
+}
+@keyframes conversation-light-drift {
+  from {
+    transform: translate(-51%, -50%);
+  }
+  to {
+    transform: translate(-48%, -47%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conversation-light {
+    transition: none;
+    animation: none;
+  }
+}

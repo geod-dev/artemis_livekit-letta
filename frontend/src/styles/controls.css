@@ -1,9 +1,59 @@
-/* Shared composer and effort controls. */
+/* Composer, disclosure, and effort controls share the material and geometry scale. */
+[data-slot='aui_composer-shell'] {
+  border-radius: var(--surface-radius);
+  border-color: var(--surface-border);
+  padding: var(--surface-inset);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-panel);
+  transition:
+    border-color 180ms ease,
+    box-shadow 220ms var(--ease-out-soft);
+}
+[data-slot='aui_composer-shell']:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 4%, transparent);
+}
+.aui-composer-input {
+  font-weight: 400;
+  min-height: 58px;
+  padding: 10px 10px 16px;
+  font-size: 16px;
+}
+.aui-composer-input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.85;
+}
+.aui-composer-action-wrapper {
+  padding: 0 1px;
+}
+.aui-composer-send,
+.aui-composer-call,
+.aui-composer-cancel {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  box-shadow: none;
+  transition:
+    scale 200ms var(--ease-spring),
+    background-color 140ms;
+}
+.aui-composer-send:hover,
+.aui-composer-call:hover {
+  scale: 1.05;
+}
+.aui-composer-send:active,
+.aui-composer-call:active {
+  scale: 0.94;
+}
+.aui-composer-effort-trigger {
+  border-radius: 6px;
+  font-weight: 400;
+}
 .effort-popover {
   border-radius: var(--popover-radius);
 }
 .effort-popover-arrow {
-  fill: var(--glass-surface);
+  fill: var(--surface-raised);
 }
 .effort-slider {
   appearance: none;
@@ -116,38 +166,92 @@
     animation: none;
   }
 }
-.aui-composer-input::placeholder {
-  color: color-mix(in srgb, var(--foreground) 48%, transparent);
+.aui-tool-group-root {
+  border-color: var(--border);
 }
-.aui-composer-send,
-.aui-composer-call,
-.aui-composer-cancel {
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 20%, transparent);
+.aui-tool-group-trigger {
+  min-height: 32px;
+  font-weight: 400;
 }
-.aui-user-message-content {
-  border-color: var(--glass-border) !important;
-  background: var(--glass-surface) !important;
-  box-shadow: var(--glass-shadow);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+.aui-tool-group-root:has([aria-busy='true']) {
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--border));
 }
-.dark .aui-user-message-content {
-  color: var(--foreground) !important;
-  border-color: var(--glass-border) !important;
+.aui-message-error-root {
+  background: color-mix(in srgb, var(--destructive) 10%, var(--surface-base));
+  color: var(--destructive);
+  border-left: 2px solid var(--destructive);
+  border-radius: 4px 12px 12px 4px;
+  font-weight: 400;
 }
-.aui-generative-root [data-aui='card'][data-aui-surface],
-.aui-generative-root [data-aui='carousel'] [data-aui='card'] {
-  border-color: color-mix(in srgb, var(--glass-border) 70%, transparent) !important;
-  background: var(--surface-alternate) !important;
-  box-shadow: none;
-  -webkit-backdrop-filter: blur(18px) saturate(145%);
-  backdrop-filter: blur(18px) saturate(145%);
+.system-note,
+.task-note {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-base);
+  color: var(--muted-foreground);
+  font-weight: 400;
 }
-.aui-thread-welcome-message-inner,
-.aui-welcome-title {
-  font-weight: 500 !important;
-  letter-spacing: -0.035em;
+.task-note {
+  border-left: 2px solid var(--primary);
 }
-.app-shell :is(button, a, input, textarea, [role='button']):focus-visible {
-  outline-color: color-mix(in srgb, var(--primary) 76%, white);
+.system-note {
+  border-left: 2px solid var(--pink);
+}
+.app-shell :is(button, a, input, [role='button']):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.aui-composer-input:focus-visible {
+  outline: none;
+}
+.task-error {
+  background: color-mix(in srgb, var(--destructive) 10%, var(--surface-base));
+  color: var(--destructive);
+  border: 1px solid color-mix(in srgb, var(--destructive) 25%, var(--border));
+}
+.aui-composer-shell:has(.aui-composer-voice-root) {
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+}
+.aui-composer-voice-root canvas {
+  color: var(--primary);
+}
+
+/* Theme swatches show each actual material palette independently of selection. */
+.theme-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--preview-border);
+  border-radius: 8px;
+  background: var(--preview-bg);
+}
+.theme-preview[data-theme='light'] {
+  --preview-bg: var(--palette-paper);
+  --preview-border: var(--palette-paper-border);
+  --preview-ink: var(--palette-paper-muted);
+  --preview-primary: var(--palette-clay);
+}
+.theme-preview[data-theme='dark'] {
+  --preview-bg: var(--palette-ink);
+  --preview-border: var(--palette-ink-border);
+  --preview-ink: var(--palette-ink-muted);
+  --preview-primary: var(--palette-cyan);
+}
+.theme-preview > span {
+  display: block;
+  height: 8px;
+  width: 75%;
+  border-radius: 4px;
+  background: var(--preview-ink);
+}
+.theme-preview > span:first-child {
+  width: 50%;
+  background: var(--preview-primary);
+}
+.theme-preview > span:last-child {
+  width: 66%;
+  opacity: 0.6;
 }

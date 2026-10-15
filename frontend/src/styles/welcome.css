@@ -1,0 +1,224 @@
+/* Empty-conversation composition, context, and actionable starting points. */
+.thread-column-empty {
+  justify-content: flex-start;
+  padding-top: clamp(4px, 1vh, 12px);
+  padding-bottom: 32px;
+}
+.artemis-welcome {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.welcome-character {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 200px;
+  height: 124px;
+  margin-bottom: 8px;
+}
+.welcome-mascot-anchor {
+  display: block;
+  width: 104px;
+  height: 104px;
+}
+.character-orbit {
+  position: absolute;
+  width: 170px;
+  height: 122px;
+  border: 1px solid color-mix(in srgb, var(--mascot-color) 12%, transparent);
+  border-radius: 50%;
+  rotate: -25deg;
+}
+.character-orbit::before {
+  position: absolute;
+  content: '';
+  top: 9px;
+  left: 28px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--mascot-color);
+  opacity: 0.6;
+}
+
+.aui-welcome-title {
+  margin: 0;
+  font-size: clamp(38px, 4.8vw, 64px);
+  font-weight: 450;
+  line-height: 1.05;
+  letter-spacing: -0.055em;
+}
+
+.aui-thread-welcome-suggestions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 3px;
+}
+.welcome-starter {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+.welcome-starter > svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.welcome-starter .starter-arrow {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  opacity: 0;
+  translate: -3px 3px;
+  transition:
+    opacity 160ms,
+    translate 220ms var(--ease-out-soft);
+}
+.welcome-starter:hover {
+  color: var(--foreground);
+  border-color: var(--primary);
+}
+.welcome-starter:hover .starter-arrow,
+.welcome-starter:focus-visible .starter-arrow {
+  opacity: 1;
+  translate: 0;
+}
+
+/* History earns its space: one actionable continuation, sourced from the API. */
+
+.welcome-resume {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+  margin-top: 0;
+  padding: 8px 0;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+.welcome-resume:hover {
+  color: var(--foreground);
+  background: var(--surface-hover);
+}
+.resume-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.resume-title {
+  max-width: 28ch;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--foreground);
+}
+.welcome-resume time {
+  font-size: 10px;
+  white-space: nowrap;
+}
+.welcome-resume > svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+.welcome-stats {
+  display: flex;
+  justify-content: center;
+  gap: clamp(24px, 5vw, 56px);
+  margin-bottom: 28px;
+}
+.welcome-stats > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+  text-align: center;
+}
+.welcome-stats dt {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.welcome-stats dd {
+  margin: 0;
+  font-family: var(--font-bricolage), sans-serif;
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 450;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.06em;
+  color: var(--muted-foreground);
+}
+.welcome-refresh {
+  display: inline-flex;
+  grid-column: 1 / -1;
+  justify-self: end;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 0 4px 8px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.welcome-refresh > svg {
+  width: 11px;
+  height: 11px;
+  transition: rotate 250ms var(--ease-out-soft);
+}
+.welcome-refresh:hover {
+  color: var(--foreground);
+}
+.welcome-refresh:hover > svg {
+  rotate: 45deg;
+}
+
+.welcome-suggestions-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  margin-top: 8px;
+}
+.welcome-suggestions-footer .welcome-refresh {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.welcome-suggestions-footer .welcome-resume {
+  min-width: 0;
+}
+
+/* Live statistics occupy the corner; the central workspace stays focused. */
+.app-topbar[data-empty='true'] {
+  height: 100px;
+  min-height: 100px;
+  align-items: center;
+}
+.app-topbar .welcome-stats {
+  margin: 0 0 0 auto;
+  justify-content: flex-end;
+  gap: 28px;
+}
+.app-topbar .welcome-stats > div {
+  text-align: left;
+}
+.app-topbar .welcome-stats dd {
+  font-size: 22px;
+}

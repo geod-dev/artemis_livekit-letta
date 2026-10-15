@@ -77,7 +77,7 @@ function FileRoot({ className, children, ...props }: FileRootProps) {
     <div
       data-slot="file-root"
       className={cn(
-        'aui-file-root glass-panel inline-flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+        'aui-file-root surface-panel inline-flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
         className
       )}
       {...props}

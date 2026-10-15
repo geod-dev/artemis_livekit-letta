@@ -1,5 +1,4 @@
-/* App canvas, wallpapers, glass panels, and primary shell layout. */
-/* Fit the visible webview, including keyboards and device cutouts. */
+/* The application canvas and reusable opaque materials. */
 html,
 body,
 #root {
@@ -9,61 +8,134 @@ body,
   overscroll-behavior: none;
 }
 .app-shell {
-  --wallpaper-position: center 54%;
-  position: relative;
-  overflow: hidden;
-  height: var(--app-height, 100dvh);
-  gap: 12px;
-  padding: max(env(safe-area-inset-top), 12px) max(env(safe-area-inset-right), 12px)
-    max(env(safe-area-inset-bottom), 12px) max(env(safe-area-inset-left), 12px);
-  background: transparent;
-}
-.app-shell::before,
-.app-shell::after {
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-  content: '';
-}
-.auth-screen {
-  --wallpaper-position: center;
   position: relative;
   isolation: isolate;
+  overflow: hidden;
+  height: var(--app-height, 100dvh);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
   background: var(--background);
 }
-.auth-screen::before,
-.auth-screen::after {
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-  content: '';
+.app-main {
+  position: relative;
+  overflow: hidden;
+  background: var(--background);
 }
-.auth-screen::before,
-.app-shell::before {
-  inset: -24px;
-  background: var(--wallpaper-image) var(--wallpaper-position) / cover no-repeat;
-  filter: blur(var(--wallpaper-blur)) saturate(0.82);
-  transform: scale(1.04);
+.app-main::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 60% 35%, var(--ambient), transparent 60%);
 }
 @layer components {
-  .glass-panel,
+  .surface-panel,
   [data-streamdown='code-block'],
   [data-streamdown='mermaid-block'],
   .aui-generative-root [data-aui='markdown'] pre,
   .aui-generative-root [data-aui='card'][data-aui-surface],
   .aui-generative-root [data-aui='carousel'] [data-aui='card'] {
-    border: 1px solid var(--glass-border);
-    background: var(--glass-surface);
-    box-shadow: var(--glass-shadow);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    border: 1px solid var(--surface-border);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-panel);
   }
 }
-/* Syntax highlighting supplies ink colours; the shared panel supplies the glass. */
+.app-sidebar {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  overflow: hidden;
+  width: 260px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface-base);
+  box-shadow: none;
+}
+.sidebar-brand {
+  padding: 28px 22px 30px;
+}
+.sidebar-wordmark {
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: -1.8px;
+  line-height: 1;
+}
+.brand-period {
+  color: var(--primary);
+}
+
+.app-sidebar [data-slot='aui_thread-list-new'] {
+  min-height: 46px;
+  gap: 12px;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  text-decoration: none;
+  font-size: 13px;
+}
+.app-sidebar [data-slot='aui_thread-list-new'][data-active='true'] {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+}
+.app-sidebar [data-slot='aui_thread-list-item'] {
+  border-radius: 8px;
+}
+.app-sidebar [data-slot='aui_thread-list-item'][data-active='true'] .sidebar-item {
+  background: var(--accent);
+  color: var(--foreground);
+  box-shadow: inset 2px 0 var(--primary);
+}
+.app-sidebar [data-slot='aui_thread-list-item-trigger'] {
+  border-radius: inherit;
+  min-height: 40px;
+  font-size: 13px;
+  font-weight: 400;
+}
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+}
+
+.app-topbar {
+  position: relative;
+  z-index: 2;
+  height: 76px;
+  min-height: 76px;
+  padding-inline: 36px;
+}
+.app-topbar-title {
+  color: var(--foreground);
+}
+
+.app-main .aui-root,
+.app-main [data-slot='aui_thread-viewport'] {
+  background: transparent;
+}
+.aui-thread-viewport-footer:not(.aui-thread-empty-footer) {
+  background: linear-gradient(transparent, var(--background) 24px);
+}
+.aui-user-message-content {
+  border: 0;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--surface-hover);
+  color: var(--foreground);
+  box-shadow: none;
+  font-weight: 400;
+}
+[data-slot='aui_assistant-message-content'] {
+  font-size: 16px;
+  line-height: 1.85;
+  font-weight: 400;
+}
+.aui-md {
+  --tw-leading: 1.85;
+}
 [data-streamdown='code-block'],
 [data-streamdown='mermaid-block'] {
-  background: var(--glass-surface);
-  border-color: var(--glass-border);
+  background: var(--surface-base);
+  border-color: var(--border);
+  border-radius: 12px;
+  box-shadow: none;
 }
 [data-streamdown='code-block-body'],
 [data-streamdown='code-block-body'] pre,
@@ -76,93 +148,81 @@ body,
 }
 [data-streamdown='code-block-actions'],
 [data-streamdown='mermaid-block-actions'] {
-  background: var(--glass-surface);
-  border-color: var(--glass-border);
+  background: var(--surface-base);
+  border-color: var(--border);
 }
 .aui-md [data-streamdown='code-block-actions'] {
   background: transparent !important;
   border-color: transparent !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+}
+.auth-screen {
+  background:
+    radial-gradient(ellipse at 50% 35%, var(--ambient), transparent 65%), var(--background);
 }
 .auth-card {
   position: relative;
-  z-index: 1;
+  border-radius: 24px;
+  box-shadow: var(--shadow-float);
 }
 .auth-card input[type='password'] {
-  min-height: 2.75rem;
-  border-color: var(--glass-border);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--glass-surface) 72%, transparent);
-  outline-color: var(--ring);
+  min-height: 48px;
+  background: var(--surface-base);
+  border-color: var(--input);
+  border-radius: var(--control-radius);
 }
 .auth-card button[type='submit'] {
-  min-height: 2.75rem;
-  border-radius: var(--radius-md);
-  box-shadow: 0 5px 18px color-mix(in srgb, var(--primary) 23%, transparent);
-  transition:
-    transform 180ms var(--ease-out-soft),
-    box-shadow 180ms ease,
-    background-color 180ms ease;
+  min-height: 48px;
+  border-radius: var(--control-radius);
 }
-.auth-card button[type='submit']:hover:not(:disabled) {
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--primary) 30%, transparent);
-  transform: translateY(-1px);
-}
-.auth-screen::after,
-.app-shell::after {
-  inset: 0;
-  background: var(--wallpaper-wash);
-}
-.app-sidebar {
-  position: relative;
-  z-index: 1;
-  min-height: 0;
-  margin-block: 2px;
-  overflow: hidden;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--surface-radius);
-}
-.app-main {
-  position: relative;
-  overflow: hidden;
-  margin-bottom: calc(0px - max(env(safe-area-inset-bottom), 12px));
-  background: transparent;
-}
-.app-topbar {
-  min-height: 3.75rem;
-  background: transparent;
+.settings-page {
+  background: var(--background);
 }
 .settings-page [data-slot='dialog-title'] {
   font-weight: 500;
 }
-.app-topbar-title {
+.settings-page nav {
+  background: var(--background);
+}
+[data-slot='dialog-content']:not(.settings-page):not(.mobile-chat-drawer) {
+  box-shadow: var(--shadow-float);
+}
+.app-shell > aside.mobile-file-panel {
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+.aui-generative-root [data-aui='card'][data-aui-surface],
+.aui-generative-root [data-aui='carousel'] [data-aui='card'] {
+  box-shadow: none;
+}
+/* A quiet status strip; live audio is the expressive element. */
+.call-bar {
+  margin: 0 32px 12px;
+  padding: 12px 16px;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border));
+  border-radius: 16px;
+  background: var(--surface-base);
   color: var(--foreground);
+}
+.call-bar-visualizer {
+  color: var(--primary);
+}
+.call-bar-label {
   font-weight: 500;
 }
-.app-main .aui-root,
-.app-main [data-slot='aui_thread-viewport'] {
-  background: transparent;
+.call-bar-mic {
+  background: var(--accent);
+  color: var(--primary);
 }
-.app-sidebar [data-slot='aui_thread-list-item'] {
-  border-radius: var(--control-radius);
-  transition: background-color 150ms ease;
+
+.auth-title {
+  font-size: 42px;
+  font-weight: 450;
+  line-height: 1.1;
+  letter-spacing: -0.045em;
 }
-.app-sidebar [data-slot='aui_thread-list-item'][data-active='true'] .sidebar-item,
-.app-sidebar [data-slot='aui_thread-list-new'][data-active='true'] {
-  background: color-mix(in srgb, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-}
-.app-sidebar [data-slot='aui_thread-list-item-trigger'] {
-  border-radius: inherit;
-}
-.app-sidebar [data-slot='aui_thread-list-new'] {
-  text-decoration: none;
-}
-[data-slot='aui_composer-shell'] {
-  border-radius: var(--surface-radius) !important;
-  transition:
-    border-color 180ms ease,
-    box-shadow 220ms var(--ease-out-soft),
-    background-color 180ms ease;
+
+.auth-mark {
+  color: var(--mascot-color);
 }

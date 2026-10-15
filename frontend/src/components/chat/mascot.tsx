@@ -1,6 +1,9 @@
 import { type RefObject, type SVGProps, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuiState } from '@assistant-ui/react';
+import { useAgent } from '@livekit/components-react';
+import { useChatThread } from '@/components/chat/thread-slots';
+import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
 import { cn } from '@/lib/shadcn/utils';
 
 /**
@@ -8,12 +11,12 @@ import { cn } from '@/lib/shadcn/utils';
  * Anchors are measured in that overlay's visible coordinates, so switching
  * conversations never makes its animated position extend the scroll height.
  *
- * - hidden: while the app opens on a conversation, until it is on screen.
+ * - loading: a reserved anchor while the initial history arrives.
  * - new chat: the `data-mascot-anchor="welcome"` box above the composer;
  *   eyes follow the mouse.
  * - waiting for a reply (from the moment a message is sent): the
- *   `data-mascot-anchor="waiting"` box where the reply will start; it spins
- *   on itself.
+ *   `data-mascot-anchor="waiting"` box where the reply will start; it moves
+ *   with a slow, thoughtful tilt.
  * - writing: right after the last character of the reply, glancing at the
  *   new text.
  * - done: after the last word of the last assistant message; eyes follow the
@@ -29,7 +32,7 @@ import { cn } from '@/lib/shadcn/utils';
  * they never move more than MAX_EYE_SHIFT, so they never touch it.
  */
 
-type Mode = 'hidden' | 'welcome' | 'waiting' | 'writing' | 'idle';
+type Mode = 'hidden' | 'loading' | 'welcome' | 'waiting' | 'writing' | 'idle';
 type Box = { x: number; y: number; s: number };
 
 const INLINE_SIZE = 23;
@@ -58,13 +61,17 @@ export function MascotMark({ children, ...props }: SVGProps<SVGSVGElement>) {
 export function Mascot({
   viewportRef,
   easterEggEnabled = false,
+  recordingStatus = 'idle',
 }: {
   viewportRef: RefObject<HTMLDivElement | null>;
   easterEggEnabled?: boolean;
+  recordingStatus?: VoiceRecorderStatus;
 }) {
+  const agent = useAgent();
+  const { callButton, error } = useChatThread();
   const mode = useAuiState((s): Mode => {
     const messages = s.thread.messages;
-    if (messages.length === 0) return s.thread.isLoading ? 'hidden' : 'welcome';
+    if (messages.length === 0) return s.thread.isLoading ? 'loading' : 'welcome';
     if (!s.thread.isRunning) return 'idle';
     const last = messages.at(-1);
     const writing =
@@ -74,12 +81,53 @@ export function Mascot({
   });
 
   const threadId = useAuiState((s) => s.threadListItem.id);
+  const completed = useAuiState((s) => {
+    const last = s.thread.messages.at(-1);
+    return last?.role === 'assistant' && last.status?.type === 'complete';
+  });
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
   const rootRef = useRef<HTMLDivElement>(null);
   const eyesRef = useRef<SVGGElement>(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const voiceActiveRef = useRef(callButton.active);
+  voiceActiveRef.current = callButton.active;
+  const recordingRef = useRef(recordingStatus);
+  recordingRef.current = recordingStatus;
+  const activity = error
+    ? 'error'
+    : recordingStatus === 'recording'
+      ? 'listening'
+      : recordingStatus === 'transcribing'
+        ? 'thinking'
+        : callButton.active
+          ? agent.state
+          : mode;
+  const previous = useRef({ mode, threadId });
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = { mode, threadId };
+    if (
+      before.threadId !== threadId ||
+      mode !== 'idle' ||
+      !['waiting', 'writing'].includes(before.mode) ||
+      !completed ||
+      error ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    )
+      return;
+    const body = rootRef.current?.querySelector('.mascot-body');
+    const animation = body?.animate(
+      [
+        { transform: 'scale(1)' },
+        { transform: 'translateY(-3px) scale(1.08, 0.94)', offset: 0.4 },
+        { transform: 'scale(1)' },
+      ],
+      { duration: 480, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
+    );
+    return () => animation?.cancel();
+  }, [mode, threadId, completed, error]);
   const [showXMarks, setShowXMarks] = useState(false);
   const xMarksTimer = useRef<number | null>(null);
 
@@ -102,7 +150,13 @@ export function Mascot({
     const container = root?.parentElement;
     const viewport = viewportRef.current;
     if (!root || !container || !viewport) return;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let reduceMotion = motionQuery.matches;
+    const onMotionChange = () => {
+      reduceMotion = motionQuery.matches;
+      scheduleFrame();
+    };
+    motionQuery.addEventListener('change', onMotionChange);
 
     // Overlay coordinates persist across thread changes, even as content shrinks.
     let pos: Box | null = null;
@@ -131,7 +185,9 @@ export function Mascot({
       const sleepy =
         document.visibilityState !== 'visible' ||
         !document.hasFocus() ||
-        performance.now() - lastActivityAt >= SLEEPY_AFTER;
+        (performance.now() - lastActivityAt >= SLEEPY_AFTER &&
+          !voiceActiveRef.current &&
+          recordingRef.current === 'idle');
       if (sleepy) {
         root.dataset.mood = 'sleepy';
       } else if (root.dataset.mood === 'sleepy') {
@@ -158,11 +214,36 @@ export function Mascot({
     };
     const onPointerMove = (e: PointerEvent) => {
       mouse = { x: e.clientX, y: e.clientY };
+      if (modeRef.current === 'welcome' && !reduceMotion) {
+        const bounds = viewport.getBoundingClientRect();
+        const x = Math.max(
+          -1,
+          Math.min(1, (e.clientX - bounds.left - bounds.width / 2) / (bounds.width / 2))
+        );
+        const y = Math.max(
+          -1,
+          Math.min(1, (e.clientY - bounds.top - bounds.height / 2) / (bounds.height / 2))
+        );
+        document.documentElement.style.setProperty(
+          '--welcome-pointer-x',
+          `${(x * 5).toFixed(2)}px`
+        );
+        document.documentElement.style.setProperty(
+          '--welcome-pointer-y',
+          `${(y * 4).toFixed(2)}px`
+        );
+      }
       pointerActiveUntil = performance.now() + 250;
       onActivity();
       scheduleFrame();
     };
+    const resetParallax = (event: PointerEvent) => {
+      if (event.relatedTarget !== null) return;
+      document.documentElement.style.setProperty('--welcome-pointer-x', '0px');
+      document.documentElement.style.setProperty('--welcome-pointer-y', '0px');
+    };
     window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerout', resetParallax, { passive: true });
     const onScroll = () => {
       onActivity();
       scheduleFrame();
@@ -219,22 +300,25 @@ export function Mascot({
       const dt = Math.min((now - (previousFrameAt || now)) / 1000, 0.05);
       previousFrameAt = now;
       const settingsAnchor = document.querySelector<HTMLElement>('[data-mascot-anchor="settings"]');
+      const voiceAnchor = voiceActiveRef.current
+        ? document.querySelector<HTMLElement>('[data-mascot-anchor="voice"]')
+        : null;
       container.style.zIndex = settingsAnchor ? '60' : '10';
       const switched = threadIdRef.current !== lastThreadId;
       const scrollDelta = viewport.scrollTop - lastScrollTop;
       stableFrames = !switched && scrollDelta === 0 ? stableFrames + 1 : 0;
       // Follow ordinary scrolling, but retain the rendered position on a switch.
-      if (pos && !settingsAnchor && !switched && scrollDelta !== 0) {
+      if (pos && !settingsAnchor && !voiceAnchor && !switched && scrollDelta !== 0) {
         pos = clampToViewport({ ...pos, y: pos.y - scrollDelta }, container, viewport);
       }
       lastScrollTop = viewport.scrollTop;
       lastThreadId = threadIdRef.current;
 
       let wrapped: Element | null = null;
-      const settingsBounds = settingsAnchor?.getBoundingClientRect();
-      const spot = settingsBounds
+      const specialBounds = (settingsAnchor ?? voiceAnchor)?.getBoundingClientRect();
+      const spot = specialBounds
         ? {
-            box: toBox(container, settingsBounds.left, settingsBounds.top, settingsBounds.width),
+            box: toBox(container, specialBounds.left, specialBounds.top, specialBounds.width),
             mode: 'idle' as const,
           }
         : findSpot(viewport, container, modeRef.current, pos !== null, (message) => {
@@ -253,7 +337,7 @@ export function Mascot({
         return;
       }
       root.style.opacity = '1';
-      // The effective mode drives the CSS animation (spin while waiting).
+      // The effective mode drives the CSS animation (considering while waiting).
       if (root.dataset.mode !== spot.mode) root.dataset.mode = spot.mode;
       root.classList.toggle('mascot-wrapped', spot.mode === 'idle' && wrappedMessage !== null);
       if (updateSleepiness()) {
@@ -268,16 +352,16 @@ export function Mascot({
         root.dataset.mood = MOODS[moodIndex];
         nextMoodAt = now + 9000 + Math.random() * 7000;
       }
-      const target = settingsAnchor ? spot.box : clampToViewport(spot.box, container, viewport);
+      const target = specialBounds ? spot.box : clampToViewport(spot.box, container, viewport);
 
       pos ??= { ...target };
-      const ready = settingsAnchor !== null || stableFrames >= STABLE_FRAMES;
+      const ready = specialBounds !== undefined || stableFrames >= STABLE_FRAMES;
       if (ready) {
         // A plain ease-out glide (each frame covers a fixed share of the
         // remaining distance): it never overshoots, and snaps to whole pixels
         // at the end so there is no shimmer at rest.
         for (const key of ['x', 'y', 's'] as const) {
-          pos[key] += (target[key] - pos[key]) * (reduceMotion ? 1 : 0.2);
+          pos[key] += (target[key] - pos[key]) * (reduceMotion ? 1 : 1 - Math.exp(-14 * dt));
           if (Math.abs(target[key] - pos[key]) < 0.3) pos[key] = target[key];
         }
       }
@@ -353,6 +437,9 @@ export function Mascot({
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerout', resetParallax);
+      document.documentElement.style.removeProperty('--welcome-pointer-x');
+      document.documentElement.style.removeProperty('--welcome-pointer-y');
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('blur', onBlur);
       window.removeEventListener('pointerdown', onActivity);
@@ -362,11 +449,12 @@ export function Mascot({
       window.clearTimeout(sleepyTimer);
       resizeObserver.disconnect();
       mutationObserver.disconnect();
+      motionQuery.removeEventListener('change', onMotionChange);
       markWrapped(null);
     };
   }, [viewportRef]);
 
-  const blinking = useRandomBlink();
+  const blinking = useRandomBlink(rootRef);
 
   return createPortal(
     <div className="pointer-events-none fixed inset-0 z-10 overflow-hidden">
@@ -384,13 +472,14 @@ export function Mascot({
           }
         }}
         data-mode={mode}
+        data-activity={activity}
         className={cn(
-          'group/mascot text-foreground absolute top-0 left-0 z-10 transition-opacity duration-200',
+          'artemis-mascot group/mascot absolute top-0 left-0 z-10 transition-opacity duration-200',
           easterEggEnabled ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'
         )}
         style={{ width: 0, height: 0, opacity: 0 }}
       >
-        <MascotMark className="group-data-[mode=waiting]/mascot:animate-mascot-anticipate size-full">
+        <MascotMark className="mascot-body size-full">
           <g ref={eyesRef}>
             {showXMarks ? (
               <g fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round">
@@ -460,8 +549,10 @@ function findSpot(
     return inside ? at(x, y, size, as) : 'offscreen';
   };
   if (mode === 'hidden') return null;
-  if (mode === 'welcome') {
-    const anchor = viewport.querySelector('[data-mascot-anchor="welcome"]');
+  if (mode === 'welcome' || mode === 'loading') {
+    const anchor = viewport.querySelector(
+      `[data-mascot-anchor="${mode === 'loading' ? 'loading' : 'welcome'}"]`
+    );
     // Welcome screen not rendered yet: stay where it is (hidden until placed).
     if (!anchor) return placed ? 'hold' : null;
     const r = anchor.getBoundingClientRect();
@@ -528,13 +619,19 @@ function lastCharacterRect(element: Element): DOMRect | null {
 }
 
 /** Blinks at random intervals, sometimes twice in a row. */
-function useRandomBlink(): boolean {
+function useRandomBlink(rootRef: RefObject<HTMLDivElement | null>): boolean {
   const [blinking, setBlinking] = useState(false);
   useEffect(() => {
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     let timer: number;
     const schedule = (delay: number) => {
       timer = window.setTimeout(() => {
-        setBlinking(true);
+        setBlinking(
+          !motionQuery.matches &&
+            document.visibilityState === 'visible' &&
+            document.hasFocus() &&
+            rootRef.current?.dataset.mood !== 'sleepy'
+        );
         timer = window.setTimeout(() => {
           setBlinking(false);
           schedule(Math.random() < 0.18 ? 240 : 2200 + Math.random() * 4300);
@@ -543,6 +640,6 @@ function useRandomBlink(): boolean {
     };
     schedule(1500 + Math.random() * 3000);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [rootRef]);
   return blinking;
 }

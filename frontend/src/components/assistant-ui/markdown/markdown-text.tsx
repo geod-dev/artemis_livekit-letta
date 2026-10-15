@@ -59,7 +59,7 @@ function MermaidError({ chart, error }: MermaidErrorComponentProps) {
     );
   }
   return (
-    <div className="glass-panel my-4 rounded-md">
+    <div className="surface-panel my-4 rounded-md">
       <pre className="overflow-x-auto p-4 font-mono text-xs">{chart.trim()}</pre>
       <p className="text-muted-foreground border-border border-t px-4 py-1.5 text-xs">
         Diagram could not be drawn: {error}

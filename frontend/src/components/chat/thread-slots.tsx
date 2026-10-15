@@ -1,5 +1,5 @@
 import { type CSSProperties, createContext, useContext, useEffect, useRef, useState } from 'react';
-import { BrainIcon, PartyPopperIcon, XIcon } from 'lucide-react';
+import { ArrowUpRightIcon, BrainIcon, PartyPopperIcon, XIcon } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { Streamdown } from 'streamdown';
 import {
@@ -8,7 +8,7 @@ import {
   QueueItemPrimitive,
   useAuiState,
 } from '@assistant-ui/react';
-import type { TextEffort } from '@shared/chat-types';
+import type { ConversationSummary, TextEffort } from '@shared/chat-types';
 import type { ThreadComponents } from '@/components/assistant-ui/chat/thread';
 import {
   MARKDOWN_COMPONENTS,
@@ -18,6 +18,7 @@ import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import type { TaskStatus } from '@/hooks/use-conversation';
+import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
 import { greetingsFor, pickGreeting } from '@/lib/greetings';
 import { cn } from '@/lib/shadcn/utils';
 
@@ -40,10 +41,16 @@ export interface ChatThreadState {
   error: string | null;
   /** Acknowledge background updates the user has seen. */
   markRead: (updateIds: string[]) => void;
+  recentConversation: ConversationSummary | null;
+  resumeConversation: (id: string) => void;
+  conversationStats: { total: number; activeThisWeek: number } | null;
 }
 
 export const ChatThreadContext = createContext<ChatThreadState | null>(null);
 export const MascotEasterEggContext = createContext<(enabled: boolean) => void>(() => {});
+export const MascotRecordingContext = createContext<(status: VoiceRecorderStatus) => void>(
+  () => {}
+);
 
 export function useChatThread() {
   const state = useContext(ChatThreadContext);
@@ -76,20 +83,74 @@ function Welcome() {
   }, [assistantName, setMascotEasterEgg]);
 
   return (
-    <div className="mb-8 flex flex-col items-center gap-6 px-2 text-center">
+    <div className="artemis-welcome">
       {/* The thread's mascot settles into this box. */}
-      <span data-mascot-anchor="welcome" className="block size-20" />
+      <div className="welcome-character">
+        <span className="character-orbit" aria-hidden="true" />
+        <span data-mascot-anchor="welcome" className="welcome-mascot-anchor" />
+      </div>
       <h2
         key={greeting ?? 'pending'}
         onDoubleClick={chooseAnotherGreeting}
         className={cn(
-          'aui-welcome-title font-display max-w-full text-[clamp(1.75rem,6.5vw,3rem)] leading-[1.05] font-medium tracking-tight text-balance select-none',
+          'aui-welcome-title font-display max-w-full text-balance select-none',
           greeting ? 'animate-pop-in [animation-delay:90ms]' : 'invisible'
         )}
       >
         {greeting ?? 'Hello'}
       </h2>
     </div>
+  );
+}
+
+export function WelcomeStats() {
+  const { conversationStats } = useChatThread();
+  return (
+    <>
+      {conversationStats && (
+        <dl className="welcome-stats" aria-label="Conversation activity">
+          <div>
+            <dt>Conversations</dt>
+            <dd>{conversationStats.total.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>Active this week</dt>
+            <dd>{conversationStats.activeThisWeek.toLocaleString()}</dd>
+          </div>
+        </dl>
+      )}
+    </>
+  );
+}
+
+export function WelcomeContinuation({ tabIndex = 0 }: { tabIndex?: number }) {
+  const { recentConversation, resumeConversation } = useChatThread();
+  return (
+    <>
+      {recentConversation && (
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className="welcome-resume"
+          onClick={() => resumeConversation(recentConversation.id)}
+        >
+          <span className="resume-label">Continue</span>
+          <span className="resume-title">
+            {recentConversation.title || 'Untitled conversation'}
+          </span>
+          {recentConversation.updatedAt &&
+            Number.isFinite(Date.parse(recentConversation.updatedAt)) && (
+              <time dateTime={recentConversation.updatedAt}>
+                {new Date(recentConversation.updatedAt).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </time>
+            )}
+          <ArrowUpRightIcon aria-hidden="true" />
+        </button>
+      )}
+    </>
   );
 }
 
@@ -187,9 +248,7 @@ function ComposerEffortControl() {
         />
       </div>
       {locked && (
-        <p className="text-muted-foreground mt-2 text-xs">
-          Can't use Instant with attachments.
-        </p>
+        <p className="text-muted-foreground mt-2 text-xs">Can't use Instant with attachments.</p>
       )}
     </>
   );
@@ -219,7 +278,7 @@ function ComposerEffortControl() {
             side="top"
             align="end"
             sideOffset={10}
-            className="glass-panel effort-popover text-popover-foreground z-50 w-72 p-3 outline-none"
+            className="surface-panel effort-popover text-popover-foreground z-50 w-72 p-3 outline-none"
           >
             {pickerContent}
             <Popover.Arrow className="effort-popover-arrow" />
@@ -298,7 +357,7 @@ function SystemMessage() {
     <MessagePrimitive.Root data-role="system" className="flex flex-col items-center gap-2 px-2">
       <div
         ref={ref}
-        className="bg-pink animate-pop-in inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white"
+        className="system-note animate-pop-in inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white"
       >
         <Icon className="size-3.5 shrink-0" />
         <span className="min-w-0">
@@ -342,17 +401,13 @@ function BeforeComposer() {
       {tasks.map((t) => (
         <div
           key={t.id}
-          className="bg-sky animate-pop-in inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white"
+          className="task-note animate-pop-in inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white"
         >
           <span className="size-2 shrink-0 animate-pulse rounded-full bg-white" />
           <span className="truncate">Working on it in the background: {t.title}</span>
         </div>
       ))}
-      {error && (
-        <p className="bg-destructive animate-pop-in rounded-2xl px-4 py-2 text-sm font-bold text-white">
-          {error}
-        </p>
-      )}
+      {error && <p className="task-error animate-pop-in rounded-xl px-4 py-2 text-sm">{error}</p>}
       <ComposerPrimitive.Queue>
         {({ queueItem }) => (
           <div

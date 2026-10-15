@@ -16,6 +16,7 @@ import {
   ChatThreadContext,
   type ChatThreadState,
   THREAD_COMPONENTS,
+  WelcomeStats,
 } from '@/components/chat/thread-slots';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { Button } from '@/components/ui/button';
@@ -221,6 +222,19 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
     [callBlocked, callConversationId, callOnCurrentConversation, endCall, inCall, select, startCall]
   );
 
+  const welcomeData = useMemo(() => {
+    if (list.loading || list.error) return null;
+    const weekStart = new Date();
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    return {
+      total: list.conversations.length,
+      activeThisWeek: list.conversations.filter(
+        (item) => Date.parse(item.updatedAt ?? '') >= weekStart.getTime()
+      ).length,
+    };
+  }, [list.conversations, list.loading, list.error]);
+
   const threadState = useMemo<ChatThreadState>(
     () => ({
       assistantName,
@@ -232,6 +246,16 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       tasks: conversation.tasks,
       error: conversation.error,
       markRead: conversation.markRead,
+      recentConversation: list.conversations.reduce<ConversationSummary | null>(
+        (latest, item) =>
+          !latest ||
+          (Date.parse(item.updatedAt ?? '') || 0) > (Date.parse(latest.updatedAt ?? '') || 0)
+            ? item
+            : latest,
+        null
+      ),
+      resumeConversation: select,
+      conversationStats: welcomeData,
     }),
     [
       assistantName,
@@ -243,6 +267,9 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       conversation.tasks,
       conversation.error,
       conversation.markRead,
+      list.conversations,
+      select,
+      welcomeData,
     ]
   );
 
@@ -267,34 +294,38 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
             onNewChat={newChat}
             onSettings={openSettings}
           />
-          <main className="app-main flex min-w-0 flex-1 flex-col">
-            <header className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6">
-              <div className="app-topbar-title min-w-0">
+          <ChatThreadContext.Provider value={threadState}>
+            <main className="app-main flex min-w-0 flex-1 flex-col">
+              <header
+                data-empty={conversation.blank || !shownId ? true : undefined}
+                className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6"
+              >
+                <div className="app-topbar-title min-w-0">
+                  {!conversation.blank && shownId && (
+                    <h1
+                      key={shownId}
+                      className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
+                    >
+                      {shownTitle ?? 'Conversation'}
+                    </h1>
+                  )}
+                </div>
+                {(conversation.blank || !shownId) && <WelcomeStats />}
                 {!conversation.blank && shownId && (
-                  <h1
-                    key={shownId}
-                    className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="New chat"
+                    onClick={newChat}
+                    className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
                   >
-                    {shownTitle ?? 'Conversation'}
-                  </h1>
+                    <MessageCirclePlusIcon className="size-5" />
+                  </Button>
                 )}
-              </div>
-              {!conversation.blank && shownId && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="New chat"
-                  onClick={newChat}
-                  className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
-                >
-                  <MessageCirclePlusIcon className="size-5" />
-                </Button>
-              )}
-            </header>
-            {inCall && <CallBar />}
-            <div className="min-h-0 flex-1">
-              <ChatThreadContext.Provider value={threadState}>
+              </header>
+              {inCall && <CallBar mascotActive={callOnCurrentConversation} />}
+              <div className="min-h-0 flex-1">
                 <WorkspaceFilePanelContext.Provider value={setOpenFile}>
                   <Thread
                     autoFocus={window.matchMedia('(hover: hover) and (pointer: fine)').matches}
@@ -302,13 +333,13 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
                     placeholder={
                       inCall
                         ? 'Type here too, I’m still listening…'
-                        : `Tell ${assistantName} what’s up…`
+                        : `An idea, a question, a little of everything…`
                     }
                   />
                 </WorkspaceFilePanelContext.Provider>
-              </ChatThreadContext.Provider>
-            </div>
-          </main>
+              </div>
+            </main>
+          </ChatThreadContext.Provider>
           {openFile && (
             // Workspace files linked from a markdown document open in the panel too.
             <WorkspaceFilePanelContext.Provider value={setOpenFile}>

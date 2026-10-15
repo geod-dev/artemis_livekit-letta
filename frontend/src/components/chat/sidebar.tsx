@@ -83,7 +83,7 @@ export function Sidebar({
 
   const content = (
     <>
-      <div className="flex items-center justify-between gap-2 ps-6 pe-4 pt-4 pb-2">
+      <div className="sidebar-brand flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => {
@@ -91,9 +91,12 @@ export function Sidebar({
             setMobileOpen(false);
           }}
           aria-label={`${assistantName} — new chat`}
-          className="font-display focus-visible:outline-ring cursor-pointer rounded-md text-2xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4"
+          className="sidebar-wordmark font-display focus-visible:outline-ring cursor-pointer rounded-md focus-visible:outline-2 focus-visible:outline-offset-4"
         >
           {assistantName}
+          <span className="brand-period" aria-hidden="true">
+            .
+          </span>
         </button>
         <Button
           type="button"
@@ -118,16 +121,16 @@ export function Sidebar({
           className="mb-2"
         >
           <MessageCirclePlusIcon className="size-4 shrink-0" />
-          New chat
+          New conversation
         </ThreadListNew>
         {error && (
-          <p className="bg-destructive mb-2 rounded-xl px-3 py-2 text-xs font-bold text-white">
+          <p className="task-error mb-2 rounded-xl px-3 py-2 text-xs">
             Can’t reach {assistantName}: {error}
           </p>
         )}
         <ThreadListItems className="-mx-1 overflow-y-auto px-1" />
       </ThreadListRoot>
-      <div className="shrink-0 px-3 pt-3 pb-3">
+      <div className="sidebar-footer shrink-0 px-3 pt-3 pb-3">
         <SidebarItem
           type="button"
           data-active={settingsActive ? 'true' : undefined}
@@ -146,7 +149,7 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="app-sidebar glass-panel group/sidebar hidden w-64 shrink-0 flex-col lg:flex lg:w-72">
+      <aside className="app-sidebar surface-panel group/sidebar hidden w-64 shrink-0 flex-col lg:flex lg:w-72">
         {content}
       </aside>
       <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -163,7 +166,7 @@ export function Sidebar({
         <DialogContent
           showCloseButton={false}
           overlayClassName="mobile-chat-backdrop"
-          className="app-sidebar glass-panel mobile-chat-drawer group/sidebar top-0 left-0 h-full max-h-none w-[min(18rem,85vw)] max-w-none translate-x-0 translate-y-0 gap-0 rounded-none p-0 data-[state=closed]:animate-none data-[state=open]:animate-none lg:hidden"
+          className="app-sidebar surface-panel mobile-chat-drawer group/sidebar top-0 left-0 h-full max-h-none w-[min(18rem,85vw)] max-w-none translate-x-0 translate-y-0 gap-0 rounded-none p-0 data-[state=closed]:animate-none data-[state=open]:animate-none lg:hidden"
         >
           <DialogHeader className="sr-only">
             <DialogTitle>Chats</DialogTitle>
@@ -183,7 +186,7 @@ export function Sidebar({
               variant="ghost"
               aria-label="Close search"
               onClick={() => onSearchOpenChange(false)}
-              className="order-2 size-9 shrink-0 rounded-full p-0 text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground order-2 size-9 shrink-0 rounded-full p-0"
             >
               <XIcon className="size-4" />
             </Button>
@@ -194,7 +197,7 @@ export function Sidebar({
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search chats"
               aria-label="Search chats"
-              className="order-1 h-full border-0 bg-transparent px-2 shadow-none dark:bg-transparent focus-visible:border-transparent focus-visible:ring-0"
+              className="order-1 h-full border-0 bg-transparent px-2 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
               onKeyDown={(event) => {
                 if (event.key === 'ArrowDown') {
                   event.preventDefault();

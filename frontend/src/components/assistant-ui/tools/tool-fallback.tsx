@@ -29,7 +29,7 @@ const TOOL_MARKDOWN_PLUGINS = { code };
 
 function ToolDetailCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="glass-panel text-foreground/90 min-w-0 rounded-md p-2.5 text-xs">
+    <div className="surface-panel text-foreground/90 min-w-0 rounded-md p-2.5 text-xs">
       <p className="text-muted-foreground mb-1.5 text-[10px] font-normal">{title}</p>
       {children}
     </div>

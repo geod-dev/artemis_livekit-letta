@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { MascotMark } from '@/components/chat/mascot';
 import { isRecord, requestJson, responseJson } from '@/lib/api';
 
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -78,7 +79,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         {error && (
           <div
             role="alert"
-            className="glass-panel fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 text-sm"
+            className="surface-panel fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2 text-sm"
           >
             <span>{error}</span>
             <button
@@ -96,15 +97,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
     <main className="auth-screen flex h-dvh items-center justify-center overflow-y-auto p-4 sm:p-6">
       <form
         onSubmit={login}
-        className="glass-panel auth-card my-auto w-full max-w-sm shrink-0 space-y-5 rounded-[var(--control-radius)] p-8"
+        className="surface-panel auth-card my-auto w-full max-w-sm shrink-0 space-y-5 rounded-[var(--control-radius)] p-8"
       >
-        <h1 className="text-2xl font-semibold">{import.meta.env.ASSISTANT_NAME}</h1>
+        <MascotMark className="auth-mark text-primary size-14" aria-hidden="true" />
+        <h1 className="auth-title">Hello again.</h1>
         {authenticated === null ? (
-          <p>Signing in…</p>
+          <p role="status" className="text-muted-foreground">
+            Finding your space…
+          </p>
         ) : (
           <>
             <p className="text-muted-foreground text-sm">
-              Enter your password to access your assistant.
+              {import.meta.env.ASSISTANT_NAME} is right here. Enter your password to begin.
             </p>
             <input
               aria-label="Password"
@@ -114,10 +118,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2"
+              className="focus-visible:outline-primary w-full rounded-lg border px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2"
             />
             {error && (
-              <p role="alert" className="text-sm text-red-600">
+              <p role="alert" className="text-destructive text-sm">
                 {error}
               </p>
             )}

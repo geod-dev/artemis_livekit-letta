@@ -119,7 +119,7 @@ export function WorkspaceFileCard({ path }: { path: string }) {
   if (info?.status === 'missing') {
     return (
       <span
-        className="glass-panel text-muted-foreground my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg border-dashed px-4.5 py-3 text-sm"
+        className="surface-panel text-muted-foreground my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg border-dashed px-4.5 py-3 text-sm"
       >
         <FileXIcon aria-hidden className="size-7.5 shrink-0" />
         <span className="min-w-0 truncate">{name}</span>
@@ -132,7 +132,7 @@ export function WorkspaceFileCard({ path }: { path: string }) {
   const Icon = getMimeTypeIcon(type, name);
   return (
     <span
-      className="glass-panel has-[button:focus-visible]:ring-ring/50 relative my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg px-4.5 py-3 text-sm no-underline transition-colors has-[button:focus-visible]:ring-[3px]"
+      className="surface-panel has-[button:focus-visible]:ring-ring/50 relative my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg px-4.5 py-3 text-sm no-underline transition-colors has-[button:focus-visible]:ring-[3px]"
     >
       <Icon aria-hidden className="text-muted-foreground size-7.5 shrink-0" />
       <span className="flex min-w-0 flex-col gap-0.5">

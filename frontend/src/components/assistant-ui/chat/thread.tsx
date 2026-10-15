@@ -1,9 +1,19 @@
 import { type FC, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDownIcon } from 'lucide-react';
+import {
+  ArrowDownIcon,
+  ArrowUpRightIcon,
+  CodeIcon,
+  CompassIcon,
+  FileTextIcon,
+  GitCompareArrowsIcon,
+  LightbulbIcon,
+  ListChecksIcon,
+  PenLineIcon,
+  RotateCwIcon,
+} from 'lucide-react';
 import {
   type AssistantState,
   AuiIf,
-  SuggestionPrimitive,
   ThreadPrimitive,
   useAui,
   useAuiState,
@@ -17,9 +27,17 @@ import {
 } from '@/components/assistant-ui/chat/thread-context';
 import { ThreadComposer } from '@/components/assistant-ui/composer/thread-composer';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
+import { ConversationAtmosphere } from '@/components/chat/conversation-atmosphere';
 import { Mascot } from '@/components/chat/mascot';
-import { MascotEasterEggContext, useChatThread } from '@/components/chat/thread-slots';
+import {
+  MascotEasterEggContext,
+  MascotRecordingContext,
+  WelcomeContinuation,
+  useChatThread,
+} from '@/components/chat/thread-slots';
+import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
 import { cn } from '@/lib/shadcn/utils';
+import { pickWelcomeSuggestions } from '@/lib/welcome-suggestions';
 
 export type { ThreadComponents, ThreadProps } from '@/components/assistant-ui/chat/thread-context';
 // No messages: the new-chat page. A thread that is still loading (only when
@@ -54,6 +72,7 @@ const ThreadRoot: FC<{
   const { callButton } = useChatThread();
   const viewportRef = useRef<HTMLDivElement>(null);
   const [mascotEasterEgg, setMascotEasterEgg] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState<VoiceRecorderStatus>('idle');
   // A new chat starts at the top, even when the previous conversation was
   // scrolled down. Keep this independent of mascot positioning.
   const threadId = useAuiState((s) => s.threadListItem.id);
@@ -130,58 +149,74 @@ const ThreadRoot: FC<{
       className="aui-root aui-thread-root @container relative flex h-full flex-col"
       data-empty={isEmpty ? 'true' : undefined}
     >
+      {!isEmpty && <ConversationAtmosphere viewportRef={viewportRef} />}
       <MascotEasterEggContext.Provider value={setMascotEasterEgg}>
-        <ThreadPrimitive.Viewport
-          // Bottom-anchored (the default): opens at the latest message, jumps to
-          // the bottom on send, and follows a growing reply while the reader is
-          // at the bottom. Not on a new chat, which stays at the top.
-          turnAnchor="bottom"
-          autoScroll={!isEmpty}
-          ref={viewportRef}
-          data-slot="aui_thread-viewport"
-          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
-        >
-          <div
-            className={cn(
-              'relative mx-auto flex w-full max-w-[44rem] flex-1 flex-col px-2 pt-4 md:px-4',
-              // Optical centre sits above the geometric one: bias the block upward.
-              isEmpty && 'justify-center pb-8 sm:pb-[20dvh]'
-            )}
+        <MascotRecordingContext.Provider value={setRecordingStatus}>
+          <ThreadPrimitive.Viewport
+            // Bottom-anchored (the default): opens at the latest message, jumps to
+            // the bottom on send, and follows a growing reply while the reader is
+            // at the bottom. Not on a new chat, which stays at the top.
+            turnAnchor="bottom"
+            autoScroll={!isEmpty}
+            ref={viewportRef}
+            data-slot="aui_thread-viewport"
+            className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
           >
-            <AuiIf condition={isNewChatView}>
-              <Welcome />
-            </AuiIf>
-
-            <div data-slot="aui_message-group" className="mb-14 flex flex-col gap-y-6 empty:hidden">
-              <ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
-            </div>
-
-            <ThreadPrimitive.ViewportFooter
+            <div
               className={cn(
-                'aui-thread-viewport-footer flex flex-col gap-4 overflow-visible pb-[max(env(safe-area-inset-bottom),0.5rem)]',
-                isEmpty && 'aui-thread-empty-footer',
-                // The gap above the composer fades the messages out instead of cutting them off.
-                !isEmpty && 'sticky bottom-0 z-20 mt-auto pt-6'
+                'thread-column relative mx-auto flex w-full max-w-[48rem] flex-1 flex-col px-4 pt-4 md:px-8',
+                // Optical centre sits above the geometric one: bias the block upward.
+                isEmpty && 'thread-column-empty justify-center'
               )}
             >
-              <ThreadScrollToBottom />
-              <ThreadFollowupSuggestions />
-              {BeforeComposer && <BeforeComposer />}
-              <ThreadComposer
-                autoFocus={autoFocus}
-                placeholder={placeholder}
-                docked={!isEmpty}
-                ComposerEffort={ComposerEffort}
-                callButton={callButton}
-              />
               <AuiIf condition={isNewChatView}>
-                <ThreadSuggestions />
+                <Welcome />
               </AuiIf>
-            </ThreadPrimitive.ViewportFooter>
-          </div>
-        </ThreadPrimitive.Viewport>
-        {/* One persistent mascot can travel between the chat and settings header. */}
-        <Mascot viewportRef={viewportRef} easterEggEnabled={mascotEasterEgg} />
+              <AuiIf condition={(s) => s.thread.isLoading && s.thread.messages.length === 0}>
+                <div className="thread-loading" role="status">
+                  <span data-mascot-anchor="loading" className="block size-12" aria-hidden="true" />
+                  <p>Picking up the thread…</p>
+                </div>
+              </AuiIf>
+
+              <div
+                data-slot="aui_message-group"
+                className="mb-14 flex flex-col gap-y-6 empty:hidden"
+              >
+                <ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
+              </div>
+
+              <ThreadPrimitive.ViewportFooter
+                className={cn(
+                  'aui-thread-viewport-footer flex flex-col gap-4 overflow-visible pb-[max(env(safe-area-inset-bottom),0.5rem)]',
+                  isEmpty && 'aui-thread-empty-footer',
+                  // The gap above the composer fades the messages out instead of cutting them off.
+                  !isEmpty && 'sticky bottom-0 z-20 mt-auto pt-6'
+                )}
+              >
+                <ThreadScrollToBottom />
+                <ThreadFollowupSuggestions />
+                {BeforeComposer && <BeforeComposer />}
+                <ThreadComposer
+                  autoFocus={autoFocus}
+                  placeholder={placeholder}
+                  docked={!isEmpty}
+                  ComposerEffort={ComposerEffort}
+                  callButton={callButton}
+                />
+                <AuiIf condition={isNewChatView}>
+                  <ThreadSuggestions />
+                </AuiIf>
+              </ThreadPrimitive.ViewportFooter>
+            </div>
+          </ThreadPrimitive.Viewport>
+          {/* One persistent mascot can travel between the chat and settings header. */}
+          <Mascot
+            viewportRef={viewportRef}
+            easterEggEnabled={mascotEasterEgg}
+            recordingStatus={recordingStatus}
+          />
+        </MascotRecordingContext.Provider>
       </MascotEasterEggContext.Provider>
     </ThreadPrimitive.Root>
   );
@@ -214,7 +249,18 @@ const ThreadWelcome: FC = () => {
 // Stays mounted while typing (just hidden) so the centered composer does not
 // move when the first character removes the suggestions.
 const ThreadSuggestions: FC = () => {
+  const aui = useAui();
   const composerEmpty = useAuiState((s) => s.composer.isEmpty);
+  const [starters, setStarters] = useState(pickWelcomeSuggestions);
+  const icons = {
+    idea: LightbulbIcon,
+    write: PenLineIcon,
+    explore: CompassIcon,
+    compare: GitCompareArrowsIcon,
+    file: FileTextIcon,
+    plan: ListChecksIcon,
+    code: CodeIcon,
+  };
   return (
     <div
       className={cn(
@@ -223,31 +269,39 @@ const ThreadSuggestions: FC = () => {
       )}
       aria-hidden={!composerEmpty}
     >
-      <ThreadPrimitive.Suggestions>{() => <ThreadSuggestionItem />}</ThreadPrimitive.Suggestions>
-    </div>
-  );
-};
-
-const ThreadSuggestionItem: FC = () => {
-  return (
-    <div className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 animate-in fill-mode-both duration-200">
-      <SuggestionPrimitive.Trigger send asChild>
+      {starters.map(({ label, icon, prompt }) => {
+        const Icon = icons[icon];
+        return (
+          <button
+            key={label}
+            type="button"
+            className="welcome-starter"
+            tabIndex={composerEmpty ? 0 : -1}
+            onClick={() => {
+              aui.composer.setText(prompt);
+              document
+                .querySelector<HTMLTextAreaElement>('.aui-composer-input')
+                ?.focus({ preventScroll: true });
+            }}
+          >
+            <Icon aria-hidden="true" />
+            <span>{label}</span>
+            <ArrowUpRightIcon className="starter-arrow" aria-hidden="true" />
+          </button>
+        );
+      })}
+      <div className="welcome-suggestions-footer">
+        <WelcomeContinuation tabIndex={composerEmpty ? 0 : -1} />
         <button
           type="button"
-          className="aui-thread-welcome-suggestion group hover:bg-foreground/[0.03] focus-visible:ring-ring/50 flex w-full items-baseline gap-2.5 rounded-md px-2 py-2 text-start text-sm transition-colors outline-none focus-visible:ring-1 motion-reduce:transition-none"
+          className="welcome-refresh"
+          tabIndex={composerEmpty ? 0 : -1}
+          onClick={() => setStarters(pickWelcomeSuggestions(starters))}
         >
-          <span
-            aria-hidden
-            className="text-muted-foreground/60 group-hover:text-foreground font-mono text-xs transition-colors motion-reduce:transition-none"
-          >
-            {'>'}
-          </span>
-          <span className="min-w-0 flex-1 truncate">
-            <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 text-foreground" />{' '}
-            <SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 text-muted-foreground empty:hidden" />
-          </span>
+          <RotateCwIcon aria-hidden="true" />
+          More ideas
         </button>
-      </SuggestionPrimitive.Trigger>
+      </div>
     </div>
   );
 };

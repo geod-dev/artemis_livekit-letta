@@ -1,4 +1,12 @@
-import { type ComponentType, type FC, type ReactNode, useLayoutEffect, useRef } from 'react';
+import {
+  type ComponentType,
+  type FC,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from 'react';
 import { ArrowUpIcon, AudioLinesIcon, PhoneOffIcon, SquareIcon } from 'lucide-react';
 import { type AssistantState, AuiIf, ComposerPrimitive, useAuiState } from '@assistant-ui/react';
 import {
@@ -8,6 +16,7 @@ import {
 import { ComposerVoice, ComposerVoiceButton } from '@/components/assistant-ui/composer/voice';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import type { ChatThreadState } from '@/components/chat/thread-slots';
+import { MascotRecordingContext } from '@/components/chat/thread-slots';
 import { Button } from '@/components/ui/button';
 import { useVoiceRecorder } from '@/hooks/use-voice-recorder';
 
@@ -49,10 +58,12 @@ const useComposerGlide = (docked: boolean) => {
     const observer = new ResizeObserver(remember);
     observer.observe(element);
     window.addEventListener('resize', remember);
+    document.addEventListener('scroll', remember, { capture: true, passive: true });
     return () => {
       remember();
       observer.disconnect();
       window.removeEventListener('resize', remember);
+      document.removeEventListener('scroll', remember, true);
     };
   }, []);
   return ref;
@@ -84,12 +95,12 @@ const ComposerRoot: FC<{
     <ComposerPrimitive.AttachmentDropzone asChild>
       <div
         data-slot="aui_composer-shell"
-        className="aui-composer-shell glass-panel data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-2 rounded-(--surface-radius) p-(--surface-inset) transition-[border-color] duration-200 data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]"
+        className="aui-composer-shell surface-panel data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-2 rounded-(--surface-radius) p-(--surface-inset) transition-[border-color] duration-200 data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]"
       >
         <ComposerAttachments />
         <ComposerPrimitive.Input
           placeholder={placeholder}
-          className="aui-composer-input relative z-20 caret-primary placeholder:text-muted-foreground/70 max-h-48 min-h-10 w-full resize-none bg-transparent px-3 py-1.5 text-base leading-6 outline-none"
+          className="aui-composer-input caret-primary placeholder:text-muted-foreground/70 relative z-20 max-h-48 min-h-10 w-full resize-none bg-transparent px-3 py-1.5 text-base leading-6 outline-none"
           rows={1}
           autoFocus={autoFocus}
           enterKeyHint="send"
@@ -111,6 +122,11 @@ const ComposerAction: FC<{
       s.composer.submission !== undefined && !(s.thread.isRunning && s.thread.capabilities.cancel)
   );
   const recorder = useVoiceRecorder();
+  const setMascotRecording = useContext(MascotRecordingContext);
+  useEffect(() => {
+    setMascotRecording(recorder.status);
+    return () => setMascotRecording('idle');
+  }, [recorder.status, setMascotRecording]);
   const composerEmpty = useAuiState((s: AssistantState) => s.composer.isEmpty);
   const hasComposerAttachments = useAuiState(
     (s: AssistantState) => s.composer.attachments.length > 0
@@ -136,7 +152,7 @@ const ComposerAction: FC<{
             type="button"
             variant="default"
             size="icon"
-          className="aui-composer-call ms-1 size-8 rounded-full"
+            className="aui-composer-call ms-1 size-8 rounded-full"
             aria-label={callButton.label}
             disabled={callButton.disabled || hasComposerAttachments}
             onClick={callButton.onClick}

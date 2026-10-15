@@ -2,15 +2,15 @@ export type Theme = 'light' | 'dark';
 
 const THEME_KEY = 'theme';
 const THEME_COLORS: Record<Theme, string> = {
-  light: '#ffffff',
-  dark: '#15141a',
+  light: '#f7f4ec',
+  dark: '#111718',
 };
 
 export function getStoredTheme(): Theme {
   try {
-    return window.localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
+    return window.localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
   } catch {
-    return 'light';
+    return 'dark';
   }
 }
 

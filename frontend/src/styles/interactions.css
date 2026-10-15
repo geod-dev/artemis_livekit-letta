@@ -63,3 +63,139 @@
     transition-duration: 0.01ms !important;
   }
 }
+/* Character motion is separate from the viewport translation on its parent. */
+.artemis-mascot {
+  color: var(--mascot-color);
+}
+.mascot-body {
+  overflow: visible;
+  transform-origin: center;
+}
+.artemis-mascot[data-mode='welcome'] .mascot-body {
+  animation: mascot-breathe 5s ease-in-out infinite;
+  filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--mascot-color) 12%, transparent));
+}
+.artemis-mascot:is([data-activity='waiting'], [data-activity='loading'], [data-activity='thinking'])
+  .mascot-body {
+  animation: mascot-consider 2.8s ease-in-out infinite;
+}
+.artemis-mascot[data-activity='listening'] .mascot-body {
+  animation: mascot-listen 2s ease-in-out infinite;
+}
+.artemis-mascot[data-activity='speaking'] .mascot-expression-eyes {
+  animation: mascot-speak 650ms ease-in-out infinite alternate;
+}
+.artemis-mascot[data-activity='error'] .mascot-body {
+  color: var(--sunny);
+  animation: mascot-concern 500ms ease-out both;
+}
+.artemis-mascot[data-activity='error'] .mascot-expression-eyes {
+  transform: rotate(-9deg) scaleY(0.8);
+}
+.thread-loading {
+  display: flex;
+  flex: 1;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+@keyframes mascot-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.025, 0.99);
+  }
+}
+@keyframes mascot-consider {
+  0%,
+  100% {
+    transform: rotate(-8deg) scale(0.97, 1.03);
+  }
+  45% {
+    transform: rotate(9deg) scale(1.035, 0.97);
+  }
+  65% {
+    transform: rotate(9deg) scale(1);
+  }
+}
+@keyframes mascot-listen {
+  0%,
+  100% {
+    transform: scale(1) rotate(-4deg);
+  }
+  50% {
+    transform: scale(1.06) rotate(-4deg);
+  }
+}
+@keyframes mascot-speak {
+  from {
+    transform: scaleY(0.75);
+  }
+  to {
+    transform: scaleY(1.08);
+  }
+}
+@keyframes mascot-concern {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  35% {
+    transform: rotate(-8deg);
+  }
+  70% {
+    transform: rotate(4deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .artemis-mascot .mascot-body,
+  .artemis-mascot .mascot-expression-eyes {
+    animation: none !important;
+    transform: none;
+  }
+}
+/* Welcome-only parallax uses individual transforms, leaving travel coordinates intact. */
+@media (prefers-reduced-motion: no-preference) {
+  .artemis-mascot[data-mode='welcome'] .mascot-body {
+    translate: var(--welcome-pointer-x, 0px) var(--welcome-pointer-y, 0px);
+    transition: translate 600ms var(--ease-out-soft);
+  }
+  .welcome-character .character-orbit {
+    translate: calc(var(--welcome-pointer-x, 0px) * -1.4) calc(var(--welcome-pointer-y, 0px) * -1.2);
+    animation: welcome-orbit-drift 13s ease-in-out infinite;
+    transition: translate 850ms var(--ease-out-soft);
+  }
+  .welcome-character .character-orbit::before {
+    translate: calc(var(--welcome-pointer-x, 0px) * 1.8) calc(var(--welcome-pointer-y, 0px) * 1.6);
+    animation: welcome-satellite-drift 9s ease-in-out infinite;
+    transition: translate 1000ms var(--ease-out-soft);
+  }
+}
+@keyframes welcome-orbit-drift {
+  0%,
+  100% {
+    transform: translate(-2px, 1px) rotate(-4deg);
+  }
+  50% {
+    transform: translate(3px, -3px) rotate(5deg);
+  }
+}
+@keyframes welcome-satellite-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(4px, -3px) scale(1.15);
+  }
+}
+/* Closed, resting eyes do not perform another blink. */
+.artemis-mascot[data-mood='sleepy'] .mascot-blink {
+  animation: none;
+}
