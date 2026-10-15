@@ -1,0 +1,30 @@
+# Frontend library review
+
+Reviewed 15 October 2026. This is a static review of frontend interaction code and data hooks, with the sidebar replacement implemented separately. Recommendations below are engineering judgments based on the current code and the linked library documentation.
+
+Follow-up implementation: chat search now uses cmdk with dedicated command options, preserving the existing title filter and date groups. Conversation long press now uses React Aria's useLongPress on the conversation trigger, preserving the 450 ms threshold and haptic feedback. A small click guard bridges assistant-ui's click activation with React Aria's press cancellation. The options button is visible on touch devices as an alternative to long press.
+
+## Highest value replacements
+
+| Priority | Current implementation | Suggested library | Benefit and migration boundary |
+| --- | --- | --- | --- |
+| 1 — implemented | `frontend/src/components/chat/sidebar.tsx`: global pointer listeners, manual drag offsets, velocity estimates, delayed state changes, and CSS animation overrides | [Material UI SwipeableDrawer](https://mui.com/material-ui/react-drawer/#swipeable) | Owns edge discovery, finger tracking, gesture direction, distance/velocity thresholds, backdrop fading, scroll handling, and settling. The old pointer handler treated ordinary menu taps as swipes and scheduled a close. Replaced that code and its animation overrides. Adds MUI and Emotion dependencies; imports the drawer directly. Real Android touch behavior still needs device verification. |
+| 2 | `frontend/src/components/chat/sidebar.tsx`: search uses DOM queries, imperative focus/click calls, and separate input/result keyboard handlers | [cmdk](https://github.com/dip/cmdk) | Provides an accessible command menu with selection, keyboard navigation, and filtering. Build dedicated search result items around conversation IDs and activation callbacks. Do not wrap the existing conversation row buttons with another interactive item: those rows also contain rename/archive controls. Preserve existing title matching explicitly if changing ranking is undesirable. |
+| 3 | `frontend/src/components/assistant-ui/chat/thread-list.tsx`: touch long press uses a timer, movement tracking, context-menu handling, and click suppression | [React Aria useLongPress](https://react-aria.adobe.com/useLongPress) | Consolidates press cancellation and suppresses the subsequent ordinary press. Preserve the 450 ms threshold, haptic feedback, and existing assistant-ui menu. Scope the interaction to the conversation trigger rather than the whole row, so touching another action cannot start the long press. Provide a visible or keyboard-accessible menu action as well; long press alone is not discoverable. |
+| 4 | `frontend/src/hooks/use-conversations.ts`, `frontend/src/components/assistant-ui/files/workspace-file.tsx`, `frontend/src/components/settings/mcp-servers.tsx`: repeated loading/error state, request revisions, request deduplication, metadata caching, invalidation events, and polling | [TanStack Query](https://tanstack.com/query/latest/docs/framework/react/overview) | Share query keys, cancellation, cache updates, invalidation, and polling. Start with workspace metadata and MCP settings. MCP polling currently starts an unconditional request every five seconds and does not cancel an outstanding request on cleanup; overlapping responses can overwrite newer data. Keep the backend's revision/If-Match protection, and connect SSE updates to query cache changes. Migrating the conversation list requires preserving the current mutation ordering rules. |
+| 5 | `frontend/src/components/assistant-ui/chat/reasoning-disclosure.tsx`: custom bottom pinning with scroll-height comparisons and a ResizeObserver | [use-stick-to-bottom](https://github.com/stackblitz-labs/use-stick-to-bottom) | Encapsulates following streaming content while allowing the reader to scroll away. Limit this migration to the reasoning preview first. The main chat already uses assistant-ui's viewport and auto-scroll behavior; adding a second scroll controller there would create competing owners. |
+
+## Lower priority or keep as written
+
+- **Dialogs, popovers, and conversation menus:** already use Radix UI or assistant-ui primitives. Their styles and wrappers are application code; switching component libraries throughout would bring little benefit.
+- **Selected conversation URL:** `useSelectedConversation` in `chat-app.tsx` only synchronizes one query parameter. A router would be justified by additional pages, nested routes, or navigation requirements, rather than this small hook alone.
+- **Media players:** the audio player owns basic HTML media playback state and uses a native range input; the video and workspace previews use native browser controls. A full media player library becomes worthwhile when requirements include captions, playback rates, playlists, or consistent controls across providers.
+- **Mascot animation:** there is substantial custom animation and DOM measurement, but much of it is specific to anchoring the character to messages, settings, and recording UI. An animation library can simplify interpolation without replacing those rules. Profile and isolate the motion code before adding a dependency.
+- **Clipboard, media queries, local preferences, and simple observers:** keep these small hooks unless a shared hooks dependency is introduced for another substantial reason.
+- **Voice recording and conversation streaming:** these hooks contain application and backend protocol rules. A generic recording or state library would not remove those responsibilities by itself.
+
+## Suggested order
+
+Land the drawer fix, then migrate search and long press as separate changes with keyboard and touch checks. Introduce TanStack Query for metadata/settings before moving conversation mutations. Replace reasoning pinning only after checking how it interacts with the enclosing assistant-ui viewport.
+
+The fetching/caching and reasoning scroll recommendations remain unimplemented.

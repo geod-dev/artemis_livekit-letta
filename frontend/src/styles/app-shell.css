@@ -177,6 +177,12 @@ body,
 .settings-page {
   background: var(--background);
 }
+.settings-mascot-anchor {
+  position: absolute;
+  z-index: 1;
+  top: calc(env(safe-area-inset-top) + 2rem);
+  right: calc(env(safe-area-inset-right) + 2rem);
+}
 .settings-page [data-slot='dialog-title'] {
   font-weight: 500;
 }

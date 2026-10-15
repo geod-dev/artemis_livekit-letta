@@ -67,7 +67,7 @@
   --shadow-panel: 0 12px 40px #2335320a;
   --shadow-float: 0 20px 70px #142a3020;
   --primary: var(--palette-clay);
-  --mascot-color: #0d8586;
+  --mascot-color: var(--primary);
   --primary-foreground: #ffffff;
   --muted-foreground: #76695f;
   --border: var(--palette-paper-border);
@@ -93,7 +93,6 @@
   --shadow-panel: 0 12px 40px #00000012;
   --shadow-float: 0 20px 70px #00000050;
   --primary: var(--palette-cyan);
-  --mascot-color: var(--palette-cyan);
   --primary-foreground: #112829;
   --muted-foreground: #9aa9a6;
   --border: #2b3636;

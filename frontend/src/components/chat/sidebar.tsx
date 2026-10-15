@@ -1,21 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+import { Command } from 'cmdk';
 import { MenuIcon, MessageCirclePlusIcon, SearchIcon, SettingsIcon, XIcon } from 'lucide-react';
 import { useAuiState } from '@assistant-ui/react';
+import SwipeableDrawer from '@mui/material/SwipeableDrawer';
 import {
   ThreadListItems,
   ThreadListNew,
   ThreadListRoot,
+  ThreadSearchResults,
 } from '@/components/assistant-ui/chat/thread-list';
 import { SidebarItem } from '@/components/chat/sidebar-item';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 const QUIET_ICON_BUTTON =
   'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted size-9 justify-center rounded-full border-0 bg-transparent p-0 opacity-100 transition-colors duration-150';
@@ -42,27 +38,13 @@ export function Sidebar({
   onSettings: () => void;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileViewport, setMobileViewport] = useState(
+    () => !window.matchMedia('(min-width: 1024px)').matches
+  );
   const [search, setSearch] = useState('');
-  const searchResultsRef = useRef<HTMLDivElement>(null);
+
   const activeThreadId = useAuiState((state) => state.threadListItem.id);
   const previousThreadId = useRef(activeThreadId);
-
-  const focusSearchResult = (index: number) => {
-    const results = searchResultsRef.current?.querySelectorAll<HTMLButtonElement>(
-      '[data-slot="aui_thread-list-item-trigger"]'
-    );
-    if (!results?.length) return;
-    results[Math.max(0, Math.min(index, results.length - 1))]?.focus();
-  };
-
-  const selectSearchResult = (index: number) => {
-    const results = searchResultsRef.current?.querySelectorAll<HTMLButtonElement>(
-      '[data-slot="aui_thread-list-item-trigger"]'
-    );
-    const result = results?.[Math.max(0, Math.min(index, (results?.length ?? 1) - 1))];
-    result?.focus();
-    result?.click();
-  };
 
   useEffect(() => {
     if (searchOpen && previousThreadId.current !== activeThreadId) {
@@ -75,6 +57,7 @@ export function Sidebar({
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 1024px)');
     const closeOnDesktop = () => {
+      setMobileViewport(!desktop.matches);
       if (desktop.matches) setMobileOpen(false);
     };
     desktop.addEventListener('change', closeOnDesktop);
@@ -152,96 +135,89 @@ export function Sidebar({
       <aside className="app-sidebar surface-panel group/sidebar hidden w-64 shrink-0 flex-col lg:flex lg:w-72">
         {content}
       </aside>
-      <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-        <DialogTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            aria-label="Open chats"
-            className="mobile-chat-trigger fixed z-30 size-11 rounded-full lg:hidden"
-          >
-            <MenuIcon className="size-5" />
-          </Button>
-        </DialogTrigger>
-        <DialogContent
-          showCloseButton={false}
-          overlayClassName="mobile-chat-backdrop"
-          className="app-sidebar surface-panel mobile-chat-drawer group/sidebar top-0 left-0 h-full max-h-none w-[min(18rem,85vw)] max-w-none translate-x-0 translate-y-0 gap-0 rounded-none p-0 data-[state=closed]:animate-none data-[state=open]:animate-none lg:hidden"
+      <Button
+        type="button"
+        variant="ghost"
+        aria-label="Open chats"
+        aria-haspopup="dialog"
+        aria-expanded={mobileOpen}
+        aria-controls={mobileOpen ? 'mobile-chat-drawer' : undefined}
+        onClick={() => setMobileOpen(true)}
+        className="mobile-chat-trigger fixed z-30 size-11 rounded-full lg:hidden"
+      >
+        <MenuIcon className="size-5" />
+      </Button>
+      {mobileViewport && (
+        <SwipeableDrawer
+          anchor="left"
+          open={mobileOpen}
+          onOpen={() => setMobileOpen(true)}
+          onClose={() => setMobileOpen(false)}
+          disableSwipeToOpen={searchOpen || settingsActive}
+          swipeAreaWidth={28}
+          hysteresis={0.35}
+          minFlingVelocity={450}
+          transitionDuration={240}
+          slotProps={{
+            root: { style: { zIndex: 50 } },
+            paper: {
+              id: 'mobile-chat-drawer',
+              role: 'dialog',
+              'aria-modal': mobileOpen ? true : undefined,
+              'aria-labelledby': 'mobile-chat-drawer-title',
+              className: 'app-sidebar surface-panel mobile-chat-drawer group/sidebar',
+            },
+            backdrop: { className: 'mobile-chat-backdrop' },
+            swipeArea: { style: { zIndex: 20 } },
+          }}
         >
-          <DialogHeader className="sr-only">
-            <DialogTitle>Chats</DialogTitle>
-          </DialogHeader>
+          <h2 id="mobile-chat-drawer-title" className="sr-only">
+            Chats
+          </h2>
           {content}
-        </DialogContent>
-      </Dialog>
+        </SwipeableDrawer>
+      )}
       <Dialog open={searchOpen} onOpenChange={onSearchOpenChange}>
         <DialogContent
           showCloseButton={false}
           aria-label="Search chats"
           className="mobile-search-page flex flex-col gap-3 rounded-[var(--surface-radius)] p-4 sm:max-w-xl"
         >
-          <div className="search-dialog-field flex h-11 shrink-0 items-center gap-2 rounded-[var(--control-radius)]">
-            <Button
-              type="button"
-              variant="ghost"
-              aria-label="Close search"
-              onClick={() => onSearchOpenChange(false)}
-              className="text-muted-foreground hover:text-foreground order-2 size-9 shrink-0 rounded-full p-0"
-            >
-              <XIcon className="size-4" />
-            </Button>
-            <Input
-              autoFocus
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search chats"
-              aria-label="Search chats"
-              className="order-1 h-full border-0 bg-transparent px-2 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  focusSearchResult(0);
-                } else if (event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  const count = searchResultsRef.current?.querySelectorAll(
-                    '[data-slot="aui_thread-list-item-trigger"]'
-                  ).length;
-                  if (count) focusSearchResult(count - 1);
-                } else if (event.key === 'Enter') {
-                  event.preventDefault();
-                  selectSearchResult(0);
-                }
-              }}
-            />
-          </div>
-          <div
-            ref={searchResultsRef}
-            className="mobile-search-results max-h-[min(55vh,26rem)] min-h-12 overflow-y-auto"
-            onKeyDown={(event) => {
-              const target = event.target;
-              if (!(target instanceof Element)) return;
-              const current = target.closest('[data-slot="aui_thread-list-item-trigger"]');
-              if (!current) return;
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                (current as HTMLButtonElement).click();
-                return;
-              }
-              if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-              const results = Array.from(
-                event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                  '[data-slot="aui_thread-list-item-trigger"]'
-                )
-              );
-              const index = results.indexOf(current as HTMLButtonElement);
-              if (index < 0) return;
-              event.preventDefault();
-              focusSearchResult(index + (event.key === 'ArrowDown' ? 1 : -1));
-            }}
+          <Command
+            label="Search chats"
+            shouldFilter={false}
+            loop
+            className="flex min-h-0 flex-1 flex-col gap-3"
           >
-            <ThreadListItems searchQuery={search} />
-          </div>
+            <div className="search-dialog-field flex h-11 shrink-0 items-center gap-2 rounded-[var(--control-radius)]">
+              <Button
+                type="button"
+                variant="ghost"
+                aria-label="Close search"
+                onClick={() => onSearchOpenChange(false)}
+                className="text-muted-foreground hover:text-foreground order-2 size-9 shrink-0 rounded-full p-0"
+              >
+                <XIcon className="size-4" />
+              </Button>
+              <Command.Input
+                autoFocus
+                value={search}
+                onValueChange={setSearch}
+                placeholder="Search chats"
+                aria-label="Search chats"
+                className="order-1 h-full min-w-0 flex-1 bg-transparent px-2 text-base outline-none md:text-sm"
+              />
+            </div>
+            <Command.List
+              aria-label="Conversations"
+              className="mobile-search-results max-h-[min(55vh,26rem)] min-h-12 overflow-y-auto"
+            >
+              <ThreadSearchResults
+                searchQuery={search}
+                onSelect={() => onSearchOpenChange(false)}
+              />
+            </Command.List>
+          </Command>
         </DialogContent>
       </Dialog>
     </>

@@ -110,6 +110,11 @@ export function SettingsDialog({
         showCloseButton={false}
         className="surface-panel settings-page top-0 left-0 flex w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none duration-0 sm:max-w-none"
       >
+        <span
+          aria-hidden="true"
+          data-mascot-anchor="settings"
+          className="settings-mascot-anchor block size-6"
+        />
         <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col md:flex-row">
           <nav
             ref={navigationRef}
@@ -121,11 +126,6 @@ export function SettingsDialog({
           >
             <DialogHeader className="settings-navigation-heading flex-row items-center justify-between px-4 py-4 text-start">
               <DialogTitle className="font-display ps-7 text-xl font-medium">Settings</DialogTitle>
-              <span
-                aria-hidden="true"
-                data-mascot-anchor="settings"
-                className="block size-6 shrink-0"
-              />
             </DialogHeader>
             <button type="button" onClick={closeSettings} className={NAV_BUTTON}>
               <ArrowLeftIcon aria-hidden="true" className="size-4" />

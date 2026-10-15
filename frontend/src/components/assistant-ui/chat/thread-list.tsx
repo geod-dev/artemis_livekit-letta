@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { Command } from 'cmdk';
 import {
   ArchiveIcon,
   Loader2Icon,
@@ -25,6 +26,7 @@ import {
   useAui,
   useAuiState,
 } from '@assistant-ui/react';
+import { useLongPress } from '@react-aria/interactions';
 import { SidebarItem } from '@/components/chat/sidebar-item';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -201,6 +203,59 @@ const ThreadListItemGroups: FC<{ searchQuery?: string }> = ({ searchQuery = '' }
   ));
 };
 
+/** Search results are command options, separate from the sidebar's action buttons. */
+export function ThreadSearchResults({
+  searchQuery,
+  onSelect,
+}: {
+  searchQuery: string;
+  onSelect: () => void;
+}) {
+  const aui = useAui();
+  const loading = useAuiState((s) => s.threads.isLoading);
+  const threadItems = useAuiState((s) => s.threads.threadItems);
+  const { threadIds, filteredIndices, groups } = useThreadListGroups(searchQuery);
+  const itemsById = new Map(threadItems.map((item) => [item.id, item]));
+
+  if (loading) return <ThreadListSkeleton />;
+
+  const renderItem = (index: number) => {
+    const id = threadIds[index];
+    return (
+      <Command.Item
+        key={id}
+        value={id}
+        onSelect={() => {
+          aui.threads.switchToThread(id);
+          onSelect();
+        }}
+        className="text-muted-foreground data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground flex min-h-10 cursor-pointer items-center rounded-[var(--control-radius)] px-3 py-2 text-[13.5px] outline-none"
+      >
+        <span className="truncate">{itemsById.get(id)?.title || 'New Chat'}</span>
+      </Command.Item>
+    );
+  };
+
+  return (
+    <>
+      <Command.Empty className="text-muted-foreground px-3 py-4 text-[13.5px]">
+        No threads found
+      </Command.Empty>
+      {groups
+        ? groups.map((group) => (
+            <Command.Group
+              key={group.label}
+              heading={group.label}
+              className="[&_[cmdk-group-heading]]:text-muted-foreground/60 [&_[cmdk-group-heading]]:px-px [&_[cmdk-group-heading]]:pt-5 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium first:[&_[cmdk-group-heading]]:pt-1"
+            >
+              {group.indices.map(renderItem)}
+            </Command.Group>
+          ))
+        : filteredIndices.map(renderItem)}
+    </>
+  );
+}
+
 export const ThreadListNew = forwardRef<
   HTMLButtonElement,
   ComponentPropsWithoutRef<'button'> & { labelClassName?: string }
@@ -258,27 +313,21 @@ const ThreadListItem = () => {
   const [moreOpen, setMoreOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredRef = useRef(false);
-  const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
-
-  const clearLongPress = () => {
-    if (longPressTimerRef.current !== null) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-
-  const openMoreFromLongPress = () => {
-    if (longPressTriggeredRef.current) return;
-    longPressTriggeredRef.current = true;
-    setMoreOpen(true);
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+  const { longPressProps } = useLongPress({
+    isDisabled: isRenaming,
+    pointerType: 'touch',
+    threshold: 450,
+    accessibilityDescription: 'Long press to open conversation options',
+    onLongPressStart: () => {
+      longPressTriggeredRef.current = false;
+    },
+    onLongPress: () => {
+      longPressTriggeredRef.current = true;
+      setMoreOpen(true);
       navigator.vibrate?.(12);
-    }
-  };
-
-  useEffect(() => clearLongPress, []);
+    },
+  });
 
   useEffect(() => {
     if (isRenaming || !restoreFocusRef.current) return;
@@ -290,47 +339,6 @@ const ThreadListItem = () => {
     <ThreadListItemPrimitive.Root
       data-slot="aui_thread-list-item"
       className="group relative flex w-full items-center rounded-[var(--control-radius)] transition-colors focus-visible:outline-none"
-      onPointerDown={(event) => {
-        if (event.pointerType !== 'touch' || isRenaming) return;
-        clearLongPress();
-        longPressTriggeredRef.current = false;
-        longPressOriginRef.current = { x: event.clientX, y: event.clientY };
-        longPressTimerRef.current = setTimeout(openMoreFromLongPress, 450);
-      }}
-      onPointerMove={(event) => {
-        if (event.pointerType !== 'touch') return;
-        const origin = longPressOriginRef.current;
-        if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) {
-          clearLongPress();
-        }
-      }}
-      onPointerUp={() => {
-        clearLongPress();
-        longPressOriginRef.current = null;
-      }}
-      onPointerCancel={() => {
-        clearLongPress();
-        longPressOriginRef.current = null;
-      }}
-      onContextMenu={(event) => {
-        if (window.matchMedia('(hover: none)').matches) {
-          event.preventDefault();
-          openMoreFromLongPress();
-        }
-      }}
-      onClickCapture={(event) => {
-        const target = event.target;
-        if (
-          !longPressTriggeredRef.current ||
-          !(target instanceof Element) ||
-          !target.closest('[data-slot="aui_thread-list-item-trigger"]')
-        ) {
-          return;
-        }
-        longPressTriggeredRef.current = false;
-        event.preventDefault();
-        event.stopPropagation();
-      }}
     >
       {isRenaming ? (
         <ThreadListItemRename
@@ -342,6 +350,14 @@ const ThreadListItem = () => {
       ) : (
         <ThreadListItemPrimitive.Trigger asChild>
           <SidebarItem
+            {...longPressProps}
+            onClickCapture={(event) => {
+              // assistant-ui activates on click; React Aria cancels press events.
+              if (!longPressTriggeredRef.current) return;
+              longPressTriggeredRef.current = false;
+              event.preventDefault();
+              event.stopPropagation();
+            }}
             ref={triggerRef}
             data-slot="aui_thread-list-item-trigger"
             className="min-w-0 flex-1 group-hover:pe-9 group-has-focus-visible:pe-9 group-has-data-[state=open]:pe-9 group-data-active:pe-9"
@@ -462,7 +478,7 @@ const ThreadListItemMore: FC<{
           variant="ghost"
           size="icon"
           data-slot="aui_thread-list-item-more"
-          className="text-foreground/45 hover:bg-foreground/[0.06] hover:text-foreground/90 data-[state=open]:bg-foreground/[0.06] absolute end-2 top-1/2 size-6 -translate-y-1/2 rounded-full p-0 opacity-0 group-hover:opacity-100 group-has-focus-visible:opacity-100 group-data-active:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:pointer-events-none [@media(hover:none)]:!opacity-0"
+          className="text-foreground/45 hover:bg-foreground/[0.06] hover:text-foreground/90 data-[state=open]:bg-foreground/[0.06] absolute end-2 top-1/2 size-6 -translate-y-1/2 rounded-full p-0 opacity-0 group-hover:opacity-100 group-has-focus-visible:opacity-100 group-data-active:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:size-9 [@media(hover:none)]:opacity-100"
         >
           <MoreHorizontalIcon className="size-3.5" />
           <span className="sr-only">More options</span>
