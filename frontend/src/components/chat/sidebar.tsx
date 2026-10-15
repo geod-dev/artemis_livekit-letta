@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Command } from 'cmdk';
 import { MenuIcon, MessageCirclePlusIcon, SearchIcon, SettingsIcon, XIcon } from 'lucide-react';
 import { useAuiState } from '@assistant-ui/react';
-import SwipeableDrawer from '@mui/material/SwipeableDrawer';
+import Drawer from '@mui/material/Drawer';
 import {
   ThreadListItems,
   ThreadListNew,
@@ -42,6 +42,63 @@ export function Sidebar({
     () => !window.matchMedia('(min-width: 1024px)').matches
   );
   const [search, setSearch] = useState('');
+  const [swipeOffset, setSwipeOffset] = useState<number | null>(null);
+  const drawerPaper = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileViewport || searchOpen || (!mobileOpen && settingsActive)) return;
+    const direction = mobileOpen ? -1 : 1;
+
+    let gesture: { x: number; y: number; distance: number; dragging: boolean } | null = null;
+    const start = (event: TouchEvent) => {
+      if (event.defaultPrevented || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      gesture = { x: touch.clientX, y: touch.clientY, distance: 0, dragging: false };
+    };
+    const move = (event: TouchEvent) => {
+      if (!gesture) return;
+      if (event.touches.length !== 1) {
+        gesture = null;
+        setSwipeOffset(null);
+        return;
+      }
+      const dx = event.touches[0].clientX - gesture.x;
+      const dy = Math.abs(event.touches[0].clientY - gesture.y);
+      if (!gesture.dragging) {
+        if (Math.max(Math.abs(dx), dy) < 8) return;
+        // Lock direction once, so scrolling never turns into a sidebar gesture.
+        if (dx * direction <= dy) {
+          gesture = null;
+          return;
+        }
+        gesture.dragging = true;
+      }
+      if (event.cancelable) event.preventDefault();
+      gesture.distance = Math.min(
+        Math.max(dx * direction, 0),
+        drawerPaper.current?.clientWidth ?? 288
+      );
+      setSwipeOffset(gesture.distance * direction);
+    };
+    const finish = (event: TouchEvent) => {
+      if (gesture?.dragging && event.type !== 'touchcancel') {
+        const width = drawerPaper.current?.clientWidth ?? 288;
+        if (gesture.distance > Math.min(64, width * 0.25)) setMobileOpen(!mobileOpen);
+      }
+      gesture = null;
+      setSwipeOffset(null);
+    };
+    document.addEventListener('touchstart', start, { passive: true });
+    document.addEventListener('touchmove', move, { passive: false });
+    document.addEventListener('touchend', finish);
+    document.addEventListener('touchcancel', finish);
+    return () => {
+      document.removeEventListener('touchstart', start);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', finish);
+      document.removeEventListener('touchcancel', finish);
+    };
+  }, [mobileViewport, mobileOpen, searchOpen, settingsActive]);
 
   const activeThreadId = useAuiState((state) => state.threadListItem.id);
   const previousThreadId = useRef(activeThreadId);
@@ -148,34 +205,51 @@ export function Sidebar({
         <MenuIcon className="size-5" />
       </Button>
       {mobileViewport && (
-        <SwipeableDrawer
+        <Drawer
           anchor="left"
           open={mobileOpen}
-          onOpen={() => setMobileOpen(true)}
           onClose={() => setMobileOpen(false)}
-          disableSwipeToOpen={searchOpen || settingsActive}
-          swipeAreaWidth={28}
-          hysteresis={0.35}
-          minFlingVelocity={450}
+          ModalProps={{ keepMounted: true }}
           transitionDuration={240}
           slotProps={{
-            root: { style: { zIndex: 50 } },
+            root: {
+              style: { zIndex: 50, ...(swipeOffset !== null && { visibility: 'visible' }) },
+            },
             paper: {
+              ref: (element: unknown) => {
+                drawerPaper.current = element instanceof HTMLDivElement ? element : null;
+              },
+              style: {
+                ...(swipeOffset !== null && { visibility: 'visible' }),
+                translate: `${swipeOffset ?? 0}px 0`,
+                transition: swipeOffset !== null ? 'none' : undefined,
+              },
               id: 'mobile-chat-drawer',
               role: 'dialog',
               'aria-modal': mobileOpen ? true : undefined,
               'aria-labelledby': 'mobile-chat-drawer-title',
-              className: 'app-sidebar surface-panel mobile-chat-drawer group/sidebar',
+              className: `app-sidebar surface-panel mobile-chat-drawer group/sidebar${swipeOffset !== null ? ' is-dragging' : ''}`,
             },
-            backdrop: { className: 'mobile-chat-backdrop' },
-            swipeArea: { style: { zIndex: 20 } },
+            backdrop: {
+              className: 'mobile-chat-backdrop',
+              style:
+                swipeOffset !== null
+                  ? {
+                      opacity:
+                        (mobileOpen ? 1 : 0) +
+                        swipeOffset / (drawerPaper.current?.clientWidth || 288),
+                      visibility: 'visible',
+                      transition: 'none',
+                    }
+                  : undefined,
+            },
           }}
         >
           <h2 id="mobile-chat-drawer-title" className="sr-only">
             Chats
           </h2>
           {content}
-        </SwipeableDrawer>
+        </Drawer>
       )}
       <Dialog open={searchOpen} onOpenChange={onSearchOpenChange}>
         <DialogContent

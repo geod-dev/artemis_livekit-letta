@@ -21,9 +21,24 @@
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
+  /* Animate both Slide's transform and the finger offset when a drag ends. */
+  transition-property: transform, translate !important;
+  transition-duration: 240ms !important;
+}
+.app-sidebar.mobile-chat-drawer.is-dragging {
+  transition-duration: 0ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar.mobile-chat-drawer {
+    transition-duration: 0ms !important;
+  }
 }
 @media (max-width: 1023px) {
   .app-shell {
+    position: fixed;
+    top: var(--app-top, 0px);
+    right: 0;
+    left: 0;
     gap: 0;
     padding: max(env(safe-area-inset-top), 6px) max(env(safe-area-inset-right), 6px)
       max(env(safe-area-inset-bottom), 6px) max(env(safe-area-inset-left), 6px);
@@ -178,7 +193,7 @@
   }
   /* New conversations start with the input docked within thumb reach. */
   .aui-thread-empty-footer {
-    position: fixed;
+    position: absolute;
     z-index: 20;
     right: 0;
     bottom: 0;
@@ -189,6 +204,11 @@
     padding: 24px max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
       max(16px, env(safe-area-inset-left));
     background: linear-gradient(transparent, var(--background) 40px);
+  }
+  /* Let the resized thread viewport contain the footer, rather than the
+     welcome column (which may be taller than the space above the keyboard). */
+  .thread-column-empty {
+    position: static;
   }
   .aui-thread-empty-footer .aui-thread-welcome-suggestions {
     order: 0;
@@ -212,7 +232,7 @@
   }
   .thread-column-empty:has(.aui-composer-input:focus) {
     padding-top: 8px;
-    padding-bottom: 12px;
+    padding-bottom: 180px;
   }
   .thread-column-empty:has(.aui-composer-input:focus) .artemis-welcome {
     margin-bottom: 8px;
