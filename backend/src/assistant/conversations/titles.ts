@@ -6,7 +6,7 @@ import { cleanTitle } from './title-text.ts';
 export { fallbackTitle } from './title-text.ts';
 
 const TITLE_TIMEOUT_MS = 20_000;
-const TITLE_PROMPT = new URL('../../prompts/title.md', import.meta.url);
+const TITLE_PROMPT = new URL('../../../prompts/title.md', import.meta.url);
 const titleLocks = new Map<string, Promise<void>>();
 
 async function withTitleLock<T>(id: string, operation: () => Promise<T>): Promise<T> {
