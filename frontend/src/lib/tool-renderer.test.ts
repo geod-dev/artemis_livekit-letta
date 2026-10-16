@@ -1,7 +1,35 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { toolCall } from '../components/assistant-ui/tools/tool-display.ts';
-import { selectToolRenderer } from './tool-renderer.ts';
+import { selectToolRenderer, toolResultFormat } from './tool-renderer.ts';
+
+test('file reads preserve source text while Markdown files retain formatting', () => {
+  for (const path of ['/a.py', '/a.txt', '/a.json', '/Makefile']) {
+    assert.equal(toolResultFormat(toolCall('Read', JSON.stringify({ file_path: path }))), 'text');
+  }
+  for (const path of ['/a.md', '/a.MD', '/a.markdown']) {
+    assert.equal(toolResultFormat(toolCall('Read', JSON.stringify({ path }))), 'markdown');
+  }
+  assert.equal(toolResultFormat(toolCall('Read', '{}')), 'markdown');
+});
+
+test('web page fetches and searches keep Markdown, even with non-Markdown URL paths', () => {
+  for (const tool of ['web_fetch_exa', 'web_search_exa']) {
+    assert.equal(
+      toolResultFormat(
+        toolCall(
+          'mcp_call',
+          JSON.stringify({
+            tool: `mcp__Exa__${tool}`,
+            arguments: { path: 'https://example.test/page.txt' },
+          })
+        )
+      ),
+      'markdown'
+    );
+    assert.equal(toolResultFormat(toolCall(`mcp__Exa__${tool}`, '{}')), 'markdown');
+  }
+});
 
 const search = toolCall(
   'mcp_call',

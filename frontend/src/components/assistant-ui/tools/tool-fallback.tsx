@@ -23,7 +23,7 @@ import { ActivityContext } from '@/components/chat/activity-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/shadcn/utils';
 import { formatToolValue, readToolOutput } from '@/lib/tool-output';
-import { selectToolRenderer } from '@/lib/tool-renderer';
+import { selectToolRenderer, toolResultFormat } from '@/lib/tool-renderer';
 
 const ANIMATION_DURATION = 200;
 const TOOL_MARKDOWN_PLUGINS = { code };
@@ -250,10 +250,12 @@ const formatUnknownValue = formatToolValue;
 
 function ToolFallbackResult({
   result,
+  format = 'markdown',
   className,
   ...props
 }: React.ComponentProps<'div'> & {
   result?: unknown;
+  format?: 'text' | 'markdown';
 }) {
   if (result === undefined) return null;
   const output = readToolOutput(result);
@@ -267,16 +269,22 @@ function ToolFallbackResult({
     >
       <ToolDetailCard title="Result">
         {output.text && (typeof result === 'string' || output.isEnvelope) ? (
-          <Streamdown
-            mode="static"
-            plugins={TOOL_MARKDOWN_PLUGINS}
-            components={MARKDOWN_COMPONENTS}
-            rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-            shikiTheme={['github-light', 'github-dark']}
-            className="aui-tool-fallback-result-content space-y-2 break-words [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs"
-          >
-            {output.text}
-          </Streamdown>
+          format === 'text' ? (
+            <pre className="aui-tool-fallback-result-content font-mono [overflow-wrap:anywhere] whitespace-pre-wrap">
+              <code>{!output.isEnvelope && typeof result === 'string' ? result : output.text}</code>
+            </pre>
+          ) : (
+            <Streamdown
+              mode="static"
+              plugins={TOOL_MARKDOWN_PLUGINS}
+              components={MARKDOWN_COMPONENTS}
+              rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+              shikiTheme={['github-light', 'github-dark']}
+              className="aui-tool-fallback-result-content space-y-2 break-words [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:whitespace-pre-wrap"
+            >
+              {output.text}
+            </Streamdown>
+          )
         ) : null}
         {output.artifacts.map((artifact) => (
           <a
@@ -374,7 +382,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
             label
           ) : (
             <>
-              <span className="text-foreground/75 transition-colors group-hover/agent-call:text-foreground group-focus-visible/agent-call:text-foreground">
+              <span className="text-foreground/75 group-hover/agent-call:text-foreground group-focus-visible/agent-call:text-foreground transition-colors">
                 {label.slice(0, separator)}
               </span>
               <span className="text-muted-foreground/60">
@@ -409,7 +417,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
             className={cn(isCancelled && 'opacity-60')}
           />
         )}
-        {showCards && <ToolFallbackResult result={result} />}
+        {showCards && <ToolFallbackResult result={result} format={toolResultFormat(call)} />}
       </ToolFallbackContent>
     </ToolFallbackRoot>
   );

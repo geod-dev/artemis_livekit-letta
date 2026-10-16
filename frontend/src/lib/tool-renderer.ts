@@ -11,6 +11,14 @@ export type ToolRenderer =
   | { kind: 'terminal'; command: string; output: BashOutput | null }
   | { kind: 'generic' };
 
+/** Only file reads opt out of Markdown; web fetches and other tools keep it. */
+export function toolResultFormat(call: ToolCall): 'text' | 'markdown' {
+  if (call.toolName !== 'Read') return 'markdown';
+  const path = call.args.file_path ?? call.args.path;
+  if (typeof path !== 'string' || !path.trim()) return 'markdown';
+  return /\.(md|markdown|mdown|mkd|mkdn)$/i.test(path) ? 'markdown' : 'text';
+}
+
 /** Choose a specialized renderer only when the call and its result are supported. */
 export function selectToolRenderer(
   call: ToolCall,
