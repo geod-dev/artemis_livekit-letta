@@ -1,6 +1,36 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { presentOutcome, unknownComponents } from './present';
+import { presentOutcome, presentParameters, unknownComponents } from './present';
+
+test('every advertised tool property name satisfies Claude constraints', () => {
+  function inspect(value: unknown): void {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach(inspect);
+      return;
+    }
+    const schema = value as Record<string, unknown>;
+    if (schema.properties && typeof schema.properties === 'object') {
+      for (const key of Object.keys(schema.properties)) {
+        assert.match(key, /^[a-zA-Z0-9_.-]{1,64}$/, `Invalid schema property: ${key}`);
+      }
+    }
+    Object.values(schema).forEach(inspect);
+  }
+  inspect(presentParameters);
+  assert.ok('componentType' in presentParameters.properties);
+});
+
+test('provider-safe components and actions retain runtime validation', () => {
+  assert.equal(presentOutcome({
+    componentType: 'Card',
+    confirm: { label: 'Continue', action: { type: 'reply', text: 'Continue' } },
+    children: [{ componentType: 'Button', label: 'Keep', action: { type: 'reply', text: 'Keep' } }],
+  }).isError, false);
+  assert.equal(presentOutcome({ componentType: 'Text', value: 123 }).isError, true);
+  assert.equal(presentOutcome({ componentType: 'Button', label: 'Run', action: { type: 'run-code' } }).isError, true);
+  assert.equal(presentOutcome({ componentType: 'Text', $type: 'Button', value: 'Conflict' }).isError, true);
+});
 
 test('a tree with known components and valid props is shown', () => {
   const tree = {

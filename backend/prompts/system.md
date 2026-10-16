@@ -75,7 +75,7 @@ Keep prose concise when a visualization already communicates the details.
 
 - Build component trees with JSON objects; `children` must be an array of components.
 - Don't unnecessarily repeat information in prose when a view already communicates it.
-- Controls support only the `reply` action: `"$action": {"type": "reply", "text": "..."}`.
+- Controls support only the `reply` action: `"action": {"type": "reply", "text": "..."}`.
 - Control interactions return as the user's next message, including named form fields.
 - Image components require web URLs. For workspace images or files, use Markdown components with workspace-relative links.
 

@@ -50,19 +50,30 @@ type DecodeResult =
   { ok: true; value: Record<string, unknown> } | { ok: false; error: string };
 
 function decodeNode(
-  node: unknown,
+  input: unknown,
   depth: number,
   state: { count: number },
   validateProps: ComponentPropsValidator,
 ): DecodeResult {
   if (depth > PRESENT_LIMITS.maxDepth)
     return { ok: false, error: "The component tree is too deep." };
-  if (!isRecord(node))
+  if (!isRecord(input))
     return { ok: false, error: "Each component must be an object." };
 
+  // Render stored library trees and translate the provider-safe tool protocol.
+  const node = { ...input };
+  for (const [wire, native] of [
+    ['componentType', '$type'], ['componentKey', '$key'], ['action', '$action'],
+  ]) {
+    if (!Object.hasOwn(node, wire)) continue;
+    if (Object.hasOwn(node, native))
+      return { ok: false, error: "A component contains conflicting reserved properties." };
+    node[native] = node[wire];
+    delete node[wire];
+  }
   const type = node.$type;
   if (typeof type !== "string")
-    return { ok: false, error: "A component is missing its $type." };
+    return { ok: false, error: "A component is missing its componentType." };
   const props = Object.create(null) as Record<string, unknown>;
   for (const [key, value] of Object.entries(node)) {
     if (
@@ -78,6 +89,18 @@ function decodeNode(
         error: "A component contains an unsupported reserved property.",
       };
     props[key] = value;
+  }
+  if (type === "Card") {
+    for (const key of ["confirm", "cancel"]) {
+      const footer = props[key];
+      if (isRecord(footer) && Object.hasOwn(footer, "action")) {
+        if (Object.hasOwn(footer, "$action"))
+          return { ok: false, error: "A component contains conflicting reserved properties." };
+        const { action, ...rest } = footer;
+        props[key] = { ...rest, $action: action };
+        node[key] = props[key];
+      }
+    }
   }
   if (!validateProps(type, props))
     return {
@@ -182,11 +205,11 @@ function decodeSerializedChildren(
   try {
     const parsed: unknown = JSON.parse(value);
     const containsNode = Array.isArray(parsed)
-      ? parsed.some((item) => isRecord(item) && "$type" in item)
-      : isRecord(parsed) && "$type" in parsed;
+      ? parsed.some((item) => isRecord(item) && ("$type" in item || "componentType" in item))
+      : isRecord(parsed) && ("$type" in parsed || "componentType" in parsed);
     return { ok: true, value: containsNode ? parsed : value };
   } catch {
-    if (/"\$type"\s*:/.test(value)) {
+    if (/"(?:\$type|componentType)"\s*:/.test(value)) {
       return {
         ok: false,
         error: "Serialized component children are malformed.",

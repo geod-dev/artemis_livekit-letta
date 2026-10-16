@@ -1,10 +1,10 @@
 {
   "name": "present",
-  "description": "Present a UI component to the user. Select a component with `$type` and provide its props inline; nest components with `children`.",
+  "description": "Present a UI component to the user. Select a component with `componentType` and provide its props inline; nest components with `children`.",
   "parameters": {
     "type": "object",
     "properties": {
-      "$type": {
+      "componentType": {
         "type": "string",
         "enum": [
           "Header",
@@ -37,9 +37,9 @@
           "Carousel",
           "Icon"
         ],
-        "description": "The component to render. \"Header\": A section heading. Renders as a bold title.; \"Text\": A run of text. Use for paragraphs, labels, or inline copy.; \"Caption\": Secondary, de-emphasized text under a primary element.; \"Image\": An image. Provide `src` and `alt` for accessibility.; \"Divider\": A horizontal rule between sections.; \"Fact\": A label/value pair, rendered as a key followed by its value. Use for compact metadata.; \"Button\": A clickable button. Carries `$action` describing the side effect or resume value. Set `submit` to submit an ancestor Form/Card instead of firing `$action` on click.; \"Select\": A dropdown selector. Carries `$action` describing the on-select behavior.; \"Input\": A text input. Carries `$action` describing the on-submit behavior.; \"DatePicker\": A date, datetime, or time input. Carries `$action`, which runs once per committed value: a pick from the picker, or a typed value on blur or Enter.; \"Checkbox\": A checkbox with a label. Carries `$action` describing the on-change behavior.; \"Slider\": A numeric range control. Carries `$action` describing the committed value.; \"RadioGroup\": A group of mutually exclusive radio options. Carries `$action` describing the on-change behavior.; \"CheckboxGroup\": A group of checkbox options where any number can be checked. Carries `$action` describing the on-change behavior.; \"Form\": Wraps named child controls (Select/Input/Checkbox/RadioGroup/CheckboxGroup/DatePicker with a `name`). Carries `$action`; on submit it fires with every named control's value, keyed by `name`.; \"Card\": A titled section of related content, the default way to break a response into parts. It renders as plain content, so several in a row read as one answer rather than a stack of boxes; it takes on a framed surface only when `background` is set, when `confirm`/`cancel` add a footer, or when it is a slot in a `Carousel`. Set `asForm` to collect named child control values on submit.; \"Col\": A vertical stack; children laid out top to bottom.; \"Row\": A horizontal row; children laid out left to right.; \"Spacer\": Empty space that pushes neighbors apart.; \"Badge\": A small labeled tag, e.g. for status or category.; \"Box\": A generic container for composition, e.g. a progress bar built from an outer track Box containing a partial-width fill Box. Size, radius, and background accept arbitrary values, so they render as inline styles rather than data-attribute hooks.; \"ListView\": A vertical list container. Wrap `ListViewItem` children as rows.; \"ListViewItem\": A row inside a ListView. Carries `$action` to make the whole row clickable and keyboard-activatable.; \"Table\": Tabular data. Provide `columns` and `rows`; each row is an array of cells matching the columns.; \"Markdown\": A markdown string, rendered with GitHub-flavored markdown.; \"Chart\": A chart. `variant` selects bar, line, sparkline, or area rendering. Provide `data` for a single series, or `series` for multiple named series (`series` takes precedence over `data` when both are present). Set `stacked` to accumulate series values instead of overlaying them, and `showAxis`/`showLegend` to add y-axis ticks, x-axis point labels, and a legend.; \"Alert\": A highlighted message conveying urgency. `tone` drives the severity.; \"Carousel\": A horizontally scrollable group of `Card` children (max 10). Set `label` for an accessible name.; \"Icon\": A small line icon from the built-in set. `size` controls the rendered pixel size."
+        "description": "The component to render. \"Header\": A section heading. Renders as a bold title.; \"Text\": A run of text. Use for paragraphs, labels, or inline copy.; \"Caption\": Secondary, de-emphasized text under a primary element.; \"Image\": An image. Provide `src` and `alt` for accessibility.; \"Divider\": A horizontal rule between sections.; \"Fact\": A label/value pair, rendered as a key followed by its value. Use for compact metadata.; \"Button\": A clickable button. Carries `action` describing the side effect or resume value. Set `submit` to submit an ancestor Form/Card instead of firing `action` on click.; \"Select\": A dropdown selector. Carries `action` describing the on-select behavior.; \"Input\": A text input. Carries `action` describing the on-submit behavior.; \"DatePicker\": A date, datetime, or time input. Carries `action`, which runs once per committed value: a pick from the picker, or a typed value on blur or Enter.; \"Checkbox\": A checkbox with a label. Carries `action` describing the on-change behavior.; \"Slider\": A numeric range control. Carries `action` describing the committed value.; \"RadioGroup\": A group of mutually exclusive radio options. Carries `action` describing the on-change behavior.; \"CheckboxGroup\": A group of checkbox options where any number can be checked. Carries `action` describing the on-change behavior.; \"Form\": Wraps named child controls (Select/Input/Checkbox/RadioGroup/CheckboxGroup/DatePicker with a `name`). Carries `action`; on submit it fires with every named control's value, keyed by `name`.; \"Card\": A titled section of related content, the default way to break a response into parts. It renders as plain content, so several in a row read as one answer rather than a stack of boxes; it takes on a framed surface only when `background` is set, when `confirm`/`cancel` add a footer, or when it is a slot in a `Carousel`. Set `asForm` to collect named child control values on submit.; \"Col\": A vertical stack; children laid out top to bottom.; \"Row\": A horizontal row; children laid out left to right.; \"Spacer\": Empty space that pushes neighbors apart.; \"Badge\": A small labeled tag, e.g. for status or category.; \"Box\": A generic container for composition, e.g. a progress bar built from an outer track Box containing a partial-width fill Box. Size, radius, and background accept arbitrary values, so they render as inline styles rather than data-attribute hooks.; \"ListView\": A vertical list container. Wrap `ListViewItem` children as rows.; \"ListViewItem\": A row inside a ListView. Carries `action` to make the whole row clickable and keyboard-activatable.; \"Table\": Tabular data. Provide `columns` and `rows`; each row is an array of cells matching the columns.; \"Markdown\": A markdown string, rendered with GitHub-flavored markdown.; \"Chart\": A chart. `variant` selects bar, line, sparkline, or area rendering. Provide `data` for a single series, or `series` for multiple named series (`series` takes precedence over `data` when both are present). Set `stacked` to accumulate series values instead of overlaying them, and `showAxis`/`showLegend` to add y-axis ticks, x-axis point labels, and a legend.; \"Alert\": A highlighted message conveying urgency. `tone` drives the severity.; \"Carousel\": A horizontally scrollable group of `Card` children (max 10). Set `label` for an accessible name.; \"Icon\": A small line icon from the built-in set. `size` controls the rendered pixel size."
       },
-      "$key": {
+      "componentKey": {
         "description": "Stable identity for this UI node. Use it for list items that may reorder.",
         "anyOf": [
           {
@@ -245,7 +245,7 @@
         "type": "string"
       },
       "asForm": {
-        "description": "Render as a form; submitting it fires `confirm.$action` with every named child control's value, keyed by `name`.",
+        "description": "Render as a form; submitting it fires `confirm.action` with every named child control's value, keyed by `name`.",
         "type": "boolean"
       },
       "confirm": {
@@ -256,7 +256,7 @@
             "type": "string",
             "description": "Footer button label."
           },
-          "$action": {
+          "action": {
             "description": "Action fired when the button is activated.",
             "type": "object",
             "properties": {
@@ -283,7 +283,7 @@
             "type": "string",
             "description": "Footer button label."
           },
-          "$action": {
+          "action": {
             "description": "Action fired when the button is activated.",
             "type": "object",
             "properties": {
@@ -508,13 +508,13 @@
       }
     },
     "required": [
-      "$type"
+      "componentType"
     ],
     "$defs": {
       "node": {
         "type": "object",
         "properties": {
-          "$type": {
+          "componentType": {
             "type": "string",
             "enum": [
               "Header",
@@ -547,9 +547,9 @@
               "Carousel",
               "Icon"
             ],
-            "description": "The component to render. \"Header\": A section heading. Renders as a bold title.; \"Text\": A run of text. Use for paragraphs, labels, or inline copy.; \"Caption\": Secondary, de-emphasized text under a primary element.; \"Image\": An image. Provide `src` and `alt` for accessibility.; \"Divider\": A horizontal rule between sections.; \"Fact\": A label/value pair, rendered as a key followed by its value. Use for compact metadata.; \"Button\": A clickable button. Carries `$action` describing the side effect or resume value. Set `submit` to submit an ancestor Form/Card instead of firing `$action` on click.; \"Select\": A dropdown selector. Carries `$action` describing the on-select behavior.; \"Input\": A text input. Carries `$action` describing the on-submit behavior.; \"DatePicker\": A date, datetime, or time input. Carries `$action`, which runs once per committed value: a pick from the picker, or a typed value on blur or Enter.; \"Checkbox\": A checkbox with a label. Carries `$action` describing the on-change behavior.; \"Slider\": A numeric range control. Carries `$action` describing the committed value.; \"RadioGroup\": A group of mutually exclusive radio options. Carries `$action` describing the on-change behavior.; \"CheckboxGroup\": A group of checkbox options where any number can be checked. Carries `$action` describing the on-change behavior.; \"Form\": Wraps named child controls (Select/Input/Checkbox/RadioGroup/CheckboxGroup/DatePicker with a `name`). Carries `$action`; on submit it fires with every named control's value, keyed by `name`.; \"Card\": A titled section of related content, the default way to break a response into parts. It renders as plain content, so several in a row read as one answer rather than a stack of boxes; it takes on a framed surface only when `background` is set, when `confirm`/`cancel` add a footer, or when it is a slot in a `Carousel`. Set `asForm` to collect named child control values on submit.; \"Col\": A vertical stack; children laid out top to bottom.; \"Row\": A horizontal row; children laid out left to right.; \"Spacer\": Empty space that pushes neighbors apart.; \"Badge\": A small labeled tag, e.g. for status or category.; \"Box\": A generic container for composition, e.g. a progress bar built from an outer track Box containing a partial-width fill Box. Size, radius, and background accept arbitrary values, so they render as inline styles rather than data-attribute hooks.; \"ListView\": A vertical list container. Wrap `ListViewItem` children as rows.; \"ListViewItem\": A row inside a ListView. Carries `$action` to make the whole row clickable and keyboard-activatable.; \"Table\": Tabular data. Provide `columns` and `rows`; each row is an array of cells matching the columns.; \"Markdown\": A markdown string, rendered with GitHub-flavored markdown.; \"Chart\": A chart. `variant` selects bar, line, sparkline, or area rendering. Provide `data` for a single series, or `series` for multiple named series (`series` takes precedence over `data` when both are present). Set `stacked` to accumulate series values instead of overlaying them, and `showAxis`/`showLegend` to add y-axis ticks, x-axis point labels, and a legend.; \"Alert\": A highlighted message conveying urgency. `tone` drives the severity.; \"Carousel\": A horizontally scrollable group of `Card` children (max 10). Set `label` for an accessible name.; \"Icon\": A small line icon from the built-in set. `size` controls the rendered pixel size."
+            "description": "The component to render. \"Header\": A section heading. Renders as a bold title.; \"Text\": A run of text. Use for paragraphs, labels, or inline copy.; \"Caption\": Secondary, de-emphasized text under a primary element.; \"Image\": An image. Provide `src` and `alt` for accessibility.; \"Divider\": A horizontal rule between sections.; \"Fact\": A label/value pair, rendered as a key followed by its value. Use for compact metadata.; \"Button\": A clickable button. Carries `action` describing the side effect or resume value. Set `submit` to submit an ancestor Form/Card instead of firing `action` on click.; \"Select\": A dropdown selector. Carries `action` describing the on-select behavior.; \"Input\": A text input. Carries `action` describing the on-submit behavior.; \"DatePicker\": A date, datetime, or time input. Carries `action`, which runs once per committed value: a pick from the picker, or a typed value on blur or Enter.; \"Checkbox\": A checkbox with a label. Carries `action` describing the on-change behavior.; \"Slider\": A numeric range control. Carries `action` describing the committed value.; \"RadioGroup\": A group of mutually exclusive radio options. Carries `action` describing the on-change behavior.; \"CheckboxGroup\": A group of checkbox options where any number can be checked. Carries `action` describing the on-change behavior.; \"Form\": Wraps named child controls (Select/Input/Checkbox/RadioGroup/CheckboxGroup/DatePicker with a `name`). Carries `action`; on submit it fires with every named control's value, keyed by `name`.; \"Card\": A titled section of related content, the default way to break a response into parts. It renders as plain content, so several in a row read as one answer rather than a stack of boxes; it takes on a framed surface only when `background` is set, when `confirm`/`cancel` add a footer, or when it is a slot in a `Carousel`. Set `asForm` to collect named child control values on submit.; \"Col\": A vertical stack; children laid out top to bottom.; \"Row\": A horizontal row; children laid out left to right.; \"Spacer\": Empty space that pushes neighbors apart.; \"Badge\": A small labeled tag, e.g. for status or category.; \"Box\": A generic container for composition, e.g. a progress bar built from an outer track Box containing a partial-width fill Box. Size, radius, and background accept arbitrary values, so they render as inline styles rather than data-attribute hooks.; \"ListView\": A vertical list container. Wrap `ListViewItem` children as rows.; \"ListViewItem\": A row inside a ListView. Carries `action` to make the whole row clickable and keyboard-activatable.; \"Table\": Tabular data. Provide `columns` and `rows`; each row is an array of cells matching the columns.; \"Markdown\": A markdown string, rendered with GitHub-flavored markdown.; \"Chart\": A chart. `variant` selects bar, line, sparkline, or area rendering. Provide `data` for a single series, or `series` for multiple named series (`series` takes precedence over `data` when both are present). Set `stacked` to accumulate series values instead of overlaying them, and `showAxis`/`showLegend` to add y-axis ticks, x-axis point labels, and a legend.; \"Alert\": A highlighted message conveying urgency. `tone` drives the severity.; \"Carousel\": A horizontally scrollable group of `Card` children (max 10). Set `label` for an accessible name.; \"Icon\": A small line icon from the built-in set. `size` controls the rendered pixel size."
           },
-          "$key": {
+          "componentKey": {
             "description": "Stable identity for this UI node. Use it for list items that may reorder.",
             "anyOf": [
               {
@@ -755,7 +755,7 @@
             "type": "string"
           },
           "asForm": {
-            "description": "Render as a form; submitting it fires `confirm.$action` with every named child control's value, keyed by `name`.",
+            "description": "Render as a form; submitting it fires `confirm.action` with every named child control's value, keyed by `name`.",
             "type": "boolean"
           },
           "confirm": {
@@ -766,7 +766,7 @@
                 "type": "string",
                 "description": "Footer button label."
               },
-              "$action": {
+              "action": {
                 "description": "Action fired when the button is activated.",
                 "type": "object",
                 "properties": {
@@ -793,7 +793,7 @@
                 "type": "string",
                 "description": "Footer button label."
               },
-              "$action": {
+              "action": {
                 "description": "Action fired when the button is activated.",
                 "type": "object",
                 "properties": {
@@ -1018,7 +1018,7 @@
           }
         },
         "required": [
-          "$type"
+          "componentType"
         ]
       },
       "children": {

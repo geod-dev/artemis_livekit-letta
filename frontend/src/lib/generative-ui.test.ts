@@ -54,6 +54,20 @@ test('children sent as a JSON string are read as components', () => {
   });
 });
 
+test('provider-safe tool arguments render as native library components', () => {
+  assert.deepEqual(presentTree({
+    componentType: 'Card', componentKey: 'choice',
+    confirm: { label: 'Keep', action: { type: 'reply', text: 'Keep' } },
+    children: JSON.stringify([{ componentType: 'Button', label: 'Continue', action: { type: 'reply', text: 'Continue' } }]),
+  }), {
+    $type: 'Card', $key: 'choice',
+    confirm: { label: 'Keep', $action: { type: 'reply', text: 'Keep' } },
+    children: [{ $type: 'Button', label: 'Continue', $action: { type: 'reply', text: 'Continue' } }],
+  });
+  assert.equal(validatePresent({ componentType: 'Button', label: 'Run', action: { type: 'run-code' } }).ok, false);
+  assert.equal(validatePresent({ componentType: 'Card', children: '{"componentType":' }).ok, false);
+});
+
 test('text children stay text', () => {
   for (const text of ['Hello', '[1] a note', '{not json', '[1, 2]', '{"a": 1}']) {
     assert.deepEqual(presentTree({ $type: 'Card', children: text }), {
