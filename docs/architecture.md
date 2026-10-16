@@ -22,6 +22,16 @@ and delivered background results through it. Its event feed lets an open browser
 show voice turns while they happen. Letta's memory belongs to the agent, so new
 conversations share the same learned information.
 
+The composer uses assistant-ui's `ComposerContext` element with the latest
+`usage_statistics.context_tokens` snapshot emitted by Letta. This is Letta's
+estimate for its assembled context, including prompt, tools, memory and history;
+cumulative billable token counts and visible transcript length are not used.
+The denominator comes from Letta's effective conversation context limit, with an
+agent fallback. Snapshots are retained in the backend data directory. The ring
+appears only in conversations with reported usage; an unknown usage or limit
+does not become a guessed reading. The element shows the aggregate because the
+local App Server does not report a category breakdown through this stream.
+
 Backend ownership follows those boundaries: `assistant/runtime/` adapts SDK
 sessions and schedules turns; `assistant/conversations/`, `assistant/calls/`,
 and `assistant/background/` own their respective domain state; `assistant/letta/`

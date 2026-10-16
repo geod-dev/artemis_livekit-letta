@@ -6,6 +6,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
 } from 'react';
 import type {
   ChatAttachment,
@@ -77,6 +78,7 @@ export function useConversation(
 ) {
   /** The conversation on screen; undefined until the first one is shown. */
   const [state, dispatch] = useReducer(conversationStateReducer, initialConversationState);
+  const [contextUsageRevision, setContextUsageRevision] = useState(0);
   const {
     conversationId: shownId,
     history,
@@ -268,6 +270,7 @@ export function useConversation(
     let gate = makeGate();
     // A subscription is only ready after each successful open, including retries.
     source.addEventListener('open', () => {
+      setContextUsageRevision((revision) => revision + 1);
       gate.resolve();
       connected.current = { id: conversationId, ready: Promise.resolve() };
       setLive([]);
@@ -318,6 +321,9 @@ export function useConversation(
 
     function handleEvent(event: ConversationEvent) {
       switch (event.type) {
+        case 'context_usage':
+          setContextUsageRevision((revision) => revision + 1);
+          break;
         case 'snapshot':
           event.turns.forEach((turn) => startedTurns.add(turn.turnId));
           setActiveTurns([...new Set(event.turns.map((turn) => turn.turnId))]);
@@ -679,6 +685,7 @@ export function useConversation(
 
   return {
     shownId: shownId ?? null,
+    contextUsageRevision,
     messages,
     busy: activeTurns.length > 0 || pending !== null,
     settledTurns,

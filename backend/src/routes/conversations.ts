@@ -7,6 +7,7 @@ import {
   taskStopped,
 } from '../assistant/background/service.ts';
 import { activeCall, endCall } from '../assistant/calls/state.ts';
+import { readLettaContextUsage } from '../assistant/conversations/context-usage.ts';
 import {
   clearConversationEvents,
   subscribeList,
@@ -118,6 +119,17 @@ conversations.get('/:id/messages', async (c) => {
     return Response.json(page.messages, {
       headers: page.nextCursor ? { 'X-Next-Cursor': page.nextCursor } : {},
     });
+  } catch (error) {
+    return errorResponse(error);
+  }
+});
+
+/** Last assembled context reported by Letta; null until it reports usage. */
+conversations.get('/:id/context-usage', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await requireConversation(id);
+    return Response.json(await readLettaContextUsage(id));
   } catch (error) {
     return errorResponse(error);
   }

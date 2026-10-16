@@ -7,7 +7,7 @@ import {
   QueueItemPrimitive,
   useAuiState,
 } from '@assistant-ui/react';
-import type { ConversationSummary, TextEffort } from '@shared/chat-types';
+import type { ConversationContextUsage, ConversationSummary, TextEffort } from '@shared/chat-types';
 import type { ThreadComponents } from '@/components/assistant-ui/chat/thread';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import { type ActivityTask, taskTitle, useActivity } from '@/components/chat/activity-context';
@@ -16,14 +16,15 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import type { TaskStatus } from '@/hooks/use-conversation';
 import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
-import { greetingsFor, pickGreeting } from '@/lib/greetings';
 import { stripLeadingEmoji } from '@/lib/agent-runs';
+import { greetingsFor, pickGreeting } from '@/lib/greetings';
 import { cn } from '@/lib/shadcn/utils';
 import { formatTaskDuration, taskStatusLabel, workedFor } from '@/lib/task-status';
 
 /** App state the thread slots need but assistant-ui does not track. */
 export interface ChatThreadState {
   assistantName: string;
+  contextUsage: ConversationContextUsage | null;
   effort: TextEffort;
   setEffort: (effort: TextEffort) => void;
   /** The conversation has attachments: Instant (the fast model) is unavailable. */

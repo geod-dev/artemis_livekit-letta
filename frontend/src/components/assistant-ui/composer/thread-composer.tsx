@@ -13,10 +13,11 @@ import {
   ComposerAddAttachment,
   ComposerAttachments,
 } from '@/components/assistant-ui/composer/attachment';
+import { ComposerContext } from '@/components/assistant-ui/composer/context';
 import { ComposerVoice, ComposerVoiceButton } from '@/components/assistant-ui/composer/voice';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import type { ChatThreadState } from '@/components/chat/thread-slots';
-import { MascotRecordingContext } from '@/components/chat/thread-slots';
+import { MascotRecordingContext, useChatThread } from '@/components/chat/thread-slots';
 import { Button } from '@/components/ui/button';
 import { useVoiceRecorder } from '@/hooks/use-voice-recorder';
 
@@ -69,20 +70,6 @@ const useComposerGlide = (docked: boolean) => {
   return ref;
 };
 
-// The Letta runtime does not currently return token usage, so show the model's
-// context window capacity without implying an estimated usage percentage.
-const CONTEXT_WINDOW_TOKENS = 128_000;
-
-const ContextWindowDisplay: FC = () => (
-  <span
-    className="text-muted-foreground inline-flex h-7 items-center rounded-full px-2 text-xs tabular-nums"
-    title={`Model context window: ${CONTEXT_WINDOW_TOKENS.toLocaleString()} tokens`}
-    aria-label={`Model context window: ${CONTEXT_WINDOW_TOKENS.toLocaleString()} tokens`}
-  >
-    {`${CONTEXT_WINDOW_TOKENS / 1_000}k context`}
-  </span>
-);
-
 export const ThreadComposer: FC<ThreadComposerProps> = ({
   autoFocus,
   placeholder,
@@ -131,6 +118,7 @@ const ComposerAction: FC<{
   ComposerEffort?: ComponentType | undefined;
   callButton: ChatThreadState['callButton'];
 }> = ({ ComposerEffort, callButton }) => {
+  const { contextUsage } = useChatThread();
   const isSending = useAuiState(
     (s) =>
       s.composer.submission !== undefined && !(s.thread.isRunning && s.thread.capabilities.cancel)
@@ -159,7 +147,14 @@ const ComposerAction: FC<{
       </div>
       <div className="ms-auto flex items-center gap-2">
         <AuiIf condition={(s) => s.thread.messages.length > 0}>
-          <ContextWindowDisplay />
+          {contextUsage && (
+            <ComposerContext
+              usage={{
+                used: contextUsage.usedTokens / 1_000,
+                total: contextUsage.windowTokens / 1_000,
+              }}
+            />
+          )}
         </AuiIf>
         {ComposerEffort && <ComposerEffort />}
         <ComposerVoiceButton recorder={recorder} />

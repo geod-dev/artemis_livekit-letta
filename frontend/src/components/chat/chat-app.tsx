@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { useActivityTasks } from '@/hooks/use-activity';
 import { useChatRuntime } from '@/hooks/use-chat-runtime';
+import { useContextUsage } from '@/hooks/use-context-usage';
 import { useConversation } from '@/hooks/use-conversation';
 import { useConversations } from '@/hooks/use-conversations';
 import { hasAttachments } from '@/lib/attachments';
@@ -80,6 +81,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
   const { upsert, create } = list;
   const [activeId, select] = useSelectedConversation();
   const conversation = useConversation(activeId, upsert);
+  const contextUsage = useContextUsage(conversation.shownId, conversation.contextUsageRevision);
   const { expectNew, setError } = conversation;
   const [effort, setEffort] = useState<TextEffort>('medium');
   const [effortLoaded, setEffortLoaded] = useState(false);
@@ -274,6 +276,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
   const threadState = useMemo<ChatThreadState>(
     () => ({
       assistantName,
+      contextUsage,
       effort,
       setEffort,
       withAttachments,
@@ -295,6 +298,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
     }),
     [
       assistantName,
+      contextUsage,
       effort,
       setEffort,
       withAttachments,

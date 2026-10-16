@@ -14,6 +14,14 @@ export type TurnMode = 'text' | 'voice-short' | 'voice-long';
 /** User-selected model for a text-chat turn. Voice calls retain their own model. */
 export type TextEffort = 'fast' | 'low' | 'medium' | 'high';
 
+/** Last context estimate reported by Letta for the assembled conversation. */
+export interface ConversationContextUsage {
+  usedTokens: number;
+  windowTokens: number;
+  model: string | null;
+  reportedAt: string;
+}
+
 export interface ConversationSummary {
   id: string;
   title: string;
@@ -112,6 +120,8 @@ export type ConversationEvent =
   | { type: 'task'; taskId: string; status: 'running' | 'finished'; title: string }
   /** Background updates whose read state changed (held results, read markers). */
   | { type: 'updates_changed' }
+  /** A fresh assembled-context snapshot is available from Letta. */
+  | { type: 'context_usage' }
   | { type: 'conversation_updated'; conversation: ConversationSummary }
   | {
       type: 'snapshot';

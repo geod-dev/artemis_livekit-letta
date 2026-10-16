@@ -90,6 +90,7 @@ export function isConversationEvent(value: unknown): value is ConversationEvent 
         string('title', 512)
       );
     case 'updates_changed':
+    case 'context_usage':
       return true;
     case 'conversation_updated':
       return (

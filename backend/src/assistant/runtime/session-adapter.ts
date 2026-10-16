@@ -7,6 +7,7 @@ import type {
 import { randomUUID } from 'node:crypto';
 import { receiveNotifications } from '../background/service.ts';
 import { extractTaskNotifications } from '../background/task-notifications.ts';
+import { lettaContextTokens, recordLettaContextUsage } from '../conversations/context-usage.ts';
 import { publish } from '../conversations/events.ts';
 import { assistant } from '../letta/agent-client.ts';
 import { NativeTurn } from './native-turn';
@@ -139,6 +140,9 @@ export class SessionReader {
         let received = 0;
         for await (const message of this.session.stream()) {
           received++;
+          const contextTokens = lettaContextTokens(message);
+          if (contextTokens !== undefined)
+            await recordLettaContextUsage(this.conversationId, contextTokens);
           if (message.type === 'queue_update') this.claimNotifications(message.queue);
           if (this.sink) {
             const sink = this.sink;
