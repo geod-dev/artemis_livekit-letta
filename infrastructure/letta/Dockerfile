@@ -11,5 +11,9 @@ RUN apt-get update \
 # Keep this tied to the inspected release; upgrades must revalidate the patch.
 COPY patching/groq-qwen.mjs /opt/letta-patches/patch-groq-qwen.mjs
 RUN node /opt/letta-patches/patch-groq-qwen.mjs /usr/local/lib/node_modules/@letta-ai/letta-code
+COPY patching/task-control.mjs /opt/letta-patches/task-control.mjs
+RUN node /opt/letta-patches/task-control.mjs /usr/local/lib/node_modules/@letta-ai/letta-code
+COPY patching/worker-execution.mjs /opt/letta-patches/worker-execution.mjs
+RUN node /opt/letta-patches/worker-execution.mjs /usr/local/lib/node_modules/@letta-ai/letta-code
 COPY entrypoint.sh /opt/assistant/entrypoint.sh
 RUN chmod 755 /opt/assistant/entrypoint.sh

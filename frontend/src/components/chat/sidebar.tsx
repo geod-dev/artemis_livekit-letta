@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 const QUIET_ICON_BUTTON =
-  'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted size-9 justify-center rounded-full border-0 bg-transparent p-0 opacity-100 transition-colors duration-150';
+  'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted size-9 justify-center rounded-[var(--control-radius)] border-0 bg-transparent p-0 opacity-100 transition-colors duration-150';
 
 /** Conversation list, driven by the assistant-ui thread list runtime. */
 export function Sidebar({

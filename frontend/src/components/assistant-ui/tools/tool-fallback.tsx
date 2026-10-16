@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useContext, useRef, useState } from 'react';
 import { ChevronDownIcon } from 'lucide-react';
 import { Streamdown } from 'streamdown';
 import {
@@ -8,17 +8,18 @@ import {
   useToolCallElapsed,
 } from '@assistant-ui/react';
 import { code } from '@streamdown/code';
-import { BashTerminal } from '@/components/assistant-ui/tools/bash-terminal';
 import {
   MARKDOWN_COMPONENTS,
   MARKDOWN_REHYPE_PLUGINS,
 } from '@/components/assistant-ui/markdown/markdown-text';
+import { BashTerminal } from '@/components/assistant-ui/tools/bash-terminal';
 import {
   getToolDisplay,
   toolCall,
   toolCallLabel,
 } from '@/components/assistant-ui/tools/tool-display';
 import { WebSearchResults } from '@/components/assistant-ui/tools/web-search-results';
+import { ActivityContext } from '@/components/chat/activity-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/shadcn/utils';
 import { formatToolValue, readToolOutput } from '@/lib/tool-output';
@@ -117,12 +118,14 @@ function ToolFallbackDuration({ className, ...props }: React.ComponentProps<'spa
 }
 
 function ToolFallbackTrigger({
+  toolCallId,
   toolName,
   argsText,
   status,
   className,
   ...props
 }: React.ComponentProps<typeof CollapsibleTrigger> & {
+  toolCallId: string;
   toolName: string;
   argsText?: string;
   status?: ToolCallMessagePartStatus;
@@ -131,7 +134,10 @@ function ToolFallbackTrigger({
   const isCancelled = status?.type === 'incomplete' && status.reason === 'cancelled';
 
   const call = toolCall(toolName, argsText);
-  const Icon = getToolDisplay(call).icon;
+  const activity = useContext(ActivityContext);
+  const run = activity?.tasks.find((task) => task.toolCallId === toolCallId);
+  const display = getToolDisplay(call);
+  const Icon = display.icon;
 
   return (
     <CollapsibleTrigger
@@ -142,13 +148,15 @@ function ToolFallbackTrigger({
       )}
       {...props}
     >
-      <Icon
-        data-slot="tool-fallback-trigger-icon"
-        className={cn(
-          'aui-tool-fallback-trigger-icon size-3.5 shrink-0',
-          isCancelled && 'text-muted-foreground'
-        )}
-      />
+      {!display.hideIcon && (
+        <Icon
+          data-slot="tool-fallback-trigger-icon"
+          className={cn(
+            'aui-tool-fallback-trigger-icon size-3.5 shrink-0',
+            isCancelled && 'text-muted-foreground'
+          )}
+        />
+      )}
       <span
         data-slot="tool-fallback-trigger-label"
         className={cn(
@@ -157,9 +165,9 @@ function ToolFallbackTrigger({
           isRunning && 'shimmer motion-reduce:animate-none'
         )}
       >
-        {toolCallLabel(call)}
+        {toolCallLabel(call, run?.agentTitle)}
       </span>
-      <ToolFallbackDuration />
+      {!['Agent', 'Task'].includes(toolName) && <ToolFallbackDuration />}
       <ChevronDownIcon
         data-slot="tool-fallback-trigger-chevron"
         className={cn(
@@ -325,6 +333,7 @@ function ToolFallbackError({
 }
 
 const ToolFallbackImpl: ToolCallMessagePartComponent = ({
+  toolCallId,
   toolName,
   argsText,
   result,
@@ -337,10 +346,56 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   const renderer = selectToolRenderer(call, result, isRunning, isError);
   const showCards = renderer.kind === 'generic';
   const [open, setOpen] = useState(false);
+  const activity = useContext(ActivityContext);
+  if (['Agent', 'Task'].includes(toolName)) {
+    const run = activity?.tasks.find((task) => task.toolCallId === toolCallId);
+    const args = call.args;
+    const target = run ??
+      activity?.tasks.find((task) => task.agentKey === 'agent:' + args.agent_id) ?? {
+        id: 'launch:' + toolCallId,
+        agentTitle: undefined,
+        toolCallId,
+        title: typeof args.description === 'string' ? args.description : 'Agent',
+        prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
+        kind: 'agent' as const,
+        status: 'running' as const,
+      };
+    const label = toolCallLabel(call, target.agentTitle);
+    const separator = label.indexOf(' - ');
+    return (
+      <div className="flex w-full items-start text-sm">
+        <button
+          type="button"
+          disabled={!activity}
+          onClick={() => activity?.openTask(target)}
+          className="group/agent-call text-muted-foreground hover:text-foreground focus-visible:outline-ring flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md py-1 text-left text-xs transition-colors focus-visible:outline-2"
+        >
+          {separator < 0 ? (
+            label
+          ) : (
+            <>
+              <span className="text-foreground/75 transition-colors group-hover/agent-call:text-foreground group-focus-visible/agent-call:text-foreground">
+                {label.slice(0, separator)}
+              </span>
+              <span className="text-muted-foreground/60">
+                {' - '}
+                {label.slice(separator + 3)}
+              </span>
+            </>
+          )}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <ToolFallbackRoot open={open} onOpenChange={setOpen}>
-      <ToolFallbackTrigger toolName={toolName} argsText={argsText} status={status} />
+      <ToolFallbackTrigger
+        toolCallId={toolCallId}
+        toolName={toolName}
+        argsText={argsText}
+        status={status}
+      />
       <ToolFallbackContent>
         <ToolFallbackError status={status} />
         {renderer.kind === 'web-search' ? (

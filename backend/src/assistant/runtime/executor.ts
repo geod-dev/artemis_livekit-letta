@@ -2,8 +2,9 @@ import type { LettaCodeSession } from '@letta-ai/letta-agent-sdk';
 import type { TurnMode } from '../../chat-types';
 import { publish } from '../conversations/events.ts';
 import type { CallStateFilter } from '../conversations/messages.ts';
-import type { SessionReader } from './session-adapter';
+import { type SessionReader, withAbort } from './session-adapter';
 import type { TurnRequest } from './types';
+import { mergeToolArguments } from './tool-arguments';
 
 export interface TurnExecutorPorts {
   conversationId: string;
@@ -72,11 +73,14 @@ export async function executeTurn(ports: TurnExecutorPorts): Promise<TurnExecuti
     });
   };
   try {
-    const messages = reader.nextTurn();
+    const messages = reader.nextTurn(signal);
     const images = request.images ?? [];
-    await session.send(images.length ? [{ type: 'text', text: encoded }, ...images] : encoded, {
-      otid,
-    });
+    await withAbort(
+      session.send(images.length ? [{ type: 'text', text: encoded }, ...images] : encoded, {
+        otid,
+      }),
+      signal
+    );
     for await (const message of messages) {
       switch (message.type) {
         case 'reasoning':
@@ -116,7 +120,10 @@ export async function executeTurn(ports: TurnExecutorPorts): Promise<TurnExecuti
             turnId,
             toolCallId: message.toolCallId,
             args: toolCalls.get(message.toolCallId)?.args || undefined,
-            result: stringify(message.content).replace(/\[\[mcp-managed-artifacts:v1:[0-9a-f-]{36}\]\]/gi, ''),
+            result: stringify(message.content).replace(
+              /\[\[mcp-managed-artifacts:v1:[0-9a-f-]{36}\]\]/gi,
+              ''
+            ),
             isError: Boolean(message.isError),
           });
           break;
@@ -144,16 +151,6 @@ export async function executeTurn(ports: TurnExecutorPorts): Promise<TurnExecuti
 }
 
 const BROKEN_SESSION_CODES = new Set(['stream_closed', 'protocol_error']);
-
-function mergeToolArguments(
-  previous: string,
-  message: { toolInput: Record<string, unknown>; rawArguments?: string }
-): string {
-  if (message.rawArguments !== undefined) return previous + message.rawArguments;
-  const input = message.toolInput;
-  if (typeof input.raw === 'string') return previous + input.raw;
-  return Object.keys(input).length ? JSON.stringify(input) : previous;
-}
 
 function stringify(value: unknown): string {
   if (typeof value === 'string') return value;

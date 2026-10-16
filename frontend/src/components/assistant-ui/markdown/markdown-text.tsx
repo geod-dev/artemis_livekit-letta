@@ -1,4 +1,12 @@
-import { type ComponentProps, type ReactNode, memo, useEffect, useState } from 'react';
+import {
+  type ComponentProps,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  type WheelEvent as ReactWheelEvent,
+  memo,
+  useEffect,
+  useState,
+} from 'react';
 import { Globe2Icon } from 'lucide-react';
 import {
   type DiagramPlugin,
@@ -29,16 +37,22 @@ import { WorkspaceFileCard, WorkspaceImage } from '@/components/assistant-ui/fil
  */
 const loadMermaid = () => import('@streamdown/mermaid').then((module) => module.mermaid);
 type MermaidConfig = Parameters<Awaited<ReturnType<typeof loadMermaid>>['getMermaid']>[0];
+const appMermaidConfig = (config?: MermaidConfig): MermaidConfig => ({
+  ...config,
+  theme: document.documentElement.classList.contains('dark') ? 'dark' : config?.theme,
+});
 const mermaid: DiagramPlugin = {
   name: 'mermaid',
   type: 'diagram',
   language: 'mermaid',
   getMermaid: (config) => ({
     initialize: (next) => {
-      void loadMermaid().then((plugin) => plugin.getMermaid(next as MermaidConfig));
+      void loadMermaid().then((plugin) =>
+        plugin.getMermaid(appMermaidConfig(next as MermaidConfig))
+      );
     },
     render: async (id, source) =>
-      (await loadMermaid()).getMermaid(config as MermaidConfig).render(id, source),
+      (await loadMermaid()).getMermaid(appMermaidConfig(config as MermaidConfig)).render(id, source),
   }),
 };
 
@@ -260,6 +274,30 @@ export function MessageLinkPreviews() {
   return null;
 }
 
+/** Open Streamdown's interactive viewer when a feed diagram preview is clicked. */
+function openMermaidFullscreen(event: ReactMouseEvent<HTMLDivElement>) {
+  const target = event.target;
+  if (!(target instanceof Element) || target.closest('[data-streamdown="mermaid-block-actions"]'))
+    return;
+
+  const diagram = target.closest('[data-streamdown="mermaid"]');
+  if (!diagram) return;
+
+  diagram
+    .closest('[data-streamdown="mermaid-block"]')
+    ?.querySelector<HTMLButtonElement>(
+      '[data-streamdown="mermaid-block-actions"] button[title="View fullscreen"]'
+    )
+    ?.click();
+}
+
+function keepMermaidPreviewStatic(event: ReactWheelEvent<HTMLDivElement>) {
+  const target = event.target;
+  if (!(target instanceof Element) || !target.closest('[data-streamdown="mermaid"]')) return;
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 /**
  * Markdown for message text parts, rendered by Streamdown: streaming-aware
  * parsing, Shiki-highlighted code blocks (with copy/download controls), Mermaid
@@ -267,16 +305,22 @@ export function MessageLinkPreviews() {
  */
 export const MarkdownText = memo(function MarkdownText() {
   return (
-    <StreamdownTextPrimitive
-      plugins={PLUGINS}
-      components={MARKDOWN_COMPONENTS}
-      rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-      shikiTheme={SHIKI_THEME}
-      mermaid={MERMAID}
-      controls={{ table: false }}
-      containerClassName="aui-md"
-      defer
-    />
+    <div
+      className="markdown-mermaid-feed contents"
+      onClick={openMermaidFullscreen}
+      onWheelCapture={keepMermaidPreviewStatic}
+    >
+      <StreamdownTextPrimitive
+        plugins={PLUGINS}
+        components={MARKDOWN_COMPONENTS}
+        rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+        shikiTheme={SHIKI_THEME}
+        mermaid={MERMAID}
+        controls={{ table: false }}
+        containerClassName="aui-md"
+        defer
+      />
+    </div>
   );
 });
 

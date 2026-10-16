@@ -1,7 +1,6 @@
 import { type CSSProperties, createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ArrowUpRightIcon, BrainIcon, PartyPopperIcon, XIcon } from 'lucide-react';
+import { ArrowUpRightIcon, BrainIcon, XIcon } from 'lucide-react';
 import { Popover } from 'radix-ui';
-import { Streamdown } from 'streamdown';
 import {
   ComposerPrimitive,
   MessagePrimitive,
@@ -10,17 +9,17 @@ import {
 } from '@assistant-ui/react';
 import type { ConversationSummary, TextEffort } from '@shared/chat-types';
 import type { ThreadComponents } from '@/components/assistant-ui/chat/thread';
-import {
-  MARKDOWN_COMPONENTS,
-  MARKDOWN_REHYPE_PLUGINS,
-} from '@/components/assistant-ui/markdown/markdown-text';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
+import { type ActivityTask, taskTitle, useActivity } from '@/components/chat/activity-context';
+import { TaskStopButton } from '@/components/chat/workspace-panel';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import type { TaskStatus } from '@/hooks/use-conversation';
 import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
 import { greetingsFor, pickGreeting } from '@/lib/greetings';
+import { stripLeadingEmoji } from '@/lib/agent-runs';
 import { cn } from '@/lib/shadcn/utils';
+import { formatTaskDuration, taskStatusLabel, workedFor } from '@/lib/task-status';
 
 /** App state the thread slots need but assistant-ui does not track. */
 export interface ChatThreadState {
@@ -346,68 +345,106 @@ function SystemMessage() {
   const custom = useAuiState((s) => s.message.metadata.custom) as {
     kind?: string;
     updateId?: string;
+    taskId?: string;
+    status?: 'completed' | 'failed' | 'cancelled';
+    durationMs?: number;
     detail?: string;
     unread?: boolean;
   };
-  const unread = custom.unread === true;
-  const ref = useReadWhenSeen(custom.updateId, unread);
-  const [open, setOpen] = useState(false);
-  const Icon = custom.kind === 'memory' ? BrainIcon : PartyPopperIcon;
+  const ref = useReadWhenSeen(custom.updateId, custom.unread === true);
+  const { tasks, openTask } = useActivity();
+  const text = useAuiState((s) =>
+    s.message.content
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join('')
+  );
+  const recordedTask = tasks.find(
+    (t) =>
+      (custom.updateId && t.updateId === custom.updateId) ||
+      (custom.taskId && t.id === custom.taskId)
+  );
+  const task: ActivityTask = {
+    ...recordedTask,
+    id: recordedTask?.id ?? custom.taskId ?? custom.updateId ?? text,
+    title: recordedTask?.agentTitle ?? recordedTask?.title ?? text,
+    status: custom.status ?? recordedTask?.status ?? 'completed',
+    report: custom.detail ?? recordedTask?.report,
+    durationMs: custom.durationMs ?? recordedTask?.durationMs,
+  };
   return (
-    <MessagePrimitive.Root data-role="system" className="flex flex-col items-center gap-2 px-2">
-      <div
-        ref={ref}
-        className="system-note animate-pop-in inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white"
-      >
-        <Icon className="size-3.5 shrink-0" />
-        <span className="min-w-0">
-          <MessagePrimitive.Parts />
-        </span>
-        {unread && (
-          <span className="text-pink rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold uppercase">
-            New
-          </span>
-        )}
-        {custom.detail && (
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-            className="rounded-full px-1 text-xs underline-offset-2 hover:underline"
-          >
-            {open ? 'Hide report' : 'Report'}
-          </button>
+    <MessagePrimitive.Root data-role="system" className="flex w-full flex-col items-start px-2">
+      <div ref={ref} className="text-muted-foreground flex max-w-full items-center gap-2 text-sm">
+        {custom.kind === 'memory' ? (
+          <>
+            <BrainIcon aria-hidden className="size-4 shrink-0 text-violet-500" />
+            <span>
+              <MessagePrimitive.Parts />
+            </span>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => openTask(task)}
+              className="text-muted-foreground hover:text-foreground focus-visible:outline-ring min-w-0 cursor-pointer rounded-md py-1 text-left transition-colors focus-visible:outline-2"
+            >
+              <span>{taskTitle(task)}</span>
+              <span className="text-muted-foreground/60">
+                {' '}
+                - {workedFor(task.durationMs)}
+                {recordedTask?.rerunName
+                  ? ' (' + stripLeadingEmoji(recordedTask.rerunName) + ')'
+                  : ''}
+                {task.status === 'failed' || task.status === 'cancelled'
+                  ? ' · ' + taskStatusLabel({ status: task.status })
+                  : ''}
+              </span>
+            </button>
+          </>
         )}
       </div>
-      {custom.detail && open && (
-        <div className="bg-muted/60 w-full max-w-2xl rounded-2xl px-5 py-4 text-sm">
-          <Streamdown components={MARKDOWN_COMPONENTS} rehypePlugins={MARKDOWN_REHYPE_PLUGINS}>
-            {custom.detail}
-          </Streamdown>
-        </div>
-      )}
     </MessagePrimitive.Root>
   );
 }
 
 /** Running background tasks, the last turn's error, and queued messages. */
 function BeforeComposer() {
-  const { tasks, error } = useChatThread();
+  const { error } = useChatThread();
+  const { tasks: allTasks, openTask, error: activityError } = useActivity();
+  const tasks = allTasks.filter((task) => task.status === 'running');
   const queued = useAuiState((s) => s.composer.queue.length);
-  if (tasks.length === 0 && !error && queued === 0) return null;
+  if (tasks.length === 0 && !error && !activityError && queued === 0) return null;
 
   return (
-    <div className="flex flex-col items-start gap-2 px-1 text-xs">
+    <div className="flex max-h-48 w-full flex-col items-start gap-1 overflow-y-auto px-1 text-xs">
       {tasks.map((t) => (
         <div
           key={t.id}
-          className="task-note animate-pop-in inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white"
+          className="group text-muted-foreground flex w-full items-center gap-2 text-sm"
         >
-          <span className="size-2 shrink-0 animate-pulse rounded-full bg-white" />
-          <span className="truncate">Working on it in the background: {t.title}</span>
+          <button
+            type="button"
+            onClick={() => openTask(t)}
+            className="hover:text-foreground focus-visible:outline-ring flex min-w-0 flex-1 items-center gap-2 rounded-md py-2 text-left focus-visible:outline-2"
+          >
+            <span className="truncate">{taskTitle({ ...t, title: t.agentTitle ?? t.title })}</span>
+            <span className="shrink-0 text-xs">
+              - Running - {formatTaskDuration(t.durationMs) ?? '0s'}
+            </span>
+          </button>
+          <TaskStopButton
+            task={t}
+            className="size-8 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+          />
         </div>
       ))}
       {error && <p className="task-error animate-pop-in rounded-xl px-4 py-2 text-sm">{error}</p>}
+      {activityError && (
+        <p role="alert" className="text-destructive px-1 py-2 text-sm">
+          {activityError}
+        </p>
+      )}
       <ComposerPrimitive.Queue>
         {({ queueItem }) => (
           <div

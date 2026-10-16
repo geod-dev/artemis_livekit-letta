@@ -36,6 +36,7 @@ export interface TaskNotification {
   summary: string;
   /** The worker's report (or error) without Letta's metadata header. */
   report: string;
+  durationMs?: number;
   /** Set for `Agent` workers. */
   subagentType?: string;
   workerConversationId?: string;
@@ -79,12 +80,15 @@ function parseNotification(inner: string): TaskNotification | null {
     ? Object.fromEntries([...header[1].matchAll(/(\w+)=(\S+)/g)].map((m) => [m[1], m[2]]))
     : {};
   const report = (header ? result.slice(header[0].length) : result).trim();
+  const duration = field('usage')?.match(/\bduration_ms:\s*(\d+)\b/)?.[1];
+  const durationMs = duration === undefined ? undefined : Number(duration);
 
   return {
     taskId,
     status,
     summary: unescapeXml(field('summary') ?? '').trim(),
     report,
+    ...(durationMs !== undefined && Number.isSafeInteger(durationMs) && durationMs >= 0 ? { durationMs } : {}),
     ...(attrs.subagent_type ? { subagentType: attrs.subagent_type } : {}),
     ...(attrs.conversation_id ? { workerConversationId: attrs.conversation_id } : {}),
     needsInput: report.startsWith(NEEDS_INPUT_MARKER),

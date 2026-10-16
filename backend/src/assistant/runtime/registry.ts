@@ -1,5 +1,6 @@
 export interface ManagedRuntime {
   readonly isBusy: boolean;
+  readonly isClosed?: boolean;
   readonly lastUsed: number;
   close(): Promise<void>;
 }
@@ -12,6 +13,10 @@ export function createRuntimeRegistry<T extends ManagedRuntime>(create: (id: str
 
   function get(id: string): T {
     let runtime = runtimes.get(id);
+    if (runtime?.isClosed && !mutations.has(id)) {
+      runtimes.delete(id);
+      runtime = undefined;
+    }
     if (!runtime) {
       runtime = create(id);
       runtimes.set(id, runtime);

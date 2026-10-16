@@ -143,6 +143,39 @@ body,
 [data-streamdown='mermaid-block'] > [data-streamdown='mermaid'] {
   background: transparent !important;
 }
+.dark [data-streamdown='mermaid'] svg text,
+.dark [data-streamdown='mermaid'] svg foreignObject,
+.dark [data-streamdown='mermaid'] svg foreignObject * {
+  color: var(--foreground) !important;
+  fill: var(--foreground) !important;
+}
+.markdown-mermaid-feed [data-streamdown='mermaid-block-actions'],
+.markdown-mermaid-feed [data-streamdown='mermaid'] button {
+  display: none !important;
+}
+.markdown-mermaid-feed [data-streamdown='mermaid-block'] {
+  gap: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.markdown-mermaid-feed [data-streamdown='mermaid-block'] > div:first-child {
+  display: none;
+}
+.markdown-mermaid-feed [data-streamdown='mermaid-block'] > div:last-child {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.markdown-mermaid-feed [data-streamdown='mermaid'],
+.markdown-mermaid-feed [data-streamdown='mermaid'] * {
+  cursor: zoom-in !important;
+}
+.markdown-mermaid-feed [data-streamdown='mermaid'] [role='application'] {
+  pointer-events: none;
+}
 [data-streamdown='code-block-body'] {
   border: 0;
 }

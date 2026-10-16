@@ -11,6 +11,34 @@ const user = (id: string, text: string, modality: 'text' | 'voice' = 'text'): Ch
 });
 const assistant = (id: string, text: string): ChatMessage => ({ id, role: 'assistant', text });
 
+test('completion notices separate the resumed answer and retain the task-panel identity', () => {
+  const { messages } = toThreadMessages([
+    assistant('launch', 'Launched.'),
+    {
+      id: 'notice',
+      role: 'event',
+      kind: 'task_result',
+      taskId: 'task_7',
+      updateId: 'update-7',
+      status: 'completed',
+      text: '🧮 Multiplication - background task finished',
+      detail: '42',
+    },
+    assistant('answer', '42'),
+  ]);
+  assert.deepEqual(
+    messages.map((message) => message.role),
+    ['assistant', 'system', 'assistant']
+  );
+  assert.deepEqual(messages[1].metadata?.custom, {
+    kind: 'task_result',
+    taskId: 'task_7',
+    updateId: 'update-7',
+    status: 'completed',
+    detail: '42',
+  });
+});
+
 test('keeps reasoning separate from answer text within the same response', () => {
   const { messages } = toThreadMessages([
     user('u', 'hi'),

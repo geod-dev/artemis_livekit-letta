@@ -10,6 +10,7 @@ export interface TaskOrigin {
   conversationId: string;
   taskId: string;
   workerConversationId?: string;
+  kind?: 'agent' | 'command';
   title: string;
   mode: TurnMode;
   depth: number;
@@ -20,6 +21,8 @@ export interface TaskOrigin {
 export type DeliveryState = 'held' | 'queued' | 'inflight' | 'delivered';
 
 export interface UpdateRecord extends BackgroundUpdate {
+  taskId?: string;
+  kind?: 'agent' | 'command';
   conversationId: string;
   depth: number;
   delivery: DeliveryState;
@@ -124,7 +127,7 @@ export function configureBackgroundStorage(next: BackgroundStoragePort): void {
 function validateState(value: unknown): BackgroundState {
   if (!isObject(value)) throw new Error('state must be an object');
   const raw = value as Record<string, unknown>;
-    if (raw.version !== undefined && raw.version !== 1 && raw.version !== 2 && raw.version !== 3)
+  if (raw.version !== undefined && raw.version !== 1 && raw.version !== 2 && raw.version !== 3)
     throw new Error('unknown version');
   if (!isObject(raw.origins) || !isObject(raw.updates) || !Array.isArray(raw.seen))
     throw new Error('missing state fields');
@@ -140,6 +143,7 @@ function validateState(value: unknown): BackgroundState {
       !Number.isInteger(item.depth) ||
       typeof item.startedAt !== 'string' ||
       (item.workerConversationId !== undefined && typeof item.workerConversationId !== 'string') ||
+      (item.kind !== undefined && item.kind !== 'agent' && item.kind !== 'command') ||
       (item.stopped !== undefined && typeof item.stopped !== 'boolean')
     )
       throw new Error(`invalid origin ${key}`);
@@ -160,6 +164,9 @@ function validateState(value: unknown): BackgroundState {
       !['held', 'queued', 'inflight', 'delivered'].includes(String(item.delivery)) ||
       typeof item.unread !== 'boolean' ||
       typeof item.createdAt !== 'string' ||
+      (item.durationMs !== undefined && (typeof item.durationMs !== 'number' || !Number.isFinite(item.durationMs) || item.durationMs < 0)) ||
+      (item.taskId !== undefined && typeof item.taskId !== 'string') ||
+      (item.kind !== undefined && item.kind !== 'agent' && item.kind !== 'command') ||
       (item.deliveryToken !== undefined && typeof item.deliveryToken !== 'string') ||
       (item.deliveryFrom !== undefined &&
         item.deliveryFrom !== 'held' &&
@@ -181,8 +188,12 @@ function validateState(value: unknown): BackgroundState {
   if (raw.retired !== undefined) {
     if (!isObject(raw.retired)) throw new Error('invalid retired conversations');
     for (const [id, item] of Object.entries(raw.retired)) {
-      if (!isObject(item) || typeof item.retiredAt !== 'string' ||
-          (item.destinationConversationId !== null && typeof item.destinationConversationId !== 'string')) {
+      if (
+        !isObject(item) ||
+        typeof item.retiredAt !== 'string' ||
+        (item.destinationConversationId !== null &&
+          typeof item.destinationConversationId !== 'string')
+      ) {
         throw new Error(`invalid retired conversation ${id}`);
       }
       retired[id] = item as unknown as BackgroundState['retired'][string];

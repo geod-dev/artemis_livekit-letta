@@ -1,6 +1,6 @@
 import type { AnyAgentTool, LettaCodeSession } from '@letta-ai/letta-agent-sdk';
 import { randomUUID } from 'node:crypto';
-import type { Modality, TextEffort, TurnMode } from '../chat-types';
+import type { ConversationTask, Modality, TextEffort, TurnMode } from '../chat-types';
 import { BRIDGE_TOOL_NAMES } from '../mcp-bridge/tools';
 import {
   completeDelivery,
@@ -15,18 +15,27 @@ import {
 import type { UpdateRecord } from './background/store.ts';
 import { beginCallResponse, finishCallResponse } from './calls/state.ts';
 import { config } from './config';
-import { projectConversationSummary } from './conversations/projection.ts';
 import { publish } from './conversations/events.ts';
-import { assistant, letta } from './letta/agent-client.ts';
 import { CallStateFilter, decodeUserContent, encodeTurn } from './conversations/messages.ts';
+import { projectConversationSummary } from './conversations/projection.ts';
+import {
+  fallbackTitle,
+  generateTitle,
+  renameConversationIfUntitled,
+} from './conversations/titles.ts';
 import { claimAttachmentReferenceToken } from './filesystem/attachment-retention';
+import { assistant, letta } from './letta/agent-client.ts';
 import { modelEffort } from './letta/model-adapter.ts';
 import { executeTurn } from './runtime/executor';
 import { createRuntimeRegistry } from './runtime/registry';
 import { SerialScheduler } from './runtime/scheduler';
-import { SessionReader, registerToolsInline, waitUntilIdle } from './runtime/session-adapter';
+import {
+  SessionReader,
+  registerToolsInline,
+  waitUntilIdle,
+  withAbort,
+} from './runtime/session-adapter';
 import type { TurnOutcome, TurnRequest } from './runtime/types';
-import { fallbackTitle, generateTitle, renameConversationIfUntitled } from './conversations/titles.ts';
 import { createTools, toolsFor } from './tools';
 
 export { SessionReader, waitUntilIdle };
@@ -67,7 +76,7 @@ function formatCurrentDateTime(date: Date, timeZone: string): string {
 
 type ModelTier = keyof Pick<typeof config.models, 'smart' | 'fast'>;
 
-/** Text chat gets the smart model; voice needs the fast one. */
+/** Text uses the smart model; voice calls use the configured fast model. */
 const TIER_FOR: Record<Modality, ModelTier> = { text: 'smart', voice: 'fast' };
 
 /**
@@ -79,6 +88,7 @@ const TIER_FOR: Record<Modality, ModelTier> = { text: 'smart', voice: 'fast' };
 class ConversationRuntime {
   private session: Promise<LettaCodeSession> | null = null;
   private readers = new WeakMap<LettaCodeSession, SessionReader>();
+  private nativeReader: SessionReader | null = null;
   private model: string | null = null;
   /** The session's client tools, and the modality whose tools are registered with Letta. */
   private tools: AnyAgentTool[] = [];
@@ -180,13 +190,66 @@ class ConversationRuntime {
 
   /** Stop the turn being run, if any. Resolves false when nothing was running. */
   cancel(): boolean {
-    if (!this.stopCurrent) return false;
+    if (!this.stopCurrent) {
+      if (!this.session || !this.nativeReader?.nativeTurnActive) return false;
+      void this.session.then((session) => session.abort()).catch(() => undefined);
+      return true;
+    }
     this.stopCurrent.abort();
     return true;
   }
 
   get isBusy(): boolean {
-    return this.pending > 0 || this.maintenance > 0 || this.stopCurrent !== null;
+    return this.pending > 0 || this.maintenance > 0 || this.stopCurrent !== null || this.nativeReader?.nativeTurnActive === true;
+  }
+
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
+  /** Controls run outside the turn queue, so a stuck turn cannot block Stop. */
+  async taskControl(taskId?: string): Promise<ConversationTask[] | { killed: boolean }> {
+    const session = await this.ensureSession();
+    const { agentId } = await assistant();
+    const response = await session.sendCommand(
+      {
+        type: 'execute_command',
+        command_id: taskId ? 'assistant_task_stop' : 'assistant_tasks',
+        request_id: randomUUID(),
+        runtime: { agent_id: agentId, conversation_id: this.conversationId },
+        ...(taskId ? { args: taskId } : {}),
+      },
+      { responseType: 'execute_command_response', timeoutMs: 20_000 }
+    );
+    if (response.success !== true || typeof response.output !== 'string')
+      throw new Error(
+        typeof response.error === 'string'
+          ? response.error
+          : 'Task controls are unavailable. Update the Letta service to enable them.'
+      );
+    const result: unknown = JSON.parse(response.output);
+    if (taskId) {
+      if (
+        !result ||
+        typeof result !== 'object' ||
+        !('killed' in result) ||
+        typeof result.killed !== 'boolean'
+      )
+        throw new Error('Invalid task cancellation response');
+      return result as { killed: boolean };
+    }
+    if (
+      !Array.isArray(result) ||
+      !result.every(
+        (task) =>
+          task &&
+          typeof task.id === 'string' &&
+          typeof task.title === 'string' &&
+          ['running', 'completed', 'failed', 'cancelled'].includes(task.status)
+      )
+    )
+      throw new Error('Invalid task inventory');
+    return result as ConversationTask[];
   }
 
   close(): Promise<void> {
@@ -210,19 +273,33 @@ class ConversationRuntime {
 
   private async runTurn(request: TurnRequest): Promise<TurnOutcome> {
     const stop = new AbortController();
+    const turnId = randomUUID();
     this.stopCurrent = stop;
     try {
       const signal = request.signal ? AbortSignal.any([request.signal, stop.signal]) : stop.signal;
-      return await this.runTurnWith(request, signal);
+      return await this.runTurnWith(request, signal, turnId);
+    } catch (cause) {
+      const error =
+        stop.signal.aborted || request.signal?.aborted
+          ? 'aborted'
+          : cause instanceof Error
+            ? cause.message
+            : String(cause);
+      publish(this.conversationId, { type: 'turn_end', turnId, success: false, error });
+      void this.close();
+      return { success: false, text: '', error };
     } finally {
       await this.finishHeldClaims(false);
       if (this.stopCurrent === stop) this.stopCurrent = null;
     }
   }
 
-  private async runTurnWith(request: TurnRequest, signal: AbortSignal): Promise<TurnOutcome> {
+  private async runTurnWith(
+    request: TurnRequest,
+    signal: AbortSignal,
+    turnId: string
+  ): Promise<TurnOutcome> {
     if (signal.aborted) return { success: false, text: '', error: 'aborted' };
-    const turnId = randomUUID();
     const started = performance.now();
     let firstTokenAt: number | null = null;
     const isUpdate = request.kind === 'update';
@@ -243,17 +320,21 @@ class ConversationRuntime {
     let session: LettaCodeSession;
     let readyAt = started;
     try {
-      session = await this.ensureSession();
+      session = await withAbort(this.ensureSession(), signal);
       await waitUntilIdle(session, 15_000, signal);
       const tier = request.modality === 'voice' || request.effort === 'fast' ? 'fast' : 'smart';
       const reasoning = tier === 'smart' && request.effort !== 'fast' ? request.effort : undefined;
-      await this.useModel(session, tier, reasoning);
-      await this.useTools(session, request.modality);
+      await withAbort(this.useModel(session, tier, reasoning), signal);
+      await withAbort(this.useTools(session, request.modality), signal);
       readyAt = performance.now();
     } catch (error) {
       this.close();
       finishCall(false);
-      const message = error instanceof Error ? error.message : String(error);
+      const message = signal.aborted
+        ? 'aborted'
+        : error instanceof Error
+          ? error.message
+          : String(error);
       publish(this.conversationId, { type: 'turn_end', turnId, success: false, error: message });
       return { success: false, text: '', error: message };
     }
@@ -369,7 +450,10 @@ class ConversationRuntime {
       const token = text.match(/\[\[mcp-managed-artifacts:v1:([0-9a-f-]{36})\]\]/i)?.[1];
       if (token) {
         await claimAttachmentReferenceToken(this.conversationId, token).catch((error) => {
-          console.warn(`[assistant] could not retain MCP artifacts in ${this.conversationId}:`, error);
+          console.warn(
+            `[assistant] could not retain MCP artifacts in ${this.conversationId}:`,
+            error
+          );
         });
       }
     }
@@ -412,16 +496,20 @@ class ConversationRuntime {
       dreaming: { trigger: 'step-count', stepCount: config.memory.reflectionStepCount },
     });
     try {
-      await session.ready();
+      await withAbort(session.ready(), AbortSignal.timeout(30_000));
       await this.reconcileMcpArtifactReferences().catch((error) => {
-        console.warn(`[assistant] could not reconcile MCP artifact references in ${this.conversationId}:`, error);
+        console.warn(
+          `[assistant] could not reconcile MCP artifact references in ${this.conversationId}:`,
+          error
+        );
       });
       await registerToolsInline(session, toolsFor(tools, 'text'), this.conversationId);
       const conversation = await letta().conversations.retrieve(this.conversationId);
-      this.readers.set(
-        session,
-        new SessionReader(session, this.conversationId, { receiveNotifications })
-      );
+      this.nativeReader = new SessionReader(session, this.conversationId, {
+          receiveNotifications,
+          onNativeTool: (call, result) => this.observeNativeTool(call, result, 'text', 1),
+      });
+      this.readers.set(session, this.nativeReader);
       this.tools = tools;
       this.toolsModality = 'text';
       this.model = null; // unknown reasoning tier: select explicitly on the first turn
@@ -437,7 +525,7 @@ class ConversationRuntime {
   private async useModel(
     session: LettaCodeSession,
     tier: ModelTier,
-    effort?: Exclude<TextEffort, 'fast'>
+    effort?: Exclude<TextEffort, 'fast'> | 'none'
   ): Promise<void> {
     const { handle } = config.models[tier];
     const adaptation = modelEffort(handle, effort ?? config.models[tier].reasoning);
@@ -452,9 +540,7 @@ class ConversationRuntime {
     if (this.model === selection) return;
     try {
       await session.updateModel(
-        reasoning
-          ? { modelHandle: handle, reasoningEffort: reasoning }
-          : { modelHandle: handle }
+        reasoning ? { modelHandle: handle, reasoningEffort: reasoning } : { modelHandle: handle }
       );
     } catch (error) {
       // Explicit slider choices must never silently run at the default effort.
@@ -510,8 +596,11 @@ class ConversationRuntime {
         ...(before ? { before } : {}),
       });
       for (const message of result.messages) {
-        const tokens = JSON.stringify(message).matchAll(/\[\[mcp-managed-artifacts:v1:([0-9a-f-]{36})\]\]/gi);
-        for (const match of tokens) await claimAttachmentReferenceToken(this.conversationId, match[1]!);
+        const tokens = JSON.stringify(message).matchAll(
+          /\[\[mcp-managed-artifacts:v1:([0-9a-f-]{36})\]\]/gi
+        );
+        for (const match of tokens)
+          await claimAttachmentReferenceToken(this.conversationId, match[1]!);
       }
       if (result.messages.length < 100) return;
       const next = String(result.messages.at(-1)?.id ?? '');
@@ -526,7 +615,7 @@ function parseJson(text: string): Record<string, unknown> {
   try {
     const value: unknown = JSON.parse(text);
     return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? value as Record<string, unknown>
+      ? (value as Record<string, unknown>)
       : {};
   } catch {
     return {};

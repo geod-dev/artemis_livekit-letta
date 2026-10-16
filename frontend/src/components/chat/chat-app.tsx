@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TokenSource } from 'livekit-client';
-import { MessageCirclePlusIcon } from 'lucide-react';
+import { MessageCirclePlusIcon, PanelRightIcon } from 'lucide-react';
 import { AssistantRuntimeProvider, AuiConfig, Tools } from '@assistant-ui/react';
 import { RoomAudioRenderer, SessionProvider, useSession } from '@livekit/components-react';
 import type { ConversationSummary, TextEffort } from '@shared/chat-types';
 import { StartAudioButton } from '@/components/agents-ui/start-audio-button';
 import { Thread } from '@/components/assistant-ui/chat/thread';
 import { WorkspaceFilePanelContext } from '@/components/assistant-ui/files/workspace-file';
-import { WorkspaceFilePanel } from '@/components/assistant-ui/files/workspace-file-panel';
 import { generativeUIToolkit } from '@/components/assistant-ui/tools/generative-ui';
+import { ActivityContext, type ActivityTask } from '@/components/chat/activity-context';
 import { CallBar } from '@/components/chat/call-bar';
 import { LoadingBar } from '@/components/chat/loading-bar';
 import { Sidebar } from '@/components/chat/sidebar';
@@ -18,9 +18,15 @@ import {
   THREAD_COMPONENTS,
   WelcomeStats,
 } from '@/components/chat/thread-slots';
+import {
+  WorkspacePanel,
+  type WorkspaceSelection,
+  type WorkspaceTab,
+} from '@/components/chat/workspace-panel';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
+import { useActivityTasks } from '@/hooks/use-activity';
 import { useChatRuntime } from '@/hooks/use-chat-runtime';
 import { useConversation } from '@/hooks/use-conversation';
 import { useConversations } from '@/hooks/use-conversations';
@@ -81,11 +87,35 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const newChat = useCallback(() => select(null), [select]);
-  const [openFile, setOpenFile] = useState<string | null>(null);
-  const closeFile = useCallback(() => setOpenFile(null), []);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('files');
+  const [workspaceSelection, setWorkspaceSelection] = useState<WorkspaceSelection>(null);
+  const workspaceTrigger = useRef<HTMLButtonElement>(null);
+  const activity = useActivityTasks(
+    conversation.shownId,
+    conversation.tasks,
+    conversation.messages
+  );
+  const closeWorkspace = useCallback(() => {
+    setWorkspaceOpen(false);
+    requestAnimationFrame(() => workspaceTrigger.current?.focus());
+  }, []);
+  const setOpenFile = useCallback((path: string) => {
+    setWorkspaceTab('files');
+    setWorkspaceSelection({ type: 'file', path });
+    setWorkspaceOpen(true);
+  }, []);
+  const openTask = useCallback((task: ActivityTask) => {
+    setWorkspaceTab('tasks');
+    setWorkspaceSelection({ type: 'task', task });
+    setWorkspaceOpen(true);
+  }, []);
 
   // An opened file belongs to the conversation it was linked from.
-  useEffect(() => setOpenFile(null), [activeId]);
+  useEffect(() => {
+    setWorkspaceSelection(null);
+    setWorkspaceOpen(false);
+  }, [activeId]);
 
   useEffect(() => {
     let saved: string | null = null;
@@ -301,57 +331,83 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
             onSettings={openSettings}
           />
           <ChatThreadContext.Provider value={threadState}>
-            <main className="app-main flex min-w-0 flex-1 flex-col">
-              <header
-                data-empty={conversation.blank || !shownId ? true : undefined}
-                className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6"
-              >
-                <div className="app-topbar-title min-w-0">
-                  {!conversation.blank && shownId && (
-                    <h1
-                      key={shownId}
-                      className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
-                    >
-                      {shownTitle ?? 'Conversation'}
-                    </h1>
-                  )}
-                </div>
-                {(conversation.blank || !shownId) && <WelcomeStats />}
-                {!conversation.blank && shownId && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="New chat"
-                    onClick={newChat}
-                    className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
+            <ActivityContext.Provider value={{ ...activity, openTask }}>
+              <WorkspaceFilePanelContext.Provider value={setOpenFile}>
+                <main className="app-main flex min-w-0 flex-1 flex-col">
+                  <header
+                    data-empty={conversation.blank || !shownId ? true : undefined}
+                    className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6"
                   >
-                    <MessageCirclePlusIcon className="size-5" />
-                  </Button>
-                )}
-              </header>
-              {inCall && <CallBar mascotActive={callOnCurrentConversation} />}
-              <div className="min-h-0 flex-1">
-                <WorkspaceFilePanelContext.Provider value={setOpenFile}>
-                  <Thread
-                    autoFocus={window.matchMedia('(hover: hover) and (pointer: fine)').matches}
-                    components={THREAD_COMPONENTS}
-                    placeholder={
-                      inCall
-                        ? 'Type here too, I’m still listening…'
-                        : `An idea, a question, a little of everything…`
-                    }
+                    <div className="app-topbar-title min-w-0 flex-1">
+                      {!conversation.blank && shownId && (
+                        <h1
+                          key={shownId}
+                          className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
+                        >
+                          {shownTitle ?? 'Conversation'}
+                        </h1>
+                      )}
+                    </div>
+                    {(conversation.blank || !shownId) && <WelcomeStats />}
+                    {!conversation.blank && shownId && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="New chat"
+                        onClick={newChat}
+                        className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
+                      >
+                        <MessageCirclePlusIcon className="size-5" />
+                      </Button>
+                    )}
+                    {activeId && (
+                      <Button
+                        ref={workspaceTrigger}
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={
+                          workspaceOpen ? 'Close files and agents' : 'Open files and agents'
+                        }
+                        aria-expanded={workspaceOpen}
+                        aria-controls={workspaceOpen ? 'conversation-workspace' : undefined}
+                        onClick={() => setWorkspaceOpen((open) => !open)}
+                        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground size-10 shrink-0 rounded-[var(--control-radius)] border-0 bg-transparent p-0 transition-colors duration-150"
+                      >
+                        <PanelRightIcon className="size-5" />
+                      </Button>
+                    )}
+                  </header>
+                  {inCall && <CallBar mascotActive={callOnCurrentConversation} />}
+                  <div className="min-h-0 flex-1">
+                    <WorkspaceFilePanelContext.Provider value={setOpenFile}>
+                      <Thread
+                        autoFocus={window.matchMedia('(hover: hover) and (pointer: fine)').matches}
+                        components={THREAD_COMPONENTS}
+                        placeholder={
+                          inCall
+                            ? 'Type here too, I’m still listening…'
+                            : `An idea, a question, a little of everything…`
+                        }
+                      />
+                    </WorkspaceFilePanelContext.Provider>
+                  </div>
+                </main>
+                {activeId && workspaceOpen && (
+                  <WorkspacePanel
+                    tab={workspaceTab}
+                    setTab={setWorkspaceTab}
+                    selection={workspaceSelection}
+                    setSelection={setWorkspaceSelection}
+                    messages={conversation.messages}
+                    error={activity.error}
+                    onClose={closeWorkspace}
                   />
-                </WorkspaceFilePanelContext.Provider>
-              </div>
-            </main>
+                )}
+              </WorkspaceFilePanelContext.Provider>
+            </ActivityContext.Provider>
           </ChatThreadContext.Provider>
-          {openFile && (
-            // Workspace files linked from a markdown document open in the panel too.
-            <WorkspaceFilePanelContext.Provider value={setOpenFile}>
-              <WorkspaceFilePanel path={openFile} onClose={closeFile} />
-            </WorkspaceFilePanelContext.Provider>
-          )}
         </div>
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </AssistantRuntimeProvider>

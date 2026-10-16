@@ -1,6 +1,18 @@
 import { Hono } from 'hono';
-import { markRead, retireConversation } from '../assistant/background/service.ts';
+import {
+  listTasks,
+  markRead,
+  retireConversation,
+  taskStopRequested,
+  taskStopped,
+} from '../assistant/background/service.ts';
 import { activeCall, endCall } from '../assistant/calls/state.ts';
+import {
+  clearConversationEvents,
+  subscribeList,
+  subscribeWithSnapshot,
+} from '../assistant/conversations/events.ts';
+import { RecoverableForkArchiveError } from '../assistant/conversations/lifecycle.ts';
 import {
   archiveConversation,
   conversationHasAttachments,
@@ -11,14 +23,13 @@ import {
   renameConversation,
   requireConversation,
 } from '../assistant/conversations/service.ts';
-import { RecoverableForkArchiveError } from '../assistant/conversations/lifecycle.ts';
-import { clearConversationEvents, subscribeWithSnapshot, subscribeList } from '../assistant/conversations/events.ts';
-import { conversationRuntime, withConversationMutation } from '../assistant/runtime';
-import { addAttachmentReferences, setAttachmentReferences } from '../assistant/filesystem/attachment-retention';
 import {
-  resolveAttachments,
-} from '../assistant/filesystem/workspace-adapter.ts';
-import type { ChatAttachment, TextEffort } from '../chat-types';
+  addAttachmentReferences,
+  setAttachmentReferences,
+} from '../assistant/filesystem/attachment-retention';
+import { resolveAttachments } from '../assistant/filesystem/workspace-adapter.ts';
+import { conversationRuntime, withConversationMutation } from '../assistant/runtime';
+import type { ChatAttachment, ConversationTask, TextEffort } from '../chat-types';
 import { errorResponse, eventStream, jsonObject } from '../http';
 
 const MAX_ATTACHMENTS = 10;
@@ -46,15 +57,19 @@ conversations.post('/', async () => {
 conversations.get('/events', (c) => eventStream(c.req.raw, (send) => subscribeList(send)));
 
 conversations.get('/:id', async (c) => {
-  try { return Response.json(await requireConversation(c.req.param('id'))); }
-  catch (error) { return errorResponse(error); }
+  try {
+    return Response.json(await requireConversation(c.req.param('id')));
+  } catch (error) {
+    return errorResponse(error);
+  }
 });
 
 conversations.patch('/:id', async (c) => {
   try {
     const body = await jsonObject(c.req.raw);
     const title = body?.title;
-    if (typeof title !== 'string' || !title.trim() || title.length > 200) return errorResponse('title must be a non-empty string of at most 200 characters', 400);
+    if (typeof title !== 'string' || !title.trim() || title.length > 200)
+      return errorResponse('title must be a non-empty string of at most 200 characters', 400);
     return Response.json(await renameConversation(c.req.param('id'), title.trim()));
   } catch (error) {
     return errorResponse(error);
@@ -83,17 +98,26 @@ conversations.get('/:id/events', async (c) => {
     const id = c.req.param('id');
     await requireConversation(id);
     return eventStream(c.req.raw, (send) => subscribeWithSnapshot(id, send));
-  } catch (error) { return errorResponse(error); }
+  } catch (error) {
+    return errorResponse(error);
+  }
 });
 
 conversations.get('/:id/messages', async (c) => {
   try {
     const before = c.req.query('before');
-    if (before !== undefined && (!before || before.length > 200)) return errorResponse('before cursor is invalid', 400);
+    if (before !== undefined && (!before || before.length > 200))
+      return errorResponse('before cursor is invalid', 400);
     const requested = Number(c.req.query('limit') ?? 100);
-    if (!Number.isInteger(requested) || requested < 1 || requested > 100) return errorResponse('limit must be an integer from 1 to 100', 400);
-    const page = await listMessagesPage(c.req.param('id'), { ...(before ? { before } : {}), limit: requested });
-    return Response.json(page.messages, { headers: page.nextCursor ? { 'X-Next-Cursor': page.nextCursor } : {} });
+    if (!Number.isInteger(requested) || requested < 1 || requested > 100)
+      return errorResponse('limit must be an integer from 1 to 100', 400);
+    const page = await listMessagesPage(c.req.param('id'), {
+      ...(before ? { before } : {}),
+      limit: requested,
+    });
+    return Response.json(page.messages, {
+      headers: page.nextCursor ? { 'X-Next-Cursor': page.nextCursor } : {},
+    });
   } catch (error) {
     return errorResponse(error);
   }
@@ -113,23 +137,49 @@ conversations.post('/:id/messages', async (c) => {
   const effort = body.effort;
   const attachments = body.attachments === undefined ? [] : body.attachments;
   const clientMessageId = body.clientMessageId;
-  if (typeof text !== 'string' || text.length > 100_000) return errorResponse('text must be a string of at most 100000 characters', 400);
+  if (typeof text !== 'string' || text.length > 100_000)
+    return errorResponse('text must be a string of at most 100000 characters', 400);
   if (effort !== undefined && !['fast', 'low', 'medium', 'high'].includes(String(effort))) {
     return errorResponse('effort must be fast, low, medium, or high', 400);
   }
-  if (clientMessageId !== undefined && (typeof clientMessageId !== 'string' || clientMessageId.length < 1 || clientMessageId.length > 200)) return errorResponse('clientMessageId must be a string of at most 200 characters', 400);
-  if (!Array.isArray(attachments) || attachments.some((a) => {
-    if (!a || typeof a !== 'object' || Array.isArray(a)) return true;
-    const file = a as Record<string, unknown>;
-    return typeof file.path !== 'string' || file.path.length > 500 || typeof file.name !== 'string' || file.name.length > 255 ||
-      !['image', 'file'].includes(String(file.kind)) || (file.mimeType !== undefined && (typeof file.mimeType !== 'string' || file.mimeType.length > 200)) ||
-      (file.size !== undefined && (typeof file.size !== 'number' || !Number.isSafeInteger(file.size) || file.size < 0 || file.size > 100_000_000));
-  })) return errorResponse('attachments must be a list of valid attachment objects', 400);
+  if (
+    clientMessageId !== undefined &&
+    (typeof clientMessageId !== 'string' ||
+      clientMessageId.length < 1 ||
+      clientMessageId.length > 200)
+  )
+    return errorResponse('clientMessageId must be a string of at most 200 characters', 400);
+  if (
+    !Array.isArray(attachments) ||
+    attachments.some((a) => {
+      if (!a || typeof a !== 'object' || Array.isArray(a)) return true;
+      const file = a as Record<string, unknown>;
+      return (
+        typeof file.path !== 'string' ||
+        file.path.length > 500 ||
+        typeof file.name !== 'string' ||
+        file.name.length > 255 ||
+        !['image', 'file'].includes(String(file.kind)) ||
+        (file.mimeType !== undefined &&
+          (typeof file.mimeType !== 'string' || file.mimeType.length > 200)) ||
+        (file.size !== undefined &&
+          (typeof file.size !== 'number' ||
+            !Number.isSafeInteger(file.size) ||
+            file.size < 0 ||
+            file.size > 100_000_000))
+      );
+    })
+  )
+    return errorResponse('attachments must be a list of valid attachment objects', 400);
   if (attachments.length > MAX_ATTACHMENTS) {
     return errorResponse(`At most ${MAX_ATTACHMENTS} attachments per message`, 400);
   }
   if (!text.trim() && attachments.length === 0) return errorResponse('text is required', 400);
-  try { await requireConversation(id); } catch (error) { return errorResponse(error); }
+  try {
+    await requireConversation(id);
+  } catch (error) {
+    return errorResponse(error);
+  }
   // The fast model (Instant, voice calls) reads no images.
   if (attachments.length > 0 && activeCall(id)) {
     return errorResponse('Attachments cannot be sent during a call', 409);
@@ -163,8 +213,49 @@ conversations.post('/:id/messages', async (c) => {
  * turn, with a `turn_end` event whose error is `aborted`.
  */
 conversations.post('/:id/cancel', async (c) => {
-  try { await requireConversation(c.req.param('id')); return Response.json({ cancelled: conversationRuntime(c.req.param('id')).cancel() }); }
-  catch (error) { return errorResponse(error); }
+  try {
+    await requireConversation(c.req.param('id'));
+    return Response.json({ cancelled: conversationRuntime(c.req.param('id')).cancel() });
+  } catch (error) {
+    return errorResponse(error);
+  }
+});
+
+conversations.get('/:id/tasks', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await requireConversation(id);
+    let native: ConversationTask[] = [];
+    try {
+      native = (await conversationRuntime(id).taskControl()) as ConversationTask[];
+    } catch (error) {
+      console.warn(`[api] native task inventory unavailable for ${id}:`, error);
+    }
+    return Response.json(listTasks(id, native));
+  } catch (error) {
+    return errorResponse(error);
+  }
+});
+
+conversations.post('/:id/tasks/:taskId/cancel', async (c) => {
+  try {
+    const { id, taskId } = c.req.param();
+    if (!taskId || taskId.length > 200) return errorResponse('Invalid task id', 400);
+    await requireConversation(id);
+    const runtime = conversationRuntime(id);
+    const native = (await runtime.taskControl()) as ConversationTask[];
+    const task = native.find((entry) => entry.id === taskId);
+    if (!task) return errorResponse('Task is no longer available in this conversation', 404);
+    if (task.status !== 'running') return Response.json({ cancelled: false });
+    await taskStopRequested(id, taskId);
+    const result = (await runtime.taskControl(taskId)) as { killed: boolean };
+    if (!result.killed)
+      return errorResponse('The task could not be stopped. Refresh tasks and try again.', 409);
+    await taskStopped(id, task);
+    return Response.json({ cancelled: true });
+  } catch (error) {
+    return errorResponse(error);
+  }
 });
 
 /**
@@ -192,12 +283,15 @@ conversations.delete('/:id/messages/:messageId', async (c) => {
     return Response.json({ conversation });
   } catch (error) {
     if (error instanceof RecoverableForkArchiveError) {
-      return Response.json({
-        conversation: error.conversation,
-        recoveryStage: error.stage,
-        sourceArchived: error.stage === 'routing' ? false : null,
-        recoverable: true,
-      }, { status: 202 });
+      return Response.json(
+        {
+          conversation: error.conversation,
+          recoveryStage: error.stage,
+          sourceArchived: error.stage === 'routing' ? false : null,
+          recoverable: true,
+        },
+        { status: 202 }
+      );
     }
     return errorResponse(error);
   }
@@ -210,7 +304,8 @@ async function attachmentsInConversation(id: string): Promise<ChatAttachment[]> 
     const result = await listMessagesPage(id, { limit: 100, ...(before ? { before } : {}) });
     for (const message of result.messages) {
       if (message.role !== 'user') continue;
-      for (const attachment of message.attachments ?? []) attachments.set(attachment.path, attachment);
+      for (const attachment of message.attachments ?? [])
+        attachments.set(attachment.path, attachment);
     }
     if (!result.nextCursor) return [...attachments.values()];
     before = result.nextCursor;
@@ -222,9 +317,19 @@ async function attachmentsInConversation(id: string): Promise<ChatAttachment[]> 
 conversations.post('/:id/read', async (c) => {
   const body = await jsonObject(c.req.raw);
   const updateIds = body?.updateIds;
-  if (!body || !Array.isArray(updateIds) || updateIds.length > 300 || !updateIds.every((u) => typeof u === 'string' && u.length <= 200)) {
+  if (
+    !body ||
+    !Array.isArray(updateIds) ||
+    updateIds.length > 300 ||
+    !updateIds.every((u) => typeof u === 'string' && u.length <= 200)
+  ) {
     return errorResponse('updateIds must be a list of update ids', 400);
   }
-  try { await requireConversation(c.req.param('id')); await markRead(c.req.param('id'), updateIds); return Response.json({ read: updateIds.length }); }
-  catch (error) { return errorResponse(error); }
+  try {
+    await requireConversation(c.req.param('id'));
+    await markRead(c.req.param('id'), updateIds);
+    return Response.json({ read: updateIds.length });
+  } catch (error) {
+    return errorResponse(error);
+  }
 });

@@ -15,6 +15,7 @@ import type {
   TextEffort,
 } from '@shared/chat-types';
 import { isRecord, requestJson, responseJson } from '@/lib/api';
+import { historyCoversMessage, mergeConversationMessages } from '@/lib/conversation-messages';
 import { isChatMessage, isConversationEvent } from '@/lib/conversation-protocol';
 import {
   type ConversationStatePatch,
@@ -199,10 +200,10 @@ export function useConversation(
       if (!hasShown) ready(rows);
       dispatch({ type: 'history-loaded', conversationId, revision, history: rows });
       if (turnId) {
-        const persistedIds = new Set(rows.map((row) => row.id));
+        const persisted = new Map(rows.map((row) => [row.id, row]));
         setLive((items) =>
           items.filter((item) => {
-            if (persistedIds.has(item.message.id)) return false;
+            if (historyCoversMessage(persisted.get(item.message.id), item.message)) return false;
             if (item.turnId !== turnId) return true;
             // The provider may acknowledge completion before history exposes its
             // final rows. Keep the streamed answer until it is actually persisted.
@@ -359,9 +360,7 @@ export function useConversation(
           // assistant-ui adapter, while assistant rows use the message ID.
           const id = role === 'reasoning' ? `reasoning:${event.messageId}` : event.messageId;
           setLive((items) => {
-            const index = items.findIndex(
-              (i) => i.message.id === id && i.message.role === role
-            );
+            const index = items.findIndex((i) => i.message.id === id && i.message.role === role);
             if (index < 0) {
               return [...items, { turnId: event.turnId, message: { id, role, text: event.text } }];
             }
@@ -437,8 +436,8 @@ export function useConversation(
           });
           break;
         case 'updates_changed':
-          // Held results and read markers; a running turn refetches when it ends.
-          if (activeTurnsRef.current.length > 0) break;
+          // Completion notices can arrive during an autonomous Letta turn.
+          // Refresh history without discarding its streamed response.
           void reconcileHistory();
           break;
         case 'conversation_updated':
@@ -673,30 +672,10 @@ export function useConversation(
     [setError, setHistory, shownId]
   );
 
-  const messages = useMemo(() => {
-    const historyIds = new Set(history.map((message) => message.id));
-    const historyToolCallIds = new Set(
-      history.flatMap((message) =>
-        message.role === 'tool' && message.toolCallId ? [message.toolCallId] : []
-      )
-    );
-    const clientIds = new Set(
-      history.flatMap((message) =>
-        message.role === 'user' && message.clientMessageId ? [message.clientMessageId] : []
-      )
-    );
-    const unreconciled = live.filter(
-      ({ message }) =>
-        !historyIds.has(message.id) &&
-        !(message.role === 'tool' && message.toolCallId && historyToolCallIds.has(message.toolCallId)) &&
-        !(
-          message.role === 'user' &&
-          message.clientMessageId &&
-          clientIds.has(message.clientMessageId)
-        )
-    );
-    return [...history, ...unreconciled.map((item) => item.message), ...(pending ? [pending] : [])];
-  }, [history, live, pending]);
+  const messages = useMemo(
+    () => mergeConversationMessages(history, live, pending),
+    [history, live, pending]
+  );
 
   return {
     shownId: shownId ?? null,

@@ -42,7 +42,7 @@ export const taskAwareGroupBy = (
   part: Parameters<typeof messageGroupBy>[0],
   context?: Parameters<typeof messageGroupBy>[1]
 ): readonly ThreadGroupKey[] => {
-  const path = messageGroupBy(part, context);
+  const path = defaultGroupBy(part, context);
   return part.type === 'tool-call' &&
     part.messages !== undefined &&
     path.length > 0 &&
@@ -51,4 +51,10 @@ export const taskAwareGroupBy = (
     : path;
 };
 
-export const defaultGroupBy = messageGroupBy;
+export const defaultGroupBy = (
+  part: Parameters<typeof messageGroupBy>[0],
+  context?: Parameters<typeof messageGroupBy>[1]
+): readonly ThreadGroupKey[] => {
+  if (part.type === 'tool-call' && ['Agent', 'Task'].includes(part.toolName)) return [];
+  return messageGroupBy(part, context);
+};

@@ -10,6 +10,7 @@ import {
   TerminalIcon,
   WrenchIcon,
 } from 'lucide-react';
+import { stripLeadingEmoji } from '@/lib/agent-runs';
 
 /**
  * How tool calls look in the thread: the one place that knows tools. A call
@@ -31,6 +32,7 @@ export type ToolDisplay = {
   /** Whether this display presents the call. */
   match: (call: ToolCall) => boolean;
   icon: LucideIcon;
+  hideIcon?: boolean;
   /** Trigger label for a single call, or undefined to keep the default label. */
   describe: (call: ToolCall) => string | undefined;
   /**
@@ -228,13 +230,23 @@ const TOOL_DISPLAYS: ToolDisplay[] = [
   // Workers: `Task` starts one, `Agent` starts or resumes one.
   toolDisplay(['Task', 'Agent'], {
     icon: BotIcon,
-    describe: ({ args }) => nonEmptyString(args.description),
-    groupLabel: (calls) => `Delegated ${counted(calls.length, 'task')}`,
+    hideIcon: true,
+    describe: ({ args }) => {
+      const restarted = Boolean(
+        nonEmptyString(args.conversation_id) || nonEmptyString(args.agent_id)
+      );
+      const description = nonEmptyString(args.description);
+      const followup = description ? stripLeadingEmoji(description) || 'Follow-up' : 'Follow-up';
+      return restarted
+        ? `Agent - Agent restarted: ${followup}`
+        : `${description ?? 'Agent'} - Agent started`;
+    },
+    groupLabel: (calls) => `Started ${counted(calls.length, 'agent')}`,
   }),
   toolDisplay('TaskStop', {
     icon: CircleStopIcon,
-    describe: () => 'Stopped a task',
-    groupLabel: (calls) => `Stopped ${counted(calls.length, 'task')}`,
+    describe: () => 'Stopped an agent',
+    groupLabel: (calls) => `Stopped ${counted(calls.length, 'agent')}`,
   }),
   // The MCP bridge (Settings -> MCP servers): search, describe, then call a server's tool.
   toolDisplay(['mcp_search', 'mcp_describe', 'mcp_call', 'mcp_call_write'], {
@@ -303,7 +315,15 @@ export function getToolGroupLabel(calls: ToolCall[]): string {
 }
 
 /** The trigger label of a single call. */
-export function toolCallLabel(call: ToolCall): string {
+export function toolCallLabel(call: ToolCall, agentTitle?: string): string {
+  if (agentTitle && ['Agent', 'Task'].includes(call.toolName)) {
+    const restarted =
+      nonEmptyString(call.args.agent_id) || nonEmptyString(call.args.conversation_id);
+    const followup = stripLeadingEmoji(nonEmptyString(call.args.description) ?? '') || 'Follow-up';
+    return restarted
+      ? `${agentTitle} - Agent restarted: ${followup}`
+      : `${agentTitle} - Agent started`;
+  }
   return getToolDisplay(call).describe(call) ?? defaultLabel(call);
 }
 

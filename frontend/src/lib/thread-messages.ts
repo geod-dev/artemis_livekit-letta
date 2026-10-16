@@ -98,6 +98,9 @@ export function toThreadMessages(
             custom: {
               kind: message.kind,
               ...(message.updateId ? { updateId: message.updateId } : {}),
+              ...(message.taskId ? { taskId: message.taskId } : {}),
+              ...(message.status ? { status: message.status } : {}),
+              ...(message.durationMs !== undefined ? { durationMs: message.durationMs } : {}),
               ...(message.detail ? { detail: message.detail } : {}),
               ...(message.unread ? { unread: true } : {}),
             },

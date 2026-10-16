@@ -5,6 +5,7 @@
  * Pure functions (no server imports) so they can be unit tested.
  */
 import type { ChatAttachment, ChatMessage, Modality, TurnMode } from '../../chat-types';
+import { extractTaskNotifications } from '../background/task-notifications.ts';
 
 /**
  * Every turn starts with its interaction mode, e.g. `[voice-short] hello`. The
@@ -13,8 +14,8 @@ import type { ChatAttachment, ChatMessage, Modality, TurnMode } from '../../chat
 const MODE_PREFIX = /^\[(text|voice-short|voice-long|voice)\](?: |\n|$)/;
 
 /**
- * Voice turns also carry a reminder of the response's call state: fast models
- * follow a per-turn reminder far more reliably than the system prompt alone.
+ * Voice turns also carry a reminder of the response's call state: the voice model
+ * follows a per-turn reminder far more reliably than the system prompt alone.
  * Letta's system reminders are hidden in the chat.
  */
 const VOICE_REMINDER =
@@ -71,10 +72,12 @@ export function stripCallState(text: string): string {
 /** A finished background task, as delivered into the conversation. */
 export interface BackgroundUpdate {
   id: string;
+  taskId?: string;
   title: string;
   status: 'completed' | 'failed' | 'cancelled';
   needsInput: boolean;
   report: string;
+  durationMs?: number;
 }
 
 const UPDATE_BLOCK = /<background-update\b([^>]*)>\n?([\s\S]*?)\n?<\/background-update>/g;
@@ -143,6 +146,8 @@ type DecodedPart =
       kind: 'task_result';
       text: string;
       updateId?: string;
+      taskId?: string;
+      durationMs?: number;
       status?: BackgroundUpdate['status'];
       detail?: string;
     }
@@ -181,7 +186,9 @@ export function decodeUserContent(raw: string): DecodedPart[] {
             kind: 'task_result',
             text: updateLabel(update.title, status, update.needsInput === true),
             ...(typeof update.id === 'string' ? { updateId: update.id } : {}),
+            ...(typeof update.taskId === 'string' ? { taskId: update.taskId } : {}),
             ...(status ? { status } : {}),
+            ...(typeof update.durationMs === 'number' && Number.isFinite(update.durationMs) && update.durationMs >= 0 ? { durationMs: update.durationMs } : {}),
             detail: update.report,
           });
         }
@@ -210,14 +217,25 @@ export function decodeUserContent(raw: string): DecodedPart[] {
   }
 
   if (text.startsWith('<task-notification>')) {
-    // Letta's own notifications: reflection (memory consolidation) completions,
-    // or notifications that reached the conversation natively.
+    const { notifications } = extractTaskNotifications(text);
+    if (notifications.length) return notifications.map((notification) => ({
+      kind: 'task_result',
+      taskId: notification.taskId,
+      status: notification.status,
+      ...(notification.durationMs !== undefined ? { durationMs: notification.durationMs } : {}),
+      text: updateLabel(
+        notification.summary.replace(/^Agent "(.*)" (completed|failed)$/, '$1') || 'Background task',
+        notification.status, notification.needsInput
+      ),
+      detail: notification.report,
+    }));
+    // Reflection notifications have no task id/status and remain memory notes.
     const summary = text.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]?.trim() ?? 'Task finished';
     const isMemory =
       /reflect|memory|dream/i.test(summary) || text.includes('<reflection-agent-id>');
     return isMemory
       ? [{ kind: 'memory', text: 'Memory updated' }]
-      : [{ kind: 'task_result', text: summary }];
+      : [];
   }
 
   const mode = text.match(MODE_PREFIX);
@@ -302,9 +320,9 @@ export function updateLabel(
   needsInput: boolean
 ): string {
   if (needsInput) return `Needs your input: ${title}`;
-  if (status === 'failed') return `Background task failed: ${title}`;
-  if (status === 'cancelled') return `Background task stopped: ${title}`;
-  return `Background task finished: ${title}`;
+  if (status === 'failed') return `${title} - background task failed`;
+  if (status === 'cancelled') return `${title} - background task stopped`;
+  return `${title} - background task finished`;
 }
 
 export function stripSystemReminders(text: string): string {
@@ -377,6 +395,9 @@ export function normalizeHistory(messages: readonly LettaMessageLike[]): ChatMes
               kind: 'task_result',
               text: part.text,
               ...(part.updateId ? { updateId: part.updateId } : {}),
+              ...(part.taskId ? { taskId: part.taskId } : {}),
+              ...(part.status ? { status: part.status } : {}),
+              ...(part.durationMs !== undefined ? { durationMs: part.durationMs } : {}),
               ...(part.detail ? { detail: part.detail } : {}),
               createdAt,
             });

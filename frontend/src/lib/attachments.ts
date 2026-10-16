@@ -22,7 +22,7 @@ export function workspacePath(href: string | undefined): string | null {
   try {
     const url = new URL(href, window.location.origin);
     if (url.origin !== window.location.origin) return null;
-    const path = decodeURIComponent(url.pathname).replace(/^\/(workspace\/)?/, '');
+    const path = decodeURIComponent(url.pathname).replace(/^\/(?:(?:api\/)?workspace\/)?/, '');
     return path && !path.endsWith('/') ? path : null;
   } catch {
     return null;

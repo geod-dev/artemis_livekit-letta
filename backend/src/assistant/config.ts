@@ -147,7 +147,7 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
       },
       fast: {
         handle: value(env, 'ASSISTANT_FAST_MODEL', 'cerebras/gpt-oss-120b'),
-        reasoning: value(env, 'ASSISTANT_FAST_REASONING', 'low'),
+        reasoning: value(env, 'ASSISTANT_FAST_REASONING', 'none'),
       },
     },
     workspace: { dir: workspaceDir, dataDir, agentDir: '/workspace' },

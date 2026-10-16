@@ -15,6 +15,20 @@ const update: BackgroundUpdate = {
   report: 'Pick the [Babyzen](https://example.com).',
 };
 
+test('native completion notices stay between the launch and the resumed assistant response', () => {
+  const rows = normalizeHistory([
+    { id: 'launch', message_type: 'assistant_message', content: 'Launched.' },
+    { id: 'notice', message_type: 'user_message', date: '2026-10-15T14:00:20Z', content:
+      '<task-notification><task-id>task_7</task-id><status>completed</status><summary>Agent "🧮 Multiplication" completed</summary><result>subagent_type=general-purpose conversation_id=default\n42</result></task-notification>' },
+    { id: 'answer', message_type: 'assistant_message', content: 'The result is 42.' },
+  ]);
+  assert.deepEqual(rows.map((row) => row.role), ['assistant', 'event', 'assistant']);
+  assert.deepEqual(rows[1], {
+    id: 'notice:0', role: 'event', kind: 'task_result', taskId: 'task_7', status: 'completed',
+    text: '🧮 Multiplication - background task finished', detail: '42', createdAt: '2026-10-15T14:00:20Z',
+  });
+});
+
 test('every turn carries its mode, which sets the modality shown in the chat', () => {
   const voice = encodeTurn('voice-short', 'what time is it');
   assert.match(voice, /^<system-reminder>[^<]*\[listen\][^<]*\[done\][^<]*<\/system-reminder>\n/);
@@ -69,14 +83,14 @@ test('background updates round-trip with their report, before the user words', (
   assert.deepEqual(decodeUserContent(encoded), [
     {
       kind: 'task_result',
-      text: 'Background task finished: Best "travel" stroller',
+      text: 'Best "travel" stroller - background task finished',
       updateId: 'update-1',
       status: 'completed',
       detail: update.report,
     },
     {
       kind: 'task_result',
-      text: 'Background task failed: Best "travel" stroller',
+      text: 'Best "travel" stroller - background task failed',
       updateId: 'update-2',
       status: 'failed',
       detail: failing.report,
@@ -176,4 +190,17 @@ test('versioned envelopes keep user examples separate from app metadata', () => 
   assert.deepEqual(decodeUserContent(encodeTurn('text', text)), [
     { kind: 'user', text, modality: 'text' },
   ]);
+});
+
+
+test('gateway-delivered worker results preserve the task identity and this run duration', () => {
+  const parts = decodeUserContent(encodeTurn('text', '', [{
+    id: 'update-second-run', taskId: 'task_10', title: 'Explain power', status: 'completed',
+    needsInput: false, report: 'Python via Bash', durationMs: 4060,
+  }]));
+  assert.deepEqual(parts, [{
+    kind: 'task_result', text: 'Explain power - background task finished',
+    updateId: 'update-second-run', taskId: 'task_10', status: 'completed',
+    durationMs: 4060, detail: 'Python via Bash',
+  }]);
 });

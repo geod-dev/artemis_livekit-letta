@@ -12,6 +12,15 @@ import {
 const bridge = (toolName: string, args: unknown) => toolCall(toolName, JSON.stringify(args));
 const bash = (command: string) => toolCall('Bash', JSON.stringify({ command }));
 
+test('worker tool calls identify the agent and its launch separately from completion', () => {
+  for (const name of ['Agent', 'Task']) {
+    assert.equal(
+      toolCallLabel(bridge(name, { description: '🧮 Multiplication' })),
+      '🧮 Multiplication - Agent started'
+    );
+  }
+});
+
 test("Exa's tools are recognised by their own name, whatever the server is called", () => {
   const search = bridge('mcp_call', {
     tool: 'mcp__Exa__web_search_exa',
@@ -82,4 +91,43 @@ test('group labels are singular for one call', () => {
 
 test('a group of only searches and descriptions keeps its own label', () => {
   assert.equal(getToolGroupLabel(findTools), 'Made 2 MCP calls');
+});
+
+test('worker follow-ups show restarted while ordinary launches show started without an extra icon', () => {
+  for (const name of ['Agent', 'Task']) {
+    const fresh = bridge(name, { description: '🧮 Multiplication' });
+    assert.equal(getToolGroupDisplay([fresh]).hideIcon, true);
+    for (const address of [
+      { agent_id: 'agent-1' },
+      { conversation_id: 'conv-1' },
+      { agent_id: 'agent-1', conversation_id: 'default' },
+    ]) {
+      assert.equal(
+        toolCallLabel(bridge(name, { description: '🧮 Multiplication', ...address })),
+        'Agent - Agent restarted: 🧮 Multiplication'
+      );
+    }
+    assert.equal(
+      toolCallLabel(bridge(name, { agent_id: '', conversation_id: ' ' })),
+      'Agent - Agent started'
+    );
+  }
+});
+
+test('rerun labels retain the first agent name and append the new assignment', () => {
+  assert.equal(
+    toolCallLabel(
+      bridge('Agent', {
+        agent_id: 'a',
+        conversation_id: 'default',
+        description: '🔢 Explain power',
+      }),
+      '🔢 Power'
+    ),
+    '🔢 Power - Agent restarted: 🔢 Explain power'
+  );
+  assert.equal(
+    toolCallLabel(bridge('Agent', { description: '🔢 Power' }), '🔢 Power'),
+    '🔢 Power - Agent started'
+  );
 });

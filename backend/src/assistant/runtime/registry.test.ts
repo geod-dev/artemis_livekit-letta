@@ -2,6 +2,25 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRuntimeRegistry } from './registry.ts';
 
+test('a closed failed session is replaced immediately for the next request', () => {
+  let created = 0;
+  const registry = createRuntimeRegistry(() => ({
+    sequence: ++created,
+    isBusy: false,
+    isClosed: false as boolean,
+    lastUsed: Date.now(),
+    async close() {
+      this.isClosed = true;
+    },
+  }));
+  const failed = registry.get('conversation');
+  failed.isClosed = true;
+  const recovered = registry.get('conversation');
+  assert.notEqual(recovered, failed);
+  assert.equal(recovered.sequence, 2);
+  assert.equal(registry.get('conversation'), recovered);
+});
+
 test('mutation tombstone keeps a closed runtime from reopening while archive is in progress', async () => {
   let closes = 0;
   const registry = createRuntimeRegistry((id) => ({

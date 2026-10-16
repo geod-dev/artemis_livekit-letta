@@ -43,6 +43,13 @@ export function isChatMessage(value: unknown): value is ChatMessage {
     boundedString(value.text) &&
     (value.kind === 'task_result' || value.kind === 'memory') &&
     optionalString(value.updateId, 512) &&
+    optionalString(value.taskId, 512) &&
+    (value.durationMs === undefined ||
+      (typeof value.durationMs === 'number' &&
+        Number.isFinite(value.durationMs) &&
+        value.durationMs >= 0)) &&
+    (value.status === undefined ||
+      ['completed', 'failed', 'cancelled'].includes(value.status as string)) &&
     optionalString(value.detail) &&
     (value.unread === undefined || typeof value.unread === 'boolean') &&
     optionalString(value.createdAt, 128)

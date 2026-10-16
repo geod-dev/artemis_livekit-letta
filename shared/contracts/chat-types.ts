@@ -35,6 +35,17 @@ export interface ChatAttachment {
   size?: number;
 }
 
+/** Conversation-scoped background work, including native commands and workers. */
+export interface ConversationTask {
+  id: string;
+  title: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  kind?: 'agent' | 'command';
+  report?: string;
+  updateId?: string;
+  durationMs?: number;
+}
+
 export type ChatMessage =
   | {
       id: string;
@@ -70,6 +81,10 @@ export type ChatMessage =
       text: string;
       /** Background update this row delivers; its response follows it. */
       updateId?: string;
+      /** Native Letta task identity, retained when its notification bypasses the gateway. */
+      taskId?: string;
+      status?: 'completed' | 'failed' | 'cancelled';
+      durationMs?: number;
       /** The worker's full report. */
       detail?: string;
       /** The update and its response have not been read or heard yet. */

@@ -1,8 +1,25 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { ChatMessage, ConversationEvent, ConversationListEvent, TurnMode } from '../../chat-types';
+import type {
+  ChatMessage,
+  ConversationEvent,
+  ConversationListEvent,
+  ConversationTask,
+  TurnMode,
+} from '../../chat-types';
 import { wakesThread } from './policy.ts';
-import { type BackgroundState, type TaskOrigin, type UpdateRecord, originKey, snapshot, transact } from './store.ts';
-import { type TaskNotification, extractTaskNotifications, parseBackgroundStart } from './task-notifications.ts';
+import {
+  type BackgroundState,
+  type TaskOrigin,
+  type UpdateRecord,
+  originKey,
+  snapshot,
+  transact,
+} from './store.ts';
+import {
+  type TaskNotification,
+  extractTaskNotifications,
+  parseBackgroundStart,
+} from './task-notifications.ts';
 
 interface UpdateRunRequest {
   kind: 'update';
@@ -17,7 +34,10 @@ export interface BackgroundPorts {
   isCallActive(conversationId: string): boolean;
   announceUpdate(conversationId: string, id: string): boolean;
   onCallEnded(key: string, listener: (conversationId: string, pending: string[]) => void): void;
-  runUpdate(conversationId: string, request: UpdateRunRequest): Promise<{ success: boolean; error?: string }>;
+  runUpdate(
+    conversationId: string,
+    request: UpdateRunRequest
+  ): Promise<{ success: boolean; error?: string }>;
   publish(conversationId: string, event: ConversationEvent): void;
   publishList(event: ConversationListEvent): void;
   updateLabel(title: string, status: UpdateRecord['status'], needsInput: boolean): string;
@@ -56,18 +76,27 @@ export async function taskStarted(input: {
     const origin: TaskOrigin = {
       conversationId: input.conversationId,
       taskId: started.taskId,
-      ...(started.workerConversationId ? { workerConversationId: started.workerConversationId } : {}),
+      ...(started.workerConversationId
+        ? { workerConversationId: started.workerConversationId }
+        : {}),
       title: input.title,
+      kind: input.worker ? 'agent' : 'command',
       mode: input.mode,
       depth: input.depth,
       startedAt: new Date().toISOString(),
     };
     s.origins[key] = origin;
-    return input.worker;
+    return true;
   });
-  if (shouldPublish) safely(() => dependencies().publish(input.conversationId, {
-    type: 'task', taskId: started.taskId, status: 'running', title: input.title,
-  }));
+  if (shouldPublish)
+    safely(() =>
+      dependencies().publish(input.conversationId, {
+        type: 'task',
+        taskId: started.taskId,
+        status: 'running',
+        title: input.title,
+      })
+    );
 }
 
 export async function taskStopRequested(conversationId: string, taskId: string): Promise<void> {
@@ -77,8 +106,95 @@ export async function taskStopRequested(conversationId: string, taskId: string):
   });
 }
 
+/** Combine authoritative native work with durable completed reports. */
+export function listTasks(conversationId: string, native: ConversationTask[]): ConversationTask[] {
+  const state = snapshot();
+  const updates = Object.values(state.updates)
+    .filter((u) => u.conversationId === conversationId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const completedIds = new Set(updates.flatMap((u) => (u.taskId ? [u.taskId] : [])));
+  const liveById = new Map<string, ConversationTask>(
+    native
+      .filter((task) => !completedIds.has(task.id))
+      .map((task): [string, ConversationTask] => {
+        const origin = state.origins[originKey(conversationId, task.id)];
+        return [
+          task.id,
+          { ...task, title: origin?.title ?? task.title, kind: origin?.kind ?? task.kind },
+        ];
+      })
+  );
+  // Keep known running work visible if the optional Letta inventory command is
+  // unavailable, or if it has not reported a just-started task yet.
+  for (const origin of Object.values(state.origins)) {
+    if (origin.conversationId !== conversationId || completedIds.has(origin.taskId)) continue;
+    if (!liveById.has(origin.taskId))
+      liveById.set(origin.taskId, {
+        id: origin.taskId,
+        title: origin.title,
+        kind: origin.kind,
+        status: 'running',
+      });
+  }
+  const live = [...liveById.values()];
+  return [
+    ...live,
+    ...updates.map((u): ConversationTask => ({
+      id: u.taskId ?? u.id,
+      title: u.title,
+      status: u.status,
+      report: u.report,
+      updateId: u.id,
+      ...(u.durationMs !== undefined ? { durationMs: u.durationMs } : {}),
+      ...(u.kind ? { kind: u.kind } : {}),
+    })),
+  ];
+}
+
+/** Native command stops suppress completion callbacks, so save their outcome here. */
+export async function taskStopped(conversationId: string, task: ConversationTask): Promise<void> {
+  await transact((s) => {
+    if (
+      Object.values(s.updates).some(
+        (u) => u.conversationId === conversationId && u.taskId === task.id
+      )
+    )
+      return;
+    const origin = s.origins[originKey(conversationId, task.id)];
+    delete s.origins[originKey(conversationId, task.id)];
+    const id = `update-${randomUUID().slice(0, 12)}`;
+    s.updates[id] = {
+      id,
+      conversationId,
+      taskId: task.id,
+      title: origin?.title ?? task.title,
+      kind: origin?.kind ?? task.kind,
+      status: 'cancelled',
+      report: task.report || 'Stopped by you.',
+      needsInput: false,
+      depth: origin?.depth ?? 0,
+      delivery: 'held',
+      unread: false,
+      createdAt: new Date().toISOString(),
+    };
+  });
+  safely(() =>
+    dependencies().publish(conversationId, {
+      type: 'task',
+      taskId: task.id,
+      title: task.title,
+      status: 'finished',
+    })
+  );
+  publishUnread(conversationId);
+}
+
 /** Notifications are accepted only after the state transition is durably saved. */
-export async function receiveNotifications(conversationId: string, raw: readonly string[]): Promise<number> {
+export async function receiveNotifications(
+  conversationId: string,
+  raw: readonly string[],
+  options: { deliveredNatively?: boolean } = {}
+): Promise<number> {
   const candidates: TaskNotification[] = [];
   for (const text of raw) candidates.push(...extractTaskNotifications(text).notifications);
   if (!candidates.length) return 0;
@@ -94,30 +210,62 @@ export async function receiveNotifications(conversationId: string, raw: readonly
     for (const n of candidates) {
       // Keep the source ID in the idempotency key even after a fork. Retries
       // from the worker always identify the conversation where it was started.
-      const fingerprint = [conversationId, n.taskId, n.workerConversationId ?? '', n.status,
-        createHash('sha1').update(n.report).digest('hex').slice(0, 12)].join('|');
+      const fingerprint = [
+        conversationId,
+        n.taskId,
+        n.workerConversationId ?? '',
+        n.status,
+        createHash('sha1').update(n.report).digest('hex').slice(0, 12),
+      ].join('|');
       if (s.seen.includes(fingerprint)) continue;
+      if (
+        Object.values(s.updates).some(
+          (u) =>
+            u.conversationId === targetConversationId &&
+            u.taskId === n.taskId &&
+            u.status === 'cancelled'
+        )
+      ) {
+        s.seen.push(fingerprint);
+        count++;
+        continue;
+      }
       const key = originKey(targetConversationId, n.taskId);
       const candidate = s.origins[key];
-      const origin = candidate && (!candidate.workerConversationId || !n.workerConversationId ||
-        candidate.workerConversationId === n.workerConversationId) ? candidate : undefined;
+      const origin =
+        candidate &&
+        (!candidate.workerConversationId ||
+          !n.workerConversationId ||
+          candidate.workerConversationId === n.workerConversationId)
+          ? candidate
+          : undefined;
       if (origin) delete s.origins[key];
       const update: UpdateRecord = {
         id: `update-${randomUUID().slice(0, 12)}`,
         conversationId: targetConversationId,
-        title: origin?.title ?? (n.summary.replace(/^Agent "(.*)" (completed|failed)$/, '$1') || 'Background task'),
+        taskId: n.taskId,
+        kind: origin?.kind ?? (n.workerConversationId ? 'agent' : 'command'),
+        title:
+          origin?.title ??
+          (n.summary.replace(/^Agent "(.*)" (completed|failed)$/, '$1') || 'Background task'),
         status: origin?.stopped && n.status === 'failed' ? 'cancelled' : n.status,
         needsInput: n.needsInput,
         report: n.report,
         depth: origin?.depth ?? 0,
-        delivery: 'held',
-        unread: true,
+        delivery: options.deliveredNatively ? 'delivered' : 'held',
+        unread: !options.deliveredNatively,
         createdAt: new Date().toISOString(),
+        ...(n.durationMs !== undefined ? { durationMs: n.durationMs } : {}),
       };
       s.seen.push(fingerprint);
       s.updates[update.id] = update;
-      publishTasks.push({ taskId: n.taskId, title: update.title, conversationId: targetConversationId });
-      if (wakesThread(update, origin?.mode ?? 'text')) deliveries.push({ id: update.id, conversationId: targetConversationId });
+      publishTasks.push({
+        taskId: n.taskId,
+        title: update.title,
+        conversationId: targetConversationId,
+      });
+      if (!options.deliveredNatively && wakesThread(update, origin?.mode ?? 'text'))
+        deliveries.push({ id: update.id, conversationId: targetConversationId });
       count++;
     }
     return { accepted: count, targetConversationId };
@@ -126,18 +274,28 @@ export async function receiveNotifications(conversationId: string, raw: readonly
   // side effects. In that case the updates have already moved or been removed;
   // never publish a late event or start delivery against the archived source.
   const currentRoute = retiredConversationDestination(conversationId);
-  if (currentRoute === null ||
-      (currentRoute !== undefined && currentRoute !== result.targetConversationId)) {
+  if (
+    currentRoute === null ||
+    (currentRoute !== undefined && currentRoute !== result.targetConversationId)
+  ) {
     return result.accepted;
   }
   // Notifications may now be removed from Letta's pending queue: persistence finished first.
   for (let i = 0; i < publishTasks.length; i++) {
     const { taskId, title, conversationId: targetConversationId } = publishTasks[i];
-    safely(() => dependencies().publish(targetConversationId, { type: 'task', taskId, status: 'finished', title }));
+    safely(() =>
+      dependencies().publish(targetConversationId, {
+        type: 'task',
+        taskId,
+        status: 'finished',
+        title,
+      })
+    );
   }
-  for (const delivery of deliveries) void deliverWakingUpdate(delivery.conversationId, delivery.id).catch((error) =>
-    console.error('[background] update delivery failed', error)
-  );
+  for (const delivery of deliveries)
+    void deliverWakingUpdate(delivery.conversationId, delivery.id).catch((error) =>
+      console.error('[background] update delivery failed', error)
+    );
   if (result.accepted) publishUnread(result.targetConversationId ?? conversationId);
   for (const id of publishTasks) {
     console.info(`[background] ${id.taskId} accepted in ${id.conversationId}`);
@@ -164,7 +322,11 @@ async function deliverWakingUpdate(conversationId: string, id: string): Promise<
   if (!claimed) return;
   try {
     const outcome = await dependencies().runUpdate(conversationId, {
-      kind: 'update', modality: 'text', effort: 'low', text: '', updates: [claimed],
+      kind: 'update',
+      modality: 'text',
+      effort: 'low',
+      text: '',
+      updates: [claimed],
     });
     if (outcome.success) await completeDelivery(conversationId, id, claimed.deliveryToken!);
     else await rollbackDelivery(conversationId, id, claimed.deliveryToken!);
@@ -178,21 +340,29 @@ async function onCallEnded(conversationId: string, pending: string[]): Promise<v
   await transact((s) => {
     for (const id of pending) {
       const update = s.updates[id];
-      if (update?.conversationId === conversationId && update.delivery === 'queued') update.delivery = 'held';
+      if (update?.conversationId === conversationId && update.delivery === 'queued')
+        update.delivery = 'held';
     }
   });
   for (const id of pending) {
     const update = snapshot().updates[id];
     if (update?.conversationId === conversationId && update.delivery === 'held') {
-      void deliverWakingUpdate(conversationId, id).catch((error) => console.error('[background] text fallback failed', error));
+      void deliverWakingUpdate(conversationId, id).catch((error) =>
+        console.error('[background] text fallback failed', error)
+      );
     }
   }
 }
 
-async function claim(conversationId: string, id: string, expected: UpdateRecord['delivery']): Promise<UpdateRecord | null> {
+async function claim(
+  conversationId: string,
+  id: string,
+  expected: UpdateRecord['delivery']
+): Promise<UpdateRecord | null> {
   return transact((s) => {
     const update = s.updates[id];
-    if (!update || update.conversationId !== conversationId || update.delivery !== expected) return null;
+    if (!update || update.conversationId !== conversationId || update.delivery !== expected)
+      return null;
     update.deliveryFrom = expected as 'held' | 'queued';
     update.delivery = 'inflight';
     update.deliveryToken = randomUUID();
@@ -201,7 +371,10 @@ async function claim(conversationId: string, id: string, expected: UpdateRecord[
 }
 
 /** Claim a queued voice update before generating its spoken response. */
-export async function claimQueuedUpdate(conversationId: string, id: string): Promise<UpdateRecord | null> {
+export async function claimQueuedUpdate(
+  conversationId: string,
+  id: string
+): Promise<UpdateRecord | null> {
   return claim(conversationId, id, 'queued');
 }
 
@@ -211,7 +384,8 @@ export const takeQueuedUpdate = claimQueuedUpdate;
 /** Held updates are claimed durably and must be completed or rolled back by the caller. */
 export async function takeHeldUpdates(conversationId: string): Promise<UpdateRecord[]> {
   return transact((s) => {
-    const held = Object.values(s.updates).filter((u) => u.conversationId === conversationId && u.delivery === 'held')
+    const held = Object.values(s.updates)
+      .filter((u) => u.conversationId === conversationId && u.delivery === 'held')
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     for (const update of held) {
       update.delivery = 'inflight';
@@ -221,10 +395,20 @@ export async function takeHeldUpdates(conversationId: string): Promise<UpdateRec
   });
 }
 
-export async function completeDelivery(conversationId: string, id: string, token: string): Promise<boolean> {
+export async function completeDelivery(
+  conversationId: string,
+  id: string,
+  token: string
+): Promise<boolean> {
   const changed = await transact((s) => {
     const update = s.updates[id];
-    if (!update || update.conversationId !== conversationId || update.delivery !== 'inflight' || update.deliveryToken !== token) return false;
+    if (
+      !update ||
+      update.conversationId !== conversationId ||
+      update.delivery !== 'inflight' ||
+      update.deliveryToken !== token
+    )
+      return false;
     update.delivery = 'delivered';
     delete update.deliveryToken;
     delete update.deliveryFrom;
@@ -234,11 +418,24 @@ export async function completeDelivery(conversationId: string, id: string, token
   return changed;
 }
 
-export async function rollbackDelivery(conversationId: string, id: string, token: string): Promise<boolean> {
+export async function rollbackDelivery(
+  conversationId: string,
+  id: string,
+  token: string
+): Promise<boolean> {
   return transact((s) => {
     const update = s.updates[id];
-    if (!update || update.conversationId !== conversationId || update.delivery !== 'inflight' || update.deliveryToken !== token) return false;
-    update.delivery = update.deliveryFrom === 'queued' && dependencies().isCallActive(conversationId) ? 'queued' : 'held';
+    if (
+      !update ||
+      update.conversationId !== conversationId ||
+      update.delivery !== 'inflight' ||
+      update.deliveryToken !== token
+    )
+      return false;
+    update.delivery =
+      update.deliveryFrom === 'queued' && dependencies().isCallActive(conversationId)
+        ? 'queued'
+        : 'held';
     delete update.deliveryToken;
     delete update.deliveryFrom;
     return true;
@@ -251,7 +448,11 @@ export async function markRead(conversationId: string, ids: readonly string[]): 
     let any = false;
     for (const id of ids) {
       const update = s.updates[id];
-      if (update?.conversationId === conversationId && update.delivery !== 'inflight' && update.unread) {
+      if (
+        update?.conversationId === conversationId &&
+        update.delivery !== 'inflight' &&
+        update.unread
+      ) {
         update.unread = false;
         any = true;
       }
@@ -265,15 +466,22 @@ export async function markRead(conversationId: string, ids: readonly string[]): 
 }
 
 /** Retire background work when a conversation is archived or its history is forked. */
-export async function retireConversation(conversationId: string, destinationId?: string): Promise<void> {
+export async function retireConversation(
+  conversationId: string,
+  destinationId?: string
+): Promise<void> {
   const migrated: Array<{ taskId: string; title: string }> = [];
   await transact((s) => {
     const destination = destinationId ?? null;
     // Keep aliases one hop long when a fork is forked again.
     for (const prior of Object.values(s.retired)) {
-      if (prior.destinationConversationId === conversationId) prior.destinationConversationId = destination;
+      if (prior.destinationConversationId === conversationId)
+        prior.destinationConversationId = destination;
     }
-    s.retired[conversationId] = { destinationConversationId: destination, retiredAt: new Date().toISOString() };
+    s.retired[conversationId] = {
+      destinationConversationId: destination,
+      retiredAt: new Date().toISOString(),
+    };
     for (const [key, origin] of Object.entries(s.origins)) {
       if (origin.conversationId !== conversationId) continue;
       if (destinationId) migrated.push({ taskId: origin.taskId, title: origin.title });
@@ -295,9 +503,15 @@ export async function retireConversation(conversationId: string, destinationId?:
       delete update.deliveryFrom;
     }
   });
-  for (const task of migrated) safely(() => dependencies().publish(destinationId!, {
-    type: 'task', taskId: task.taskId, status: 'running', title: task.title,
-  }));
+  for (const task of migrated)
+    safely(() =>
+      dependencies().publish(destinationId!, {
+        type: 'task',
+        taskId: task.taskId,
+        status: 'running',
+        title: task.title,
+      })
+    );
   if (destinationId) publishUnread(destinationId);
 }
 
@@ -324,12 +538,20 @@ function resolveRetired(
 }
 
 export function unreadCount(conversationId: string): number {
-  return Object.values(snapshot().updates).filter((u) => u.conversationId === conversationId && u.unread).length;
+  return Object.values(snapshot().updates).filter(
+    (u) => u.conversationId === conversationId && u.unread
+  ).length;
 }
 
 function publishUnread(conversationId: string): void {
   safely(() => dependencies().publish(conversationId, { type: 'updates_changed' }));
-  safely(() => dependencies().publishList({ type: 'unread', conversationId, unread: unreadCount(conversationId) }));
+  safely(() =>
+    dependencies().publishList({
+      type: 'unread',
+      conversationId,
+      unread: unreadCount(conversationId),
+    })
+  );
 }
 
 function safely(operation: () => void): void {
@@ -341,17 +563,45 @@ function safely(operation: () => void): void {
 }
 
 export function withUpdates(conversationId: string, rows: ChatMessage[]): ChatMessage[] {
-  const updates = snapshot().updates;
-  const marked = rows.map((row) => row.role === 'event' && row.updateId && updates[row.updateId]?.unread
-    ? { ...row, unread: true } : row);
-  const held = Object.values(updates).filter((u) => u.conversationId === conversationId && u.delivery !== 'delivered')
+  const updates = Object.values(snapshot().updates).filter((u) => u.conversationId === conversationId);
+  const byId = new Map(updates.map((u) => [u.id, u]));
+  const byTask = new Map(updates.filter((u) => u.taskId).map((u) => [u.taskId, u]));
+  const represented = new Set<string>();
+  const marked = rows.flatMap((row): ChatMessage[] => {
+    if (row.role !== 'event' || row.kind !== 'task_result') return [row];
+    const update = (row.updateId ? byId.get(row.updateId) : undefined) ??
+      (row.taskId ? byTask.get(row.taskId) : undefined);
+    if (!update) return [row];
+    if (represented.has(update.id)) return [];
+    represented.add(update.id);
+    return [{ ...row, updateId: update.id, taskId: update.taskId,
+      text: dependencies().updateLabel(update.title, update.status, update.needsInput),
+      status: update.status, detail: update.report, unread: update.unread,
+      ...(update.durationMs !== undefined ? { durationMs: update.durationMs } : {}) }];
+  });
+  const held = updates
+    .filter((u) => u.delivery !== 'delivered' && !represented.has(u.id))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .map((u): ChatMessage => ({
-      id: `pending-update:${u.id}`, role: 'event', kind: 'task_result',
-      text: dependencies().updateLabel(u.title, u.status, u.needsInput), updateId: u.id,
-      detail: u.report, unread: u.unread, createdAt: u.createdAt,
+      id: `pending-update:${u.id}`,
+      role: 'event',
+      kind: 'task_result',
+      text: dependencies().updateLabel(u.title, u.status, u.needsInput),
+      updateId: u.id,
+      taskId: u.taskId,
+      status: u.status,
+      ...(u.durationMs !== undefined ? { durationMs: u.durationMs } : {}),
+      detail: u.report,
+      unread: u.unread,
+      createdAt: u.createdAt,
     }));
-  return [...marked, ...held];
+  // Preserve provider ordering, inserting pending notices at completion time.
+  for (const event of held) {
+    const index = marked.findIndex((row) => row.createdAt && event.createdAt && row.createdAt > event.createdAt);
+    if (index < 0) marked.push(event);
+    else marked.splice(index, 0, event);
+  }
+  return marked;
 }
 
 /** The depth of work started while answering these updates. */

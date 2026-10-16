@@ -3,6 +3,14 @@ import { test } from 'node:test';
 import { wakesThread } from './policy.ts';
 import { extractTaskNotifications, parseBackgroundStart } from './task-notifications.ts';
 
+test('native worker usage provides its execution duration without leaking metadata into the report', () => {
+  const raw = '<task-notification><task-id>task_1</task-id><status>completed</status><summary>Done</summary><result>42</result><usage>total_tokens: 100\ntool_uses: 1\nduration_ms: 28222</usage></task-notification>';
+  const [parsed] = extractTaskNotifications(raw).notifications;
+  assert.equal(parsed.durationMs, 28222);
+  assert.equal(parsed.report, '42');
+  assert.equal(extractTaskNotifications(raw.replace('28222', '-1')).notifications[0].durationMs, undefined);
+});
+
 // Formats as produced by Letta Code 0.34.4 (Task tool and formatTaskNotification).
 const started = `Task running in background with task ID: task_3
 Agent ID: agent-local-worker
@@ -58,6 +66,7 @@ test('notifications are extracted with their report, status and worker', () => {
       status: 'completed',
       summary: 'Agent "Compare strollers" completed',
       report: 'Buy A & B <now>',
+      durationMs: 900,
       subagentType: 'research',
       workerConversationId: 'local-conv-worker',
       needsInput: false,

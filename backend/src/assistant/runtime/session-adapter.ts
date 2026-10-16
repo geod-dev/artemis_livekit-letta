@@ -6,42 +6,67 @@ import type {
 } from '@letta-ai/letta-agent-sdk';
 import { randomUUID } from 'node:crypto';
 import { receiveNotifications } from '../background/service.ts';
-import { assistant } from '../letta/agent-client.ts';
 import { extractTaskNotifications } from '../background/task-notifications.ts';
+import { publish } from '../conversations/events.ts';
+import { assistant } from '../letta/agent-client.ts';
+import { NativeTurn } from './native-turn';
 
 const MAX_READER_MESSAGES = 512;
 const MAX_CLAIMED_NOTIFICATIONS = 2048;
+
+/** Cancel a local wait even when a remote provider fails to acknowledge abort. */
+export function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new Error('aborted'));
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
+    operation.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
 
 /**
  * Reads a session's stream continuously and hands messages to the turn being
  * run. Letta also emits messages outside the gateway's turns (queue updates,
  * turns it starts or cancels on its own, e.g. a notification turn handed to
- * the gateway); left in the SDK's queue, they would open the next turn's
- * stream. Without a running turn they are dropped.
+ * the gateway). App-owned turns go to their executor; autonomous turns are
+ * projected to the conversation's live event stream instead of being dropped.
  */
 export class SessionReader {
   private sink: ((message: SDKMessage | null) => void) | null = null;
   private claimed = new Set<string>();
   private terminal: SDKMessage | null = null;
   private overflowed = false;
+  private readonly native: NativeTurn;
 
   constructor(
     private readonly session: LettaCodeSession,
     private readonly conversationId: string,
-    private readonly ports: { receiveNotifications: typeof receiveNotifications } = {
+    private readonly ports: {
+      receiveNotifications: typeof receiveNotifications;
+      publish?: typeof publish;
+      onNativeTool?: ConstructorParameters<typeof NativeTurn>[1];
+    } = {
       receiveNotifications,
     }
   ) {
+    this.native = new NativeTurn(
+      (event) => (ports.publish ?? publish)(conversationId, event),
+      ports.onNativeTool
+    );
     void this.pump();
   }
 
+  get nativeTurnActive(): boolean {
+    return this.native.active;
+  }
+
   /** The messages of the next turn, up to its result. Call before sending the turn. */
-  nextTurn(): AsyncIterable<SDKMessage> {
+  nextTurn(signal?: AbortSignal): AsyncIterable<SDKMessage> {
     this.overflowed = false;
     const getTerminal = () => this.terminal;
     const queue: (SDKMessage | null)[] = [];
     let wake: (() => void) | null = null;
-    this.sink = (message) => {
+    const sink = (message: SDKMessage | null) => {
       if (this.overflowed) return;
       if (message === null) {
         this.terminal = {
@@ -64,7 +89,18 @@ export class SessionReader {
       queue.push(message);
       wake?.();
     };
-    const release = () => (this.sink = null);
+    this.sink = sink;
+    const abort = () => {
+      queue.length = 0;
+      queue.push({ type: 'result', success: false, error: 'aborted' } as SDKMessage);
+      wake?.();
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    const release = () => {
+      signal?.removeEventListener('abort', abort);
+      if (this.sink === sink) this.sink = null;
+    };
     return {
       async *[Symbol.asyncIterator]() {
         try {
@@ -104,18 +140,20 @@ export class SessionReader {
         for await (const message of this.session.stream()) {
           received++;
           if (message.type === 'queue_update') this.claimNotifications(message.queue);
-          if (this.sink) this.sink(message);
-          else if (message.type === 'result' || message.type === 'error') {
-            console.info(
-              `[assistant] ignored ${message.type} outside a turn in ${this.conversationId}`
-            );
-          }
+          if (this.sink) {
+            const sink = this.sink;
+            // Release ownership at the protocol boundary, before the consumer
+            // resumes: another native turn may already be queued by the SDK.
+            if (message.type === 'result') this.sink = null;
+            sink(message);
+          } else await this.native.accept(message);
         }
         if (received === 0) break;
       }
     } catch (error) {
       console.warn(`[assistant] session stream failed in ${this.conversationId}:`, error);
     } finally {
+      this.native.finish(false, 'stream_closed');
       this.terminal = { type: 'result', success: false, errorCode: 'stream_closed' } as SDKMessage;
       this.sink?.(null);
     }
@@ -123,9 +161,9 @@ export class SessionReader {
 
   /**
    * Letta merges notifications queued during a turn into that turn's next tool
-   * continuation, which mod `turn_start` handlers never see. Take them out of
-   * Letta's queue as soon as they are queued and hand them to the gateway. One
-   * Letta has already consumed stays with Letta (no duplicate delivery).
+   * continuation, which mod `turn_start` handlers never see. Remove a still
+   * queued notification before handing it to the gateway; if Letta already
+   * consumed it, leave delivery to Letta so only one assistant turn runs.
    */
   private claimNotifications(queue: readonly SDKQueueItem[]): void {
     for (const item of queue) {
@@ -136,11 +174,12 @@ export class SessionReader {
       if (!parsed.notifications.length || blocks !== parsed.notifications.length) continue;
       if (this.claimed.size >= MAX_CLAIMED_NOTIFICATIONS) this.claimed.clear();
       this.claimed.add(item.id);
-      void this.ports
-        .receiveNotifications(this.conversationId, [text])
-        .then(() => this.session.removeQueuedMessage(item.id))
+      void this.session
+        .removeQueuedMessage(item.id)
         .then(({ removed }) => {
-          if (!removed) this.claimed.delete(item.id);
+          return this.ports.receiveNotifications(this.conversationId, [text], {
+            deliveredNatively: !removed,
+          });
         })
         .catch((error: unknown) => {
           this.claimed.delete(item.id);
