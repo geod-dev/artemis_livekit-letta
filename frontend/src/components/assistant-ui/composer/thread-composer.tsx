@@ -69,6 +69,20 @@ const useComposerGlide = (docked: boolean) => {
   return ref;
 };
 
+// The Letta runtime does not currently return token usage, so show the model's
+// context window capacity without implying an estimated usage percentage.
+const CONTEXT_WINDOW_TOKENS = 128_000;
+
+const ContextWindowDisplay: FC = () => (
+  <span
+    className="text-muted-foreground inline-flex h-7 items-center rounded-full px-2 text-xs tabular-nums"
+    title={`Model context window: ${CONTEXT_WINDOW_TOKENS.toLocaleString()} tokens`}
+    aria-label={`Model context window: ${CONTEXT_WINDOW_TOKENS.toLocaleString()} tokens`}
+  >
+    {`${CONTEXT_WINDOW_TOKENS / 1_000}k context`}
+  </span>
+);
+
 export const ThreadComposer: FC<ThreadComposerProps> = ({
   autoFocus,
   placeholder,
@@ -144,6 +158,9 @@ const ComposerAction: FC<{
         </AuiIf>
       </div>
       <div className="ms-auto flex items-center gap-2">
+        <AuiIf condition={(s) => s.thread.messages.length > 0}>
+          <ContextWindowDisplay />
+        </AuiIf>
         {ComposerEffort && <ComposerEffort />}
         <ComposerVoiceButton recorder={recorder} />
         {showCallButton ? (
