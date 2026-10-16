@@ -117,7 +117,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         IP_ADDRESS: ${IP_ADDRESS:-127.0.0.1}
-        ASSISTANT_NAME: ${ASSISTANT_NAME:-Ada}
+        ASSISTANT_NAME: ${ASSISTANT_NAME:-Artemis}
     depends_on:
       backend:
         condition: service_healthy

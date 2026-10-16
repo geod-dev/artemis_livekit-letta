@@ -137,7 +137,7 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
       defaultConversationId: env.LETTA_DEFAULT_CONVERSATION_ID?.trim() || undefined,
     },
     assistant: {
-      name: value(env, 'ASSISTANT_NAME', 'Ada'),
+      name: value(env, 'ASSISTANT_NAME', 'Artemis'),
       timezone: value(env, 'ASSISTANT_TIMEZONE', 'Europe/Paris'),
     },
     models: {
