@@ -1,5 +1,4 @@
 /** Attachments and other files of the agent's workspace, as the browser sees them. */
-import type { ChatMessage } from '@shared/chat-types';
 
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
@@ -27,12 +26,4 @@ export function workspacePath(href: string | undefined): string | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Conversations with attachments stay on the smart model: the fast model reads
- * no images, so "Instant" and voice calls are unavailable there.
- */
-export function hasAttachments(messages: readonly ChatMessage[]): boolean {
-  return messages.some((m) => m.role === 'user' && !!m.attachments?.length);
 }

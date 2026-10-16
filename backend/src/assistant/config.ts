@@ -6,10 +6,7 @@ export interface AppConfig {
   port: number;
   letta: { url: string; token?: string; agentName: string; defaultConversationId?: string };
   assistant: { name: string; timezone: string };
-  models: {
-    smart: { handle: string; reasoning: string };
-    fast: { handle: string; reasoning: string };
-  };
+  model: { handle: string };
   workspace: { dir: string; dataDir: string; agentDir: string };
   memory: { reflectionStepCount: number };
   transcription: { groqApiKey?: string; model: string };
@@ -140,16 +137,7 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
       name: value(env, 'ASSISTANT_NAME', 'Artemis'),
       timezone: value(env, 'ASSISTANT_TIMEZONE', 'Europe/Paris'),
     },
-    models: {
-      smart: {
-        handle: value(env, 'ASSISTANT_SMART_MODEL', 'zai/glm-5.3'),
-        reasoning: value(env, 'ASSISTANT_SMART_REASONING', ''),
-      },
-      fast: {
-        handle: value(env, 'ASSISTANT_FAST_MODEL', 'cerebras/gpt-oss-120b'),
-        reasoning: value(env, 'ASSISTANT_FAST_REASONING', 'none'),
-      },
-    },
+    model: { handle: value(env, 'ASSISTANT_MODEL', 'anthropic/claude-haiku-5-5') },
     workspace: { dir: workspaceDir, dataDir, agentDir: '/workspace' },
     memory: { reflectionStepCount: integer(env, 'ASSISTANT_REFLECTION_STEPS', 12, 1) },
     transcription: {

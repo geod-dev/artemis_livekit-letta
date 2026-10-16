@@ -1,24 +1,13 @@
 /**
  * Telnyx model capabilities that Letta's generic OpenAI-compatible discovery
- * cannot see. Tiers map Letta/SDK reasoning levels to Telnyx `reasoning_effort`
- * values; `null` marks an unsupported tier, and omitting `off` sends no effort.
+ * cannot see. Workers expose only provider effort high; null marks unsupported levels.
  */
 const REASONING_MODELS = [
   {
-    // GLM 5.3: Letta/SDK call the highest tier xhigh; Telnyx/GLM call it max.
-    pattern: /^zai-org\/GLM-5\.3(?:-Flash)?$/i,
+    pattern: /^zai-org\/GLM-5\.3-Flash$/i,
     thinkingLevelMap: {
-      off: null, minimal: null, low: 'low', medium: null,
-      high: 'high', xhigh: 'max', max: null,
-    },
-  },
-  {
-    // DeepSeek V4 Flash: thinking is off unless an effort is sent; DeepSeek's
-    // thinking tiers are high and max.
-    pattern: /^deepseek-ai\/DeepSeek-V4-Flash(?:-\d+)?$/i,
-    thinkingLevelMap: {
-      minimal: null, low: null, medium: null,
-      high: 'high', xhigh: 'max', max: null,
+      off: null, minimal: null, low: null, medium: null,
+      high: 'high', xhigh: null, max: null,
     },
   },
 ];

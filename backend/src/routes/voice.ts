@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { claimQueuedUpdate, completeDelivery, markRead, rollbackDelivery } from '../assistant/background/service.ts';
 import { activeCallId, callState, endCall, openCallChannel, takeUpdate } from '../assistant/calls/state.ts';
 import { config } from '../assistant/config';
-import { conversationHasAttachments, requireConversation } from '../assistant/conversations/service.ts';
+import { requireConversation } from '../assistant/conversations/service.ts';
 import { conversationRuntime } from '../assistant/runtime';
 import { forgetVoiceInput, newVoiceInput, rememberVoiceInput, voiceInputMessageId, voiceInputMessageIds } from '../assistant/calls/voice-input.ts';
 import { errorResponse, eventStream, isVoiceAgent, jsonObject } from '../http';
@@ -39,12 +39,7 @@ voice.post('/token', async (c) => {
     if (conversationId === undefined) return Response.json(await warmupToken(), NO_STORE);
     if (typeof conversationId !== 'string' || conversationId.length > 200) return errorResponse('conversationId is invalid', 400);
     const conversation = await requireConversation(conversationId);
-    // Calls run on the fast model, which reads no images.
-    if (await conversationHasAttachments(conversation.id)) {
-      return errorResponse('Calls are not available in conversations with attachments', 409);
-    }
-
-    // Open the Letta session and switch to the voice model before the user speaks.
+    // Open the Letta session and configure voice effort and thinking before the user speaks.
     void conversationRuntime(conversation.id)
       .warm('voice')
       .catch((error) => {

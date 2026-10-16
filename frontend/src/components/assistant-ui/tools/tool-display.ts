@@ -10,7 +10,7 @@ import {
   TerminalIcon,
   WrenchIcon,
 } from 'lucide-react';
-import { stripLeadingEmoji } from '@/lib/agent-runs';
+import { stripLeadingEmoji } from '../../../lib/agent-runs.ts';
 
 /**
  * How tool calls look in the thread: the one place that knows tools. A call

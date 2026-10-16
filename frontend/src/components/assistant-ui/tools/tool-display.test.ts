@@ -104,7 +104,7 @@ test('worker follow-ups show restarted while ordinary launches show started with
     ]) {
       assert.equal(
         toolCallLabel(bridge(name, { description: '🧮 Multiplication', ...address })),
-        'Agent - Agent restarted: 🧮 Multiplication'
+        'Agent - Agent restarted: Multiplication'
       );
     }
     assert.equal(
@@ -124,7 +124,7 @@ test('rerun labels retain the first agent name and append the new assignment', (
       }),
       '🔢 Power'
     ),
-    '🔢 Power - Agent restarted: 🔢 Explain power'
+    '🔢 Power - Agent restarted: Explain power'
   );
   assert.equal(
     toolCallLabel(bridge('Agent', { description: '🔢 Power' }), '🔢 Power'),

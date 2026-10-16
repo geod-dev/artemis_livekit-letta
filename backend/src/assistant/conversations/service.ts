@@ -41,10 +41,10 @@ export async function listConversations(): Promise<ConversationSummary[]> {
 
 export async function createConversation(): Promise<ConversationSummary> {
   const { agentId } = await assistant();
-  // New conversations start on the text model; voice turns switch it per turn.
+  // New conversations use the assistant model.
   const conversation = await letta().conversations.create({
     agentId,
-    model: config.models.smart.handle,
+    model: config.model.handle,
   });
   return toSummary(conversation);
 }
@@ -130,26 +130,6 @@ export async function deleteFromMessage(
     () => client.conversations.update(id, { archived: true })
   );
   return summary;
-}
-
-/**
- * Whether the conversation's history holds attachments. Such conversations stay
- * on the smart model: the fast model (Instant, voice calls) reads no images.
- */
-export async function conversationHasAttachments(id: string): Promise<boolean> {
-  await requireConversation(id);
-  const messages = await collectProviderPages({
-    resource: 'conversation attachment history',
-    pageSize: 100,
-    maxPages: MAX_PROVIDER_PAGES,
-    fetchPage: async (before) => (await letta().conversations.listMessages(id, {
-      order: 'desc',
-      limit: 100,
-      ...(before ? { before } : {}),
-    })).messages,
-    cursorFor: (page) => String(page.at(-1)?.id ?? '') || undefined,
-  });
-  return normalizeHistory(messages).some((m) => m.role === 'user' && !!m.attachments?.length);
 }
 
 export async function listMessages(

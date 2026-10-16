@@ -1,25 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { modelEffort } from './model-adapter.ts';
+import { assistantModelSettings } from './model-adapter.ts';
 
-test('GLM 5.3 smart slider selects three distinct supported SDK tiers', () => {
-  for (const handle of ['openai-compatible/zai-org/GLM-5.3-Flash', 'zai/glm-5.3']) {
-    assert.deepEqual(
-      ['low', 'medium', 'high'].map((e) => modelEffort(handle, e)),
-      [
-        { reasoningEffort: 'low' },
-        { reasoningEffort: 'high' },
-        { reasoningEffort: 'xhigh' },
-      ]
-    );
+test('text keeps each selected effort with adaptive thinking', () => {
+  for (const effort of ['low', 'medium', 'high'] as const) {
+    const settings = assistantModelSettings('text', effort);
+    assert.equal(settings.effort, effort);
+    assert.equal(settings.thinking.type, 'enabled');
   }
 });
 
-test('other models and configured defaults retain their own effort values', () => {
-  assert.deepEqual(modelEffort('groq/openai/gpt-oss-120b', 'medium'), {
-    reasoningEffort: 'medium',
-  });
-  assert.deepEqual(modelEffort('zai/glm-5.3', ''), {});
-  assert.deepEqual(modelEffort('zai/glm-5.3', 'xhigh'), { reasoningEffort: 'xhigh' });
-  assert.deepEqual(modelEffort('some/model', 'max'), { invalidConfiguredEffort: 'max' });
+test('voice overrides text effort and disables thinking independently', () => {
+  for (const effort of ['low', 'medium', 'high'] as const) {
+    const settings = assistantModelSettings('voice', effort);
+    assert.equal(settings.effort, 'medium');
+    assert.equal(settings.thinking.type, 'disabled');
+  }
+  assert.equal(assistantModelSettings('text').effort, 'medium');
 });

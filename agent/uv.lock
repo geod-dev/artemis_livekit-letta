@@ -886,18 +886,12 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-cartesia = [
-    { name = "livekit-plugins-cartesia" },
-]
 codecs = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 deepgram = [
     { name = "livekit-plugins-deepgram" },
-]
-elevenlabs = [
-    { name = "livekit-plugins-elevenlabs" },
 ]
 images = [
     { name = "pillow" },
@@ -982,18 +976,6 @@ wheels = [
 ]
 
 [[package]]
-name = "livekit-plugins-cartesia"
-version = "1.8.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "livekit-agents" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/84/adb527baaef912f70bb7a864e2db4e514e2e4aacdba698a4c3278a66af4e/livekit_plugins_cartesia-1.8.4.tar.gz", hash = "sha256:2437459188c200087282580d93af3253eed099a691a33978abbf35949c7e0a7c", size = 19655, upload-time = "2026-10-01T22:40:20.368Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/41/ba/fa5fdb46cd067adf7bf23e95f3adc366472b3b57b39a83317f995a2fe541/livekit_plugins_cartesia-1.8.4-py3-none-any.whl", hash = "sha256:6353b4f85ffa568e8a878adbcea7dec4d28c2cb1f2cf364f9e143680bf82cfc7", size = 27218, upload-time = "2026-10-01T22:40:19.052Z" },
-]
-
-[[package]]
 name = "livekit-plugins-deepgram"
 version = "1.8.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1008,18 +990,6 @@ wheels = [
 ]
 
 [[package]]
-name = "livekit-plugins-elevenlabs"
-version = "1.8.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "livekit-agents", extra = ["codecs"] },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f8/62/5fcd4ebc68397adecf1d888a960ee89fbdd645281e385f5c682166a08ea8/livekit_plugins_elevenlabs-1.8.4.tar.gz", hash = "sha256:472e8479c81e59299d2502d0a900960454bf030d6ecea0cd45607dc1b12192da", size = 23892, upload-time = "2026-10-01T22:40:36.485Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/06/7b773ad82713557d8d7ab6af1e98269340226898b1a7f1fcc3f106be0490/livekit_plugins_elevenlabs-1.8.4-py3-none-any.whl", hash = "sha256:a3b81896985084c7649dc64f4a2f2791167695c3a28c78ec18a72af98998fb4b", size = 25673, upload-time = "2026-10-01T22:40:35.001Z" },
-]
-
-[[package]]
 name = "livekit-plugins-openai"
 version = "1.8.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1030,20 +1000,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fb/29/7ae9b600f6353dbb416b8b3385e29dc6c0a7ccaf1d621b98dbbb2b8c2f5c/livekit_plugins_openai-1.8.4.tar.gz", hash = "sha256:4d59aa2dabe808b7045aae435bcd1865e7174abfe9b1fe2d48534724a7db4e65", size = 49120, upload-time = "2026-10-01T22:41:37.024Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/55/31/35a78cb1928d4c06a139faf74f0f131f75d89df35c9b32b87c4351acf769/livekit_plugins_openai-1.8.4-py3-none-any.whl", hash = "sha256:0aa2d24990f5c3d5a0e0442a586330b9dbdabfdba2e5a581e5c01604ba8c0baf", size = 56115, upload-time = "2026-10-01T22:41:35.653Z" },
-]
-
-[[package]]
-name = "livekit-plugins-telnyx"
-version = "1.8.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "livekit-agents" },
-    { name = "livekit-api" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9b/47/dea124a822a7062be841aa99aa53431d1cdeb075782e56ad3a874d16a249/livekit_plugins_telnyx-1.8.4.tar.gz", hash = "sha256:49488c95155ca27da201fd541123c5af85e32e3321000d46e3e36f238a94e2ce", size = 7486, upload-time = "2026-10-01T22:42:34.739Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/7b/76782d3c11cb94ed213feac796e2b9c0201d9b161abc2c8ce3db5d2b4e2a/livekit_plugins_telnyx-1.8.4-py3-none-any.whl", hash = "sha256:5058782f44d9e0cf0bccb2b2cc8f6532fcc1a290e121af0b644859ca8928f868", size = 8537, upload-time = "2026-10-01T22:42:33.516Z" },
 ]
 
 [[package]]
@@ -2118,8 +2074,7 @@ name = "voice-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "livekit-agents", extra = ["cartesia", "deepgram", "elevenlabs", "openai"] },
-    { name = "livekit-plugins-telnyx" },
+    { name = "livekit-agents", extra = ["deepgram", "openai"] },
     { name = "python-dotenv" },
 ]
 
@@ -2133,8 +2088,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "livekit-agents", extras = ["openai", "deepgram", "cartesia", "elevenlabs"], specifier = "~=1.8.4" },
-    { name = "livekit-plugins-telnyx", specifier = "~=1.8.4" },
+    { name = "livekit-agents", extras = ["openai", "deepgram"], specifier = "~=1.8.4" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
 

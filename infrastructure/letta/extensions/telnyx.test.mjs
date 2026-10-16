@@ -46,18 +46,10 @@ async function requestsFor(id, tiers) {
   return { model, requests };
 }
 
-test('all three GLM tiers reach the HTTP request as low, high, max', async () => {
-  const { model, requests } = await requestsFor('zai-org/GLM-5.3-Flash', ['low', 'high', 'xhigh']);
-  assert.deepEqual(getSupportedThinkingLevels(model), ['low', 'high', 'xhigh']);
-  assert.deepEqual(requests.map(r => r.reasoning_effort), ['low', 'high', 'max']);
-});
-
-test('DeepSeek V4 Flash sends no effort when off, and high or max when thinking', async () => {
-  const id = 'deepseek-ai/DeepSeek-V4-Flash-0731';
-  const { model, requests } = await requestsFor(id, [undefined, 'high', 'xhigh']);
-  assert.deepEqual(getSupportedThinkingLevels(model), ['off', 'high', 'xhigh']);
-  assert.deepEqual(requests.map(r => r.reasoning_effort), [undefined, 'high', 'max']);
-  assert.equal(model.compat.supportsDeveloperRole, false);
+test('GLM worker high effort reaches the provider without remapping', async () => {
+  const { model, requests } = await requestsFor('zai-org/GLM-5.3-Flash', ['high']);
+  assert.deepEqual(getSupportedThinkingLevels(model), ['high']);
+  assert.deepEqual(requests.map(r => r.reasoning_effort), ['high']);
 });
 
 test('other Telnyx models retain the generic provider capabilities', () => {

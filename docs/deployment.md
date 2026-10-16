@@ -39,6 +39,10 @@ the frontend's proxied `/health` endpoint, and the OpenAI-compatible proxy. The
 backend's `/ready` endpoint also reports Letta/MCP dependency readiness, but it
 is not used to gate deployment while that asynchronous setup runs.
 
+## Model and speech credentials
+
+Configure ANTHROPIC_API_KEY for Claude, OPENAI_COMPATIBLE_API_KEY for Telnyx, GROQ_API_KEY for transcription, and DEEPGRAM_API_KEY for speech output in the deployment environment. The worker endpoint defaults to https://api.telnyx.com/v2/ai/openai. Local .env changes are not pushed to Git or copied into Coolify settings. Rebuild the Letta image when changing its model compatibility patches.
+
 ## Existing data migration
 
 The old layout stored backend files under `workspace/data`. The new layout keeps

@@ -31,7 +31,6 @@ import { useChatRuntime } from '@/hooks/use-chat-runtime';
 import { useContextUsage } from '@/hooks/use-context-usage';
 import { useConversation } from '@/hooks/use-conversation';
 import { useConversations } from '@/hooks/use-conversations';
-import { hasAttachments } from '@/lib/attachments';
 
 /** UI for the tools Letta runs (generative UI). */
 const AUI_CONFIG = AuiConfig({ tools: Tools({ toolkit: generativeUIToolkit }) });
@@ -126,7 +125,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
     } catch {
       // Storage can be disabled by the browser; use the in-memory default.
     }
-    if (saved === 'fast' || saved === 'low' || saved === 'medium' || saved === 'high') {
+    if (saved === 'low' || saved === 'medium' || saved === 'high') {
       setEffort(saved);
     }
     setEffortLoaded(true);
@@ -231,12 +230,6 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
     effort,
   });
 
-  // Chats with attachments stay on the smart model: no Instant, no calls.
-  const withAttachments = useMemo(
-    () => hasAttachments(conversation.messages),
-    [conversation.messages]
-  );
-  const callBlocked = !inCall && withAttachments;
   const callOnCurrentConversation = inCall && callConversationId === activeId;
   const callButton = useMemo(
     () => ({
@@ -246,10 +239,8 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
           : callConversationId
             ? 'Show active call'
             : 'Call is connecting'
-        : callBlocked
-          ? 'Calls are not available in chats with attachments'
-          : 'Start a call',
-      disabled: (inCall && !callConversationId) || callBlocked,
+        : 'Start a call',
+      disabled: inCall && !callConversationId,
       active: callOnCurrentConversation,
       onClick: () => {
         if (!inCall) void startCall();
@@ -257,7 +248,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
         else if (callConversationId) select(callConversationId);
       },
     }),
-    [callBlocked, callConversationId, callOnCurrentConversation, endCall, inCall, select, startCall]
+    [callConversationId, callOnCurrentConversation, endCall, inCall, select, startCall]
   );
 
   const welcomeData = useMemo(() => {
@@ -279,7 +270,6 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       contextUsage,
       effort,
       setEffort,
-      withAttachments,
       callButton,
       busy: conversation.busy,
       tasks: conversation.tasks,
@@ -301,7 +291,6 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       contextUsage,
       effort,
       setEffort,
-      withAttachments,
       callButton,
       conversation.busy,
       conversation.tasks,

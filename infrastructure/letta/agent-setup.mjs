@@ -14,6 +14,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+process.env.ASSISTANT_TASK_MODEL ||= 'openai-compatible/zai-org/GLM-5.3-Flash';
+
 const source = join(import.meta.dirname, 'agents');
 const home = join(homedir(), '.letta');
 

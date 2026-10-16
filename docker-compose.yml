@@ -4,12 +4,11 @@ name: livekit-letta
 
 services:
   letta:
-    image: livekit-letta/letta:0.34.4-groq-qwen
+    image: livekit-letta/letta:0.34.4-assistant
     build:
       context: ./infrastructure/letta
-    # Native providers are enabled by their API key env vars. An optional
-    # OpenAI-compatible endpoint is registered at startup, through the proxy
-    # below. infrastructure/letta/agent-setup.mjs installs the assistant's
+    # Claude uses Anthropic credentials. Telnyx workers connect through the
+    # OpenAI-compatible proxy below. infrastructure/letta/agent-setup.mjs installs the assistant's
     # subagents and removes per-agent MCP server entries.
     # Non-loopback listeners require auth: the shared token is written to a file
     # for capability-token auth. All state (agents, conversations, MemFS memory)
@@ -20,16 +19,12 @@ services:
       LETTA_SKIP_KEYCHAIN_CHECK: "1"
       # This image and its compatibility patch pin Letta to 0.34.4.
       DISABLE_AUTOUPDATER: "1"
-      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
-      ZAI_API_KEY: ${ZAI_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-}
-      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in the application environment}
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-https://api.telnyx.com/v2/ai/openai}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:?set the Telnyx OPENAI_COMPATIBLE_API_KEY}
       OPENAI_COMPATIBLE_PROXY_URL: http://openai-compatible-proxy:8080/v1
       # Background workers: their model.
-      ASSISTANT_TASK_MODEL: ${ASSISTANT_TASK_MODEL:-}
+      ASSISTANT_TASK_MODEL: ${ASSISTANT_TASK_MODEL:-openai-compatible/zai-org/GLM-5.3-Flash}
       # Defaults to the backend service in the full stack. Host-based development
       # can override this with host.docker.internal:3000.
       ASSISTANT_GATEWAY_URL: ${ASSISTANT_GATEWAY_URL:-http://backend:3000}
@@ -44,6 +39,7 @@ services:
       # data/ holds the backend's files (attachments, state): read-only here.
       - ${WORKSPACE_PATH:-./backend/.workspace}:/workspace
       - ${ASSISTANT_DATA_ROOT:-./backend/.workspace/data}:/workspace/data:ro
+      - ./infrastructure/letta/extensions/claude.mjs:/root/.letta/mods/claude.mjs:ro
       - ./infrastructure/letta/extensions/telnyx.mjs:/root/.letta/mods/telnyx.mjs:ro
       - ./infrastructure/letta/extensions/notifications.mjs:/root/.letta/mods/notifications.mjs:ro
       - ./infrastructure/letta/agent-setup.mjs:/opt/assistant/setup.mjs:ro
@@ -62,7 +58,7 @@ services:
     image: nginx:1.27-alpine
     command: ["nginx", "-g", "daemon off;"]
     environment:
-      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-http://127.0.0.1:9}
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-https://api.telnyx.com/v2/ai/openai}
     volumes:
       - ./infrastructure/openai-compatible-proxy/default.conf.template:/etc/nginx/templates/default.conf.template:ro
     healthcheck:

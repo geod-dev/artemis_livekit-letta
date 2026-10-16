@@ -1,6 +1,6 @@
 import pytest
 from livekit.agents import inference
-from livekit.plugins import deepgram, telnyx
+from livekit.plugins import deepgram, openai
 
 from voice_agent.config import Settings
 from voice_agent.speech import build_speech
@@ -8,28 +8,37 @@ from voice_agent.speech import build_speech
 
 @pytest.fixture(autouse=True)
 def fake_keys(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("DEEPGRAM_API_KEY", "test")
-    monkeypatch.setenv("TELNYX_API_KEY", "test")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-test")
 
 
-def test_deepgram_flux_drives_turn_detection():
-    stack = build_speech("deepgram/flux-general-multi", "deepgram/flux-hannah-en", "", "en")
-    assert isinstance(stack.stt, deepgram.STTv2)
+def test_groq_transcription_uses_its_own_endpoint_and_key():
+    stack = build_speech("groq/whisper-large-v3-turbo", "deepgram/flux-hannah-en", "en")
+    assert isinstance(stack.stt, openai.STT)
+    assert stack.stt.model == "whisper-large-v3-turbo"
+    assert stack.stt.provider == "api.groq.com"
+    assert str(stack.stt._client.base_url) == "https://api.groq.com/openai/v1/"
+    assert stack.stt._client.api_key == "groq-test"
+    assert not stack.stt.capabilities.streaming
     assert isinstance(stack.tts, deepgram.TTSv2)
-    assert stack.turn_detection == "stt"
-
-
-def test_non_flux_stt_uses_local_turn_detector():
-    stack = build_speech("telnyx/telnyx", "telnyx/Telnyx.NaturalHD.astra", "", "en")
-    assert isinstance(stack.stt, telnyx.STT)
-    assert isinstance(stack.tts, telnyx.TTS)
     assert isinstance(stack.turn_detection, inference.TurnDetector)
 
 
-@pytest.mark.parametrize("spec", ["deepgram", "nope/model"])
-def test_invalid_specs_are_rejected(spec):
+def test_deepgram_aura_synthesis():
+    stack = build_speech("groq/whisper-large-v3-turbo", "deepgram/aura-2-thalia-en", "en")
+    assert isinstance(stack.tts, deepgram.TTS)
+
+
+@pytest.mark.parametrize("spec", ["groq", "nope/model"])
+def test_invalid_stt_specs_are_rejected(spec):
     with pytest.raises(ValueError):
-        build_speech(spec, "deepgram/flux-hannah-en", "", "en")
+        build_speech(spec, "deepgram/flux-hannah-en", "en")
+
+
+def test_unsupported_tts_is_rejected():
+    with pytest.raises(ValueError):
+        build_speech("groq/whisper-large-v3-turbo", "nope/model", "en")
 
 
 def test_gateway_url_is_scoped_to_the_conversation():

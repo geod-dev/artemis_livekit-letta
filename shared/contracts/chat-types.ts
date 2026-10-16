@@ -11,8 +11,8 @@ export type CallMode = 'short' | 'long';
 /** The interaction mode a turn runs in, supplied to the assistant with every turn. */
 export type TurnMode = 'text' | 'voice-short' | 'voice-long';
 
-/** User-selected model for a text-chat turn. Voice calls retain their own model. */
-export type TextEffort = 'fast' | 'low' | 'medium' | 'high';
+/** Effort for a text-chat turn. Voice uses medium effort with thinking disabled. */
+export type TextEffort = 'low' | 'medium' | 'high';
 
 /** Last context estimate reported by Letta for the assembled conversation. */
 export interface ConversationContextUsage {

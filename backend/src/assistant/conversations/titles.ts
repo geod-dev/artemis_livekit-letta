@@ -37,7 +37,7 @@ export function renameConversationIfUntitled(id: string, title: string): Promise
 }
 
 /**
- * A one-shot, stateless Letta subagent on the fast model: it names the
+ * A one-shot, stateless Claude query names the
  * conversation and touches neither the conversation nor the assistant's memory.
  */
 export async function generateTitle(firstMessage: string): Promise<string> {
@@ -45,7 +45,7 @@ export async function generateTitle(firstMessage: string): Promise<string> {
   const query = letta().query({
     prompt: firstMessage.slice(0, 1000),
     options: {
-      model: config.models.fast.handle,
+      model: config.model.handle,
       system: readFileSync(TITLE_PROMPT, 'utf8').trim(),
       isSubagent: true,
       parentAgentId: agentId,

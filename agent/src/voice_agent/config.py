@@ -19,7 +19,6 @@ class Settings:
     agent_name: str
     stt: str
     tts: str
-    tts_voice: str
     language: str
     greeting: str
 
@@ -31,9 +30,8 @@ class Settings:
             ).rstrip("/"),
             gateway_token=os.getenv("VOICE_GATEWAY_TOKEN", "dev-voice-token-change-me"),
             agent_name=os.getenv("LIVEKIT_AGENT_NAME", "assistant"),
-            stt=os.getenv("VOICE_STT", "deepgram/flux-general-multi"),
+            stt=os.getenv("VOICE_STT", "groq/whisper-large-v3-turbo"),
             tts=os.getenv("VOICE_TTS", "deepgram/flux-hannah-en"),
-            tts_voice=os.getenv("VOICE_TTS_VOICE", ""),
             language=os.getenv("VOICE_LANGUAGE", "en"),
             greeting=os.getenv("VOICE_GREETING", "Hi, I'm listening."),
         )

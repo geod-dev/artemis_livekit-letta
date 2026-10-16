@@ -5,6 +5,7 @@ import {
 import WebSocket from 'ws';
 import type { CatalogTool } from '../../mcp-bridge/catalog';
 import { config } from '../config';
+import { assistantModelSettings } from './model-adapter.ts';
 import { mcpSystemContext } from '../mcp-context';
 import { initialHuman, initialPersona, systemPrompt } from '../prompts';
 
@@ -103,16 +104,20 @@ async function resolveAssistant(): Promise<AssistantIdentity> {
   const client = letta();
   const prompt = currentSystemPrompt();
   const existing = await client.agents.list({ name: config.letta.agentName, limit: 1 });
-  // The system prompt is set at creation; keep an existing agent on the current one.
-  if (existing[0] && existing[0].system !== prompt) {
-    await client.agents.update(existing[0].id, { system: prompt });
+  // Refresh persisted agents as well as newly created ones.
+  if (existing[0]) {
+    await client.agents.update(existing[0].id, {
+      system: prompt,
+      model: config.model.handle,
+      modelSettings: assistantModelSettings('text'),
+    });
   }
   const agentId =
     existing[0]?.id ??
     (await client.createAgent({
       name: config.letta.agentName,
       description: `${config.assistant.name}, the personal assistant`,
-      model: config.models.smart.handle,
+      model: config.model.handle,
       systemPrompt: prompt,
       persona: initialPersona(config.assistant.name),
       human: initialHuman,

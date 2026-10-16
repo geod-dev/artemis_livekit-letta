@@ -6,7 +6,7 @@ export interface TurnRequest {
   /** The user's words; empty for a turn that only delivers background updates. */
   text: string;
   modality: Modality;
-  /** Text-only user preference; voice keeps using the fast model. */
+  /** Text-only effort preference; voice uses medium effort with thinking disabled. */
   effort?: TextEffort;
   /** `update` turns deliver finished background work into the conversation. */
   kind?: 'user' | 'update';

@@ -10,7 +10,6 @@ import type { TextEffort } from '@shared/chat-types';
 import type { useConversation } from '@/hooks/use-conversation';
 import type { useConversations } from '@/hooks/use-conversations';
 import { attachmentAdapter, sentAttachments } from '@/lib/attachment-adapter';
-import { hasAttachments } from '@/lib/attachments';
 import { type ThreadMessageCache, toThreadMessages } from '@/lib/thread-messages';
 
 // `lastMessageAt` is not part of the adapter's thread type, but the runtime
@@ -66,14 +65,9 @@ export function useChatRuntime({
         .join('\n\n')
         .trim();
       const attachments = sentAttachments(message.attachments);
-      // The fast model reads no images: Instant becomes Low once a chat has attachments.
-      const turnEffort =
-        effort === 'fast' && (attachments.length > 0 || hasAttachments(conversation.messages))
-          ? 'low'
-          : effort;
-      return { text, attachments, effort: turnEffort };
+      return { text, attachments, effort };
     },
-    [conversation.messages, effort]
+    [effort]
   );
 
   /** Send a message; resolves false when no turn was requested. */
@@ -238,8 +232,7 @@ export function useChatRuntime({
       }
     },
     adapters: {
-      // No attachments during a call on this conversation: calls run on the fast model.
-      attachments: callConversationId === activeId && activeId ? undefined : attachmentAdapter,
+      attachments: attachmentAdapter,
       threadList: {
         threadId: activeId ?? undefined,
         isLoading: list.loading,

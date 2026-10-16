@@ -1,44 +1,23 @@
-# Models and voice providers
+# Models and speech providers
 
-## Letta model handles
+The main assistant uses anthropic/claude-haiku-5-5 with ANTHROPIC_API_KEY for text, voice, conversation naming, and memory reflection. ASSISTANT_MODEL selects its handle. Text offers Low, Medium, and High effort, defaulting to Medium, with adaptive thinking. Voice always uses medium effort with thinking disabled. Switching back to text restores adaptive thinking and the selected text effort.
 
-Model handles use `provider/model`. The fast model handles voice turns and small
-side jobs; the smart model handles text turns and memory reflection. Configure
-them with `ASSISTANT_FAST_MODEL`, `ASSISTANT_SMART_MODEL`, and their reasoning
-settings in `.env`. `ASSISTANT_TASK_MODEL` optionally selects a model for the
-research worker.
+## Workers
 
-Native Letta providers use their provider API key. An optional OpenAI-compatible
-provider is routed through the Compose proxy, which maps the `/v1` paths Letta
-uses onto the configured upstream base URL.
+All delegated workers use openai-compatible/zai-org/GLM-5.3-Flash on Telnyx at provider effort high. ASSISTANT_TASK_MODEL configures the worker handle. Workers do not inherit the main assistant's model or text effort. The request adapter enforces high effort for this GLM handle.
 
-## Telnyx
+Set OPENAI_COMPATIBLE_BASE_URL=https://api.telnyx.com/v2/ai/openai and OPENAI_COMPATIBLE_API_KEY to the Telnyx key. The Compose proxy maps Letta's /v1 paths onto Telnyx. This protocol connection requires no OpenAI account or credentials.
 
-The Telnyx provider mod is enabled only when
-`OPENAI_COMPATIBLE_BASE_URL` uses `api.telnyx.com`. Model IDs remain ordinary
-`openai-compatible/<model-id>` handles. For GLM-5.3 and DeepSeek V4 Flash, the
-adapter maps the reasoning levels documented by the provider and sends the
-corresponding `reasoning_effort` values.
+The Telnyx adapter preserves provider-reported limits and prices. Missing pricing uses neutral accounting rates with costKnown: false, and missing limits stay unknown. GLM image input is advertised explicitly.
 
-The Telnyx model list does not reliably state pricing, context size, output
-limits, or image support. The adapter leaves missing limits unknown and only
-advertises text input unless the endpoint supplies modality metadata. Letta's
-internal response accounting requires a cost object: when prices are absent,
-the adapter supplies neutral zero accounting rates with `costKnown: false`.
-Those calculated costs are unavailable estimates, not evidence that a model is
-free; only provider-supplied rates set `costKnown: true`. Review model
-metadata and the provider's current terms before selecting a model for work with
-specific context, modality, or cost needs.
+## Claude compatibility
 
-The adapter and its outgoing request tests are tied to Letta Code 0.34.4 and the
-pinned SDK used by this repository. A Letta upgrade requires revalidating the
-adapter against the original published bundle before changing the pinned version.
-See the pinned-bundle check in [Development](development.md).
+The pinned Letta Code 0.34.4 catalog predates Haiku 5.5. The Claude mod supplies its descriptor. A version-checked bundle patch independently applies thinking and output effort to Claude requests, removes unsupported sampling parameters, routes native workers to the configured worker model, and applies GLM high effort. Revalidate these adapters and outgoing-request tests before upgrading Letta.
 
-## Voice
+## Speech
 
-`VOICE_STT`, `VOICE_TTS`, and `VOICE_TTS_VOICE` select LiveKit-supported speech
-providers. Provider keys are configured in `.env`. Deepgram Flux includes turn
-detection; other STT providers use the local turn detector. The assistant speaks
-completed user turns through the backend's streaming voice route, keeping voice
-and text turns in the same Letta conversation.
+VOICE_STT=groq/whisper-large-v3-turbo transcribes voice calls through Groq using GROQ_API_KEY. The composer's microphone uses Groq as well. Voice uses local Silero voice activity detection and the local turn detector to segment audio for Groq's transcription endpoint.
+
+VOICE_TTS=deepgram/flux-hannah-en generates speech using DEEPGRAM_API_KEY. Deepgram Aura voices are supported too. VOICE_LANGUAGE selects the transcription language. Voice and text turns share the same Letta conversation.
+
+The LiveKit OpenAI plugin is retained only as a protocol client for Groq transcription and the backend's internal voice gateway. No OpenAI platform key is used.

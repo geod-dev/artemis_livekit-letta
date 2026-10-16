@@ -27,8 +27,6 @@ export interface ChatThreadState {
   contextUsage: ConversationContextUsage | null;
   effort: TextEffort;
   setEffort: (effort: TextEffort) => void;
-  /** The conversation has attachments: Instant (the fast model) is unavailable. */
-  withAttachments: boolean;
   callButton: {
     label: string;
     disabled: boolean;
@@ -154,22 +152,17 @@ export function WelcomeContinuation({ tabIndex = 0 }: { tabIndex?: number }) {
   );
 }
 
-const EFFORT_VALUES: TextEffort[] = ['fast', 'low', 'medium', 'high'];
+const EFFORT_VALUES: TextEffort[] = ['low', 'medium', 'high'];
 const EFFORT_LABELS: Record<TextEffort, string> = {
-  fast: 'Instant',
-  low: 'Medium',
-  medium: 'High',
-  high: 'Max',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
 };
 
 function ComposerEffortControl() {
-  const { effort: chosen, setEffort, withAttachments } = useChatThread();
-  const composerAttachments = useAuiState((s) => s.composer.attachments.length > 0);
-  // The fast model reads no images: with attachments, Instant runs as Low.
-  const locked = withAttachments || composerAttachments;
-  const effort = locked && chosen === 'fast' ? 'low' : chosen;
+  const { effort, setEffort } = useChatThread();
   const index = EFFORT_VALUES.indexOf(effort);
-  const particleCount = [16, 14, 16, 18][index];
+  const particleCount = [14, 16, 18][index];
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   );
@@ -236,20 +229,17 @@ function ComposerEffortControl() {
         <input
           type="range"
           min={0}
-          max={3}
+          max={EFFORT_VALUES.length - 1}
           step={1}
           value={index}
           onChange={(event) =>
-            setEffort(EFFORT_VALUES[Math.max(locked ? 1 : 0, Number(event.target.value))])
+            setEffort(EFFORT_VALUES[Number(event.target.value)])
           }
           aria-label="Text response effort"
           aria-valuetext={EFFORT_LABELS[effort]}
           className="effort-slider absolute inset-0 z-10 h-full w-full cursor-pointer"
         />
       </div>
-      {locked && (
-        <p className="text-muted-foreground mt-2 text-xs">Can't use Instant with attachments.</p>
-      )}
     </>
   );
 

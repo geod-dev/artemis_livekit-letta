@@ -4,7 +4,7 @@ import { runInNewContext } from 'node:vm';
 import { spawn } from 'node:child_process';
 import { test } from 'node:test';
 import { patchBundle } from './worker-execution.mjs';
-import { patchBundle as patchGroq } from './groq-qwen.mjs';
+import { patchBundle as patchModels } from './model-requests.mjs';
 import { patchBundle as patchTasks } from './task-control.mjs';
 
 const original = readFileSync(process.env.LETTA_BUNDLE || new URL('../../../backend/node_modules/@letta-ai/letta-code/letta.js', import.meta.url), 'utf8');
@@ -241,7 +241,7 @@ test('persistent monitors are rejected in workers', async () => {
 });
 
 test('patch composes with existing patches and fails closed on changed or already patched bundles', () => {
-  assert.doesNotThrow(() => patchBundle(patchTasks(patchGroq(original))));
+  assert.doesNotThrow(() => patchBundle(patchTasks(patchModels(original))));
   assert.throws(() => patchBundle(patched), /already patched/);
   assert.throws(() => patchBundle('other release'), /anchor/);
   assert.throws(() => patchBundle(original.replace('async function exec_command(args)', 'async function renamed(args)')

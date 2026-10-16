@@ -25,7 +25,7 @@ import {
 } from './conversations/titles.ts';
 import { claimAttachmentReferenceToken } from './filesystem/attachment-retention';
 import { assistant, letta } from './letta/agent-client.ts';
-import { modelEffort } from './letta/model-adapter.ts';
+import { assistantModelSettings } from './letta/model-adapter.ts';
 import { executeTurn } from './runtime/executor';
 import { createRuntimeRegistry } from './runtime/registry';
 import { SerialScheduler } from './runtime/scheduler';
@@ -74,10 +74,6 @@ function formatCurrentDateTime(date: Date, timeZone: string): string {
   );
 }
 
-type ModelTier = keyof Pick<typeof config.models, 'smart' | 'fast'>;
-
-/** Text uses the smart model; voice calls use the configured fast model. */
-const TIER_FOR: Record<Modality, ModelTier> = { text: 'smart', voice: 'fast' };
 
 /**
  * Owns the live Letta session for one conversation. Every producer — text
@@ -144,7 +140,7 @@ class ConversationRuntime {
     this.maintenance++;
     const job = this.scheduler.schedule(async () => {
       const session = await this.ensureSession();
-      await this.useModel(session, TIER_FOR[modality]);
+      await this.useModel(session, modality);
       await this.useTools(session, modality);
     });
     void job
@@ -161,9 +157,7 @@ class ConversationRuntime {
     this.maintenance++;
     const job = this.scheduler.schedule(async () => {
       const session = await this.ensureSession();
-      // Reflection runs on the conversation's current model. After a call that is
-      // the fast model; consolidate with the smart model instead.
-      await this.useModel(session, 'smart');
+      await this.useModel(session, 'text');
       const { agentId } = await assistant();
       const response = await session.sendCommand(
         {
@@ -322,9 +316,7 @@ class ConversationRuntime {
     try {
       session = await withAbort(this.ensureSession(), signal);
       await waitUntilIdle(session, 15_000, signal);
-      const tier = request.modality === 'voice' || request.effort === 'fast' ? 'fast' : 'smart';
-      const reasoning = tier === 'smart' && request.effort !== 'fast' ? request.effort : undefined;
-      await withAbort(this.useModel(session, tier, reasoning), signal);
+      await withAbort(this.useModel(session, request.modality, request.effort), signal);
       await withAbort(this.useTools(session, request.modality), signal);
       readyAt = performance.now();
     } catch (error) {
@@ -521,34 +513,17 @@ class ConversationRuntime {
     }
   }
 
-  /** The conversation's model follows the modality of the turn being run. */
+  /** Apply effort and thinking separately while keeping one assistant model. */
   private async useModel(
     session: LettaCodeSession,
-    tier: ModelTier,
-    effort?: Exclude<TextEffort, 'fast'> | 'none'
+    modality: Modality,
+    effort: TextEffort = 'medium'
   ): Promise<void> {
-    const { handle } = config.models[tier];
-    const adaptation = modelEffort(handle, effort ?? config.models[tier].reasoning);
-    const reasoning = adaptation.reasoningEffort;
-    if (adaptation.invalidConfiguredEffort) {
-      console.warn(
-        `[assistant] unsupported reasoning effort '${adaptation.invalidConfiguredEffort}' for ${handle}; using the model default`
-      );
-    }
-    // Compare handle *and* reasoning tier: both tiers may share one model.
-    const selection = `${handle}|${reasoning ?? ''}|${adaptation.invalidConfiguredEffort ?? ''}`;
+    const settings = assistantModelSettings(modality, effort);
+    const selection = JSON.stringify([config.model.handle, settings]);
     if (this.model === selection) return;
-    try {
-      await session.updateModel(
-        reasoning ? { modelHandle: handle, reasoningEffort: reasoning } : { modelHandle: handle }
-      );
-    } catch (error) {
-      // Explicit slider choices must never silently run at the default effort.
-      if (effort) throw error;
-      // Non-user selections can use the default for models without tiers.
-      if (!reasoning || !/reasoning/i.test(String(error))) throw error;
-      await session.updateModel({ modelHandle: handle });
-    }
+    await session.updateModel({ modelHandle: config.model.handle, reasoningEffort: settings.effort });
+    await letta().conversations.update(this.conversationId, { modelSettings: settings });
     this.model = selection;
   }
 
@@ -560,8 +535,8 @@ class ConversationRuntime {
   }
 
   /**
-   * Name the conversation from its first message, in the background: the fast
-   * model writes a short title while the turn itself runs. Falls back to the
+   * Name the conversation from its first message, in the background: Claude
+   * writes a short title while the turn itself runs. Falls back to the
    * message text when the model fails.
    */
   private autoTitle(firstUserText: string): void {

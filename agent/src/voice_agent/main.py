@@ -24,6 +24,7 @@ from livekit.agents import (
     ConversationItemAddedEvent,
     JobContext,
     cli,
+    inference,
 )
 from livekit.plugins import openai
 
@@ -53,9 +54,10 @@ async def entrypoint(ctx: JobContext) -> None:
         return
     ctx.log_context_fields = {"room": ctx.room.name, "conversation": conversation_id}
 
-    speech = build_speech(settings.stt, settings.tts, settings.tts_voice, settings.language)
+    speech = build_speech(settings.stt, settings.tts, settings.language)
     session = AgentSession(
         stt=speech.stt,
+        vad=inference.VAD(model="silero"),
         tts=speech.tts,
         llm=openai.LLM(
             model="letta",

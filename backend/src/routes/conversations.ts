@@ -6,7 +6,7 @@ import {
   taskStopRequested,
   taskStopped,
 } from '../assistant/background/service.ts';
-import { activeCall, endCall } from '../assistant/calls/state.ts';
+import { endCall } from '../assistant/calls/state.ts';
 import { readLettaContextUsage } from '../assistant/conversations/context-usage.ts';
 import {
   clearConversationEvents,
@@ -16,7 +16,6 @@ import {
 import { RecoverableForkArchiveError } from '../assistant/conversations/lifecycle.ts';
 import {
   archiveConversation,
-  conversationHasAttachments,
   createConversation,
   deleteFromMessage,
   listConversations,
@@ -151,8 +150,8 @@ conversations.post('/:id/messages', async (c) => {
   const clientMessageId = body.clientMessageId;
   if (typeof text !== 'string' || text.length > 100_000)
     return errorResponse('text must be a string of at most 100000 characters', 400);
-  if (effort !== undefined && !['fast', 'low', 'medium', 'high'].includes(String(effort))) {
-    return errorResponse('effort must be fast, low, medium, or high', 400);
+  if (effort !== undefined && !['low', 'medium', 'high'].includes(String(effort))) {
+    return errorResponse('effort must be low, medium, or high', 400);
   }
   if (
     clientMessageId !== undefined &&
@@ -192,14 +191,6 @@ conversations.post('/:id/messages', async (c) => {
   } catch (error) {
     return errorResponse(error);
   }
-  // The fast model (Instant, voice calls) reads no images.
-  if (attachments.length > 0 && activeCall(id)) {
-    return errorResponse('Attachments cannot be sent during a call', 409);
-  }
-  if (effort === 'fast' && (attachments.length > 0 || (await conversationHasAttachments(id)))) {
-    return errorResponse('Instant is not available in conversations with attachments', 400);
-  }
-
   let resolved: Awaited<ReturnType<typeof resolveAttachments>>;
   try {
     resolved = await resolveAttachments(attachments);

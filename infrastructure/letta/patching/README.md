@@ -16,8 +16,12 @@ The patch detects workers through runtime-scoped execution settings and subagent
 
 This governs Letta-managed execution; it is not a sandbox against arbitrary shell scripts that deliberately detach their own processes. The general-purpose worker instructions also prohibit shell detachment and require a completed result or an explicit blocker.
 
-The general-purpose definition in `../agents/general-purpose.md` is installed at service startup, alongside the research definition. It inherits the parent's model unless `ASSISTANT_TASK_MODEL` is set. The main assistant prompt does not need to copy execution instructions into every assignment.
+The general-purpose definition in `../agents/general-purpose.md` is installed at service startup, alongside the research definition. It uses the Telnyx GLM worker model configured by `ASSISTANT_TASK_MODEL`, with provider effort high. The main assistant prompt does not need to copy execution instructions into every assignment.
 
 Tests extract and execute the actual patched bundle functions. Linux additionally runs the original reproduction (`sleep 20`, then exact integer multiplication) through the patched Bash implementation with a real shell. The command must return `202910851145973522` in its only response and emit no background notification. Windows skips this shell-specific test.
 
 Rebuild and recreate the Letta service to activate bundle changes; changing these source files alone does not modify a running container. Run a fresh delegated task after activation to verify the complete model-to-worker path.
+
+## Model requests
+
+The model-requests.mjs patch routes native and forked workers to the configured Telnyx GLM model and applies provider effort high. For Haiku 5.5 it applies thinking and output effort independently: text uses adaptive thinking; voice sends thinking disabled with medium effort. Sampling parameters are omitted. The Claude mod supplies the model descriptor missing from the pinned catalog. Outgoing-request tests exercise the real Pi streaming adapter.
