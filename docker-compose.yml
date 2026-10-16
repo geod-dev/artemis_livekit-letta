@@ -39,7 +39,6 @@ services:
       # data/ holds the backend's files (attachments, state): read-only here.
       - ${WORKSPACE_PATH:-./backend/.workspace}:/workspace
       - ${ASSISTANT_DATA_ROOT:-./backend/.workspace/data}:/workspace/data:ro
-      - ./infrastructure/letta/extensions/claude.mjs:/root/.letta/mods/claude.mjs:ro
       - ./infrastructure/letta/extensions/telnyx.mjs:/root/.letta/mods/telnyx.mjs:ro
       - ./infrastructure/letta/extensions/notifications.mjs:/root/.letta/mods/notifications.mjs:ro
       - ./infrastructure/letta/agent-setup.mjs:/opt/assistant/setup.mjs:ro

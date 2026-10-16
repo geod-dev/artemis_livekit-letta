@@ -1,6 +1,13 @@
 #!/bin/sh
 set -eu
 
+# The Letta home is a persistent volume, so install the image's adapter at startup.
+mkdir -p /root/.letta/mods
+if [ -d /root/.letta/mods/claude.mjs ]; then
+  rmdir /root/.letta/mods/claude.mjs
+fi
+cp /opt/assistant/claude.mjs /root/.letta/mods/claude.mjs
+
 node /opt/assistant/setup.mjs
 LETTA_CODE_VERSION=$(node -e "process.stdout.write(require('/usr/local/lib/node_modules/@letta-ai/letta-code/package.json').version)")
 if [ "$LETTA_CODE_VERSION" != "0.34.4" ]; then

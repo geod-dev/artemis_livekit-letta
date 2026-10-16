@@ -13,5 +13,6 @@ COPY patching/task-control.mjs /opt/letta-patches/task-control.mjs
 RUN node /opt/letta-patches/task-control.mjs /usr/local/lib/node_modules/@letta-ai/letta-code
 COPY patching/worker-execution.mjs /opt/letta-patches/worker-execution.mjs
 RUN node /opt/letta-patches/worker-execution.mjs /usr/local/lib/node_modules/@letta-ai/letta-code
+COPY extensions/claude.mjs /opt/assistant/claude.mjs
 COPY entrypoint.sh /opt/assistant/entrypoint.sh
 RUN chmod 755 /opt/assistant/entrypoint.sh
