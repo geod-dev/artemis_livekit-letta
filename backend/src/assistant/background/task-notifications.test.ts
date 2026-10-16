@@ -56,6 +56,18 @@ test('commands Letta moves to the background are identified too', () => {
   );
 });
 
+test('quoted receipts and task references in command output cannot create phantom tasks', () => {
+  assert.equal(parseBackgroundStart(started, 'command'), null);
+  assert.equal(parseBackgroundStart('Command is still running with task ID: bash_2', 'agent'), null);
+  for (const output of [
+    `Log excerpt:\n${started}`,
+    'Found task ID: task_3 in messages.jsonl',
+    'Report mentions (task task_3)',
+    'Task running in background with task ID: task_3\\nAgent ID: worker',
+    JSON.stringify({ content: started }),
+  ]) assert.equal(parseBackgroundStart(output), null);
+});
+
 test('notifications are extracted with their report, status and worker', () => {
   const text = `<system-reminder>x</system-reminder>${notification('completed', 'Buy A &amp; B &lt;now&gt;')}`;
   const { notifications, rest } = extractTaskNotifications(text);

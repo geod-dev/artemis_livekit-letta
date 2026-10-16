@@ -10,7 +10,8 @@ import {
 import type { ConversationContextUsage, ConversationSummary, TextEffort } from '@shared/chat-types';
 import type { ThreadComponents } from '@/components/assistant-ui/chat/thread';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
-import { type ActivityTask, taskTitle, useActivity } from '@/components/chat/activity-context';
+import { type ActivityTask, useActivity } from '@/components/chat/activity-context';
+import { TaskLabel } from '@/components/chat/task-label';
 import { TaskStopButton } from '@/components/chat/workspace-panel';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -19,7 +20,7 @@ import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
 import { stripLeadingEmoji } from '@/lib/agent-runs';
 import { greetingsFor, pickGreeting } from '@/lib/greetings';
 import { cn } from '@/lib/shadcn/utils';
-import { formatTaskDuration, taskStatusLabel, workedFor } from '@/lib/task-status';
+import { formatTaskDuration, taskDurationLabel, taskStatusLabel } from '@/lib/task-status';
 
 /** App state the thread slots need but assistant-ui does not track. */
 export interface ChatThreadState {
@@ -232,9 +233,7 @@ function ComposerEffortControl() {
           max={EFFORT_VALUES.length - 1}
           step={1}
           value={index}
-          onChange={(event) =>
-            setEffort(EFFORT_VALUES[Number(event.target.value)])
-          }
+          onChange={(event) => setEffort(EFFORT_VALUES[Number(event.target.value)])}
           aria-label="Text response effort"
           aria-valuetext={EFFORT_LABELS[effort]}
           className="effort-slider absolute inset-0 z-10 h-full w-full cursor-pointer"
@@ -380,10 +379,10 @@ function SystemMessage() {
               onClick={() => openTask(task)}
               className="text-muted-foreground hover:text-foreground focus-visible:outline-ring min-w-0 cursor-pointer rounded-md py-1 text-left transition-colors focus-visible:outline-2"
             >
-              <span>{taskTitle(task)}</span>
+              <TaskLabel task={task} />
               <span className="text-muted-foreground/60">
                 {' '}
-                - {workedFor(task.durationMs)}
+                - {taskDurationLabel(task.durationMs, task.kind)}
                 {recordedTask?.rerunName
                   ? ' (' + stripLeadingEmoji(recordedTask.rerunName) + ')'
                   : ''}
@@ -419,9 +418,9 @@ function BeforeComposer() {
             onClick={() => openTask(t)}
             className="hover:text-foreground focus-visible:outline-ring flex min-w-0 flex-1 items-center gap-2 rounded-md py-2 text-left focus-visible:outline-2"
           >
-            <span className="truncate">{taskTitle({ ...t, title: t.agentTitle ?? t.title })}</span>
+            <TaskLabel task={{ ...t, title: t.agentTitle ?? t.title }} />
             <span className="shrink-0 text-xs">
-              - Running - {formatTaskDuration(t.durationMs) ?? '0s'}
+              - {taskStatusLabel(t)} - {formatTaskDuration(t.durationMs) ?? '0s'}
             </span>
           </button>
           <TaskStopButton

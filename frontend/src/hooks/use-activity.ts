@@ -46,7 +46,7 @@ export function useActivityTasks(
             typeof body.requestId === 'string'
               ? ` (request ${body.requestId})`
               : '';
-          throw new Error(`Could not load agent list: ${detail}${requestId}`);
+          throw new Error(`Could not load task list: ${detail}${requestId}`);
         }
         const tasks: unknown = await response.json();
         if (
@@ -58,6 +58,11 @@ export function useActivityTasks(
               typeof t.title === 'string' &&
               ['running', 'completed', 'failed', 'cancelled'].includes(t.status) &&
               (t.report === undefined || typeof t.report === 'string') &&
+              (t.command === undefined || typeof t.command === 'string') &&
+              (t.prompt === undefined || typeof t.prompt === 'string') &&
+              (t.stdout === undefined || typeof t.stdout === 'string') &&
+              (t.stderr === undefined || typeof t.stderr === 'string') &&
+              (t.exitCode === undefined || t.exitCode === null || Number.isInteger(t.exitCode)) &&
               (t.updateId === undefined || typeof t.updateId === 'string') &&
               (t.durationMs === undefined ||
                 (typeof t.durationMs === 'number' &&
@@ -66,7 +71,7 @@ export function useActivityTasks(
               (t.kind === undefined || ['agent', 'command'].includes(t.kind))
           )
         )
-          throw new Error('Could not load agent list: the server returned an unexpected response');
+          throw new Error('Could not load task list: the server returned an unexpected response');
         if (owner.current === id && request === latestRequest.current && !signal?.aborted) {
           setInventory({ id, tasks });
           setFailure(null);
@@ -75,7 +80,7 @@ export function useActivityTasks(
         if (owner.current === id && !signal?.aborted)
           setFailure({
             id,
-            message: failure instanceof Error ? failure.message : 'Could not load agent list',
+            message: failure instanceof Error ? failure.message : 'Could not load task list',
           });
       }
     },
@@ -125,14 +130,14 @@ export function useActivityTasks(
         );
         if (!response.ok) {
           const body = await response.json().catch(() => null);
-          throw new Error(body?.error || 'Could not stop the agent');
+          throw new Error(body?.error || 'Could not stop the task');
         }
         await refresh();
       } catch (failure) {
         if (owner.current === id)
           setFailure({
             id,
-            message: failure instanceof Error ? failure.message : 'Could not stop the agent',
+            message: failure instanceof Error ? failure.message : 'Could not stop the task',
           });
       } finally {
         setStopping((items) => {

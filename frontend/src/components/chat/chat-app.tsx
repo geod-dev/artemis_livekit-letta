@@ -361,7 +361,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
                         variant="ghost"
                         size="icon"
                         aria-label={
-                          workspaceOpen ? 'Close files and agents' : 'Open files and agents'
+                          workspaceOpen ? 'Close files and tasks' : 'Open files and tasks'
                         }
                         aria-expanded={workspaceOpen}
                         aria-controls={workspaceOpen ? 'conversation-workspace' : undefined}

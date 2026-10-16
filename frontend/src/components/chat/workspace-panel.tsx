@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftIcon,
-  ChevronDownIcon,
+  BotIcon,
   DownloadIcon,
   FileIcon,
   Loader2Icon,
   SquareIcon,
+  TerminalIcon,
+  XIcon,
 } from 'lucide-react';
 import type { ChatMessage } from '@shared/chat-types';
 import { fileName } from '@/components/assistant-ui/files/workspace-file';
@@ -13,12 +15,15 @@ import { WorkspaceFilePreview } from '@/components/assistant-ui/files/workspace-
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { groupAgentRuns } from '@/lib/agent-runs';
+import { type TaskKind, filterTaskKinds, groupAgentRuns } from '@/lib/agent-runs';
 import { workspacePath, workspaceUrl } from '@/lib/attachments';
+import { commandReport } from '@/lib/command-report';
 import { cn } from '@/lib/shadcn/utils';
-import { formatTaskDuration, taskStatusLabel, workedFor } from '@/lib/task-status';
+import { formatTaskDuration, taskDurationLabel, taskStatusLabel } from '@/lib/task-status';
 import { readToolOutput } from '@/lib/tool-output';
 import { type ActivityTask, taskTitle, useActivity } from './activity-context';
+import { TaskBubble } from './task-bubble';
+import { TaskLabel } from './task-label';
 
 export type WorkspaceSelection =
   { type: 'file'; path: string } | { type: 'task'; task: ActivityTask } | null;
@@ -78,7 +83,7 @@ export function TaskStopButton({
   const pending = running.some((run) => stopping.has(run.id));
   return (
     <IconButton
-      label={pending ? 'Stopping agent' : 'Stop agent'}
+      label={pending ? 'Stopping task' : 'Stop task'}
       disabled={pending}
       onClick={() => void Promise.all(running.map((run) => stopTask(run.id)))}
       className={className}
@@ -124,6 +129,8 @@ export function WorkspacePanel({
 }) {
   const { tasks: runs } = useActivity();
   const tasks = useMemo(() => groupAgentRuns(runs), [runs]);
+  const [taskKinds, setTaskKinds] = useState<TaskKind[]>([]);
+  const filteredTasks = filterTaskKinds(tasks, taskKinds);
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 1023px)').matches);
   const contentRef = useRef<HTMLDivElement>(null);
   const openedFiles = useRef(new Set<string>());
@@ -234,7 +241,7 @@ export function WorkspacePanel({
   const panel = (
     <aside
       id="conversation-workspace"
-      aria-label="Files and agents"
+      aria-label="Files and tasks"
       className="surface-panel bg-background flex h-full min-h-0 w-full flex-col border-s shadow-none lg:w-[min(30rem,38vw)] lg:shrink-0"
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -245,7 +252,7 @@ export function WorkspacePanel({
         }
       }}
     >
-      {mobile && <DialogTitle className="sr-only">Files and agents</DialogTitle>}
+      {mobile && <DialogTitle className="sr-only">Files and tasks</DialogTitle>}
       <header className="flex h-12 shrink-0 items-center gap-1 border-b px-2">
         <div role="tablist" aria-label="Workspace" className="flex min-w-0 flex-1 gap-1">
           {(['files', 'tasks'] as const).map((item) => (
@@ -280,7 +287,7 @@ export function WorkspacePanel({
                   : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
               )}
             >
-              {item === 'files' ? 'Files' : 'Agents'}
+              {item === 'files' ? 'Files' : 'Tasks'}
               {item === 'tasks' && tasks.some((t) => t.status === 'running') && (
                 <span className="text-muted-foreground ms-2 text-xs">
                   {tasks.filter((t) => t.status === 'running').length}
@@ -291,13 +298,45 @@ export function WorkspacePanel({
           ))}
         </div>
       </header>
+      {tab === 'tasks' && !selection && (
+        <div
+          role="group"
+          aria-label="Filter tasks by type"
+          className="flex shrink-0 gap-2 border-b px-4 py-3"
+        >
+          {(['agent', 'command'] as const).map((kind) => {
+            const selected = taskKinds.includes(kind);
+            const Icon = kind === 'command' ? TerminalIcon : BotIcon;
+            const label = kind === 'command' ? 'Command' : 'Agent';
+            return (
+              <button
+                key={kind}
+                type="button"
+                aria-pressed={selected}
+                aria-label={`${selected ? 'Remove' : 'Add'} ${label} filter`}
+                onClick={() => setTaskKinds((current) => (current.includes(kind) ? [] : [kind]))}
+                className={cn(
+                  'focus-visible:outline-ring flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2',
+                  selected
+                    ? 'bg-foreground text-background border-foreground'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
+              >
+                <Icon aria-hidden className="size-3.5" />
+                {label}
+                {selected && <XIcon aria-hidden className="size-3" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {selection && (
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
           <IconButton label="Back to list" onClick={back} className="size-8">
             <ArrowLeftIcon className="size-4" />
           </IconButton>
           <h2 className="min-w-0 flex-1 truncate font-sans text-sm font-medium" title={title}>
-            {title}
+            {selectedTask ? <TaskLabel task={selectedTask} /> : title}
           </h2>
           {selection.type === 'file' ? (
             <IconButton label="Download file" asChild className="size-8">
@@ -333,53 +372,63 @@ export function WorkspacePanel({
           <WorkspaceFilePreview path={selection.path} />
         ) : selectedTask ? (
           <div className="space-y-8 p-5">
-            {selectedTask.runs.map((run, index) => (
-              <section key={run.id} className="space-y-3">
-                <details className="bg-muted/70 group/run ml-auto w-4/5 rounded-2xl px-3 py-2">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium">
-                    <span className="min-w-0 truncate">
-                      {run.rerunName ?? taskTitle({ title: run.title, kind: run.kind })}
-                    </span>
-                    <ChevronDownIcon
-                      aria-hidden="true"
-                      className="size-4 shrink-0 transition-transform group-open/run:rotate-180"
-                    />
-                  </summary>
-                  {run.prompt ? (
-                    <div className="text-foreground/80 pt-2 text-[13px] leading-5 whitespace-pre-wrap">
-                      {run.prompt}
+            {selectedTask.runs.map((run, index) => {
+              const command = run.kind === 'command' ? commandReport(run) : null;
+              return (
+                <section key={run.id} className="space-y-3">
+                  {index > 0 && (
+                    <h3 className="text-sm font-medium">
+                      <TaskLabel task={{ ...run, title: run.rerunName ?? run.title }} />
+                    </h3>
+                  )}
+                  <TaskBubble
+                    description={
+                      run.kind === 'command' ? taskTitle(run) : (run.rerunName ?? run.title)
+                    }
+                    prefix={command ? '$ ' : ''}
+                    text={command ? command.command : run.prompt}
+                  />
+                  <p className="text-muted-foreground/60 flex items-center gap-2 text-xs">
+                    {run.status === 'running' && (
+                      <Loader2Icon aria-hidden className="size-3.5 animate-spin" />
+                    )}
+                    {run.kind === 'command' && run.status === 'running'
+                      ? `${taskStatusLabel(run)} · ${formatTaskDuration(run.durationMs) ?? '0s'}`
+                      : taskDurationLabel(run.durationMs, run.kind)}
+                    {(run.status === 'failed' || run.status === 'cancelled') &&
+                      ' · ' + taskStatusLabel({ status: run.status })}
+                  </p>
+                  {command ? (
+                    <div className="space-y-3">
+                      {command.output && (
+                        <pre className="text-[13px] leading-5 [overflow-wrap:anywhere] whitespace-pre-wrap">
+                          {command.output}
+                        </pre>
+                      )}
+                      {run.status !== 'running' && (
+                        <p className="text-muted-foreground text-xs">
+                          Exit code: {command.exitCode ?? 'unavailable'}
+                        </p>
+                      )}
                     </div>
+                  ) : run.report ? (
+                    <MarkdownDocument
+                      text={run.report}
+                      className="!text-[13px] !leading-5 [overflow-wrap:anywhere]"
+                    />
                   ) : (
-                    <p className="text-muted-foreground pt-2 text-sm">
-                      The prompt is unavailable for this run.
+                    <p className="text-muted-foreground text-[13px]">
+                      {run.status === 'running'
+                        ? 'The response will appear here when this run finishes.'
+                        : 'No response was returned.'}
                     </p>
                   )}
-                </details>
-                <p className="text-muted-foreground/60 flex items-center gap-2 text-xs">
-                  {run.status === 'running' && (
-                    <Loader2Icon aria-hidden className="size-3.5 animate-spin" />
+                  {index < selectedTask.runs.length - 1 && (
+                    <div aria-hidden="true" className="border-border border-t" />
                   )}
-                  {workedFor(run.durationMs)}
-                  {(run.status === 'failed' || run.status === 'cancelled') &&
-                    ' · ' + taskStatusLabel({ status: run.status })}
-                </p>
-                {run.report ? (
-                  <MarkdownDocument
-                    text={run.report}
-                    className="!text-[13px] !leading-5 [overflow-wrap:anywhere]"
-                  />
-                ) : (
-                  <p className="text-muted-foreground text-[13px]">
-                    {run.status === 'running'
-                      ? 'The response will appear here when this run finishes.'
-                      : 'No response was returned.'}
-                  </p>
-                )}
-                {index < selectedTask.runs.length - 1 && (
-                  <div aria-hidden="true" className="border-border border-t" />
-                )}
-              </section>
-            ))}
+                </section>
+              );
+            })}
           </div>
         ) : (
           <div className="px-4 py-4">
@@ -427,7 +476,7 @@ export function WorkspacePanel({
                   </Fragment>
                 ))
               : ['Running', 'Done'].map((group) => {
-                  const rows = tasks.filter((t) =>
+                  const rows = filteredTasks.filter((t) =>
                     group === 'Running' ? t.status === 'running' : t.status !== 'running'
                   );
                   return (
@@ -447,7 +496,7 @@ export function WorkspacePanel({
                                 className="focus-visible:outline-ring flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-3 text-left text-sm focus-visible:outline-2"
                               >
                                 <span className="flex min-w-0 flex-1 items-baseline gap-1">
-                                  <span className="truncate">{taskTitle(task)}</span>
+                                  <TaskLabel task={task} />
                                   {task.runs.length > 1 && (
                                     <span
                                       className="text-muted-foreground/60 shrink-0 text-xs"
@@ -464,7 +513,7 @@ export function WorkspacePanel({
                                 )}
 
                                 <span className="sr-only">
-                                  {task.status === 'running' ? 'Running' : ''}
+                                  {task.status === 'running' ? taskStatusLabel(task) : ''}
                                 </span>
                               </button>
                               <TaskStopButton
@@ -477,9 +526,7 @@ export function WorkspacePanel({
                         </ul>
                       ) : (
                         <EmptyRow>
-                          {group === 'Running'
-                            ? 'No agents running.'
-                            : 'Finished agents will appear here.'}
+                          {group === 'Running' ? 'No tasks running.' : 'No finished tasks.'}
                         </EmptyRow>
                       )}
                     </Fragment>

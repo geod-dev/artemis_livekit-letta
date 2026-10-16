@@ -14,11 +14,12 @@ export interface StartedTask {
   workerConversationId?: string;
 }
 
-export function parseBackgroundStart(result: string): StartedTask | null {
-  const taskId =
-    result.match(/\btask ID: (\S+)/)?.[1] ??
-    result.match(/\bin background with ID: (\S+)/)?.[1] ??
-    result.match(/\(task (\S+?)\)/)?.[1];
+export function parseBackgroundStart(result: string, expectedKind?: 'agent' | 'command'): StartedTask | null {
+  const agentId = expectedKind === 'command' ? undefined :
+    result.match(/^(?:Task running in background with task ID: |Background task ID: )([^\s\\]+)(?:\r?\n|$)/)?.[1];
+  const commandId = expectedKind === 'agent' ? undefined :
+    result.match(/^Command (?:running in background with ID: |is still running with task ID: )([^\s\\]+)(?:\r?\n|$)/)?.[1];
+  const taskId = agentId ?? commandId;
   if (!taskId) return null;
   const workerAgentId = result.match(/^Agent ID: (\S+)/m)?.[1];
   const workerConversationId = result.match(/^Conversation ID: (\S+)/m)?.[1];

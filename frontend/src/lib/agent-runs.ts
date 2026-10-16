@@ -53,11 +53,35 @@ export function taskRuns(tasks: ConversationTask[], messages: ChatMessage[]): Ag
   const rows = new Map<string, AgentRun>(tasks.map((task) => [task.id, { ...task }]));
   const order = new Map<string, number>();
   for (const message of messages) {
-    if (message.role !== 'tool' || !['Agent', 'Task'].includes(message.name)) continue;
+    if (message.role !== 'tool') continue;
+    const worker = ['Agent', 'Task'].includes(message.name);
+    if (!worker && !['Bash', 'exec_command'].includes(message.name)) continue;
     const args = record(message.args);
     const receipt = receiptText(message.result);
-    const id = receipt.match(/\btask ID: (\S+)/)?.[1];
+    const id = worker
+      ? receipt.match(
+          /^(?:Task running in background with task ID: |Background task ID: )([^\s\\]+)(?:\r?\n|$)/
+        )?.[1]
+      : receipt.match(
+          /^Command (?:running in background with ID: |is still running with task ID: )([^\s\\]+)(?:\r?\n|$)/
+        )?.[1];
     if (!id) continue;
+    if (!worker) {
+      const existing = rows.get(id);
+      rows.set(id, {
+        ...existing,
+        id,
+        title: string(args.description) ?? existing?.title ?? string(args.command) ?? 'Command',
+        kind: 'command',
+        status: existing?.status ?? 'running',
+        agentKey: `command:${id}`,
+        toolCallId: message.toolCallId,
+        prompt: string(args.command) ?? string(args.cmd) ?? existing?.prompt,
+        startedAt: message.createdAt,
+      });
+      if (!order.has(id)) order.set(id, order.size);
+      continue;
+    }
     const agent = receipt.match(/^Agent ID: (\S+)/m)?.[1] ?? string(args.agent_id);
     const conversation =
       receipt.match(/^Conversation ID: (\S+)/m)?.[1] ?? string(args.conversation_id);
@@ -74,7 +98,7 @@ export function taskRuns(tasks: ConversationTask[], messages: ChatMessage[]): Ag
           ? `conversation:${conversation}`
           : `task:${id}`,
       toolCallId: message.toolCallId,
-      prompt: string(args.prompt),
+      prompt: string(args.prompt) ?? existing?.prompt,
       startedAt: message.createdAt,
     });
     if (!order.has(id)) order.set(id, order.size);
@@ -84,6 +108,8 @@ export function taskRuns(tasks: ConversationTask[], messages: ChatMessage[]): Ag
     const existing = message.taskId
       ? rows.get(message.taskId)
       : [...rows.values()].find((row) => row.updateId === message.updateId && message.updateId);
+    // An event alone does not establish a task's type. Enrich known tasks only.
+    if (!existing || !['agent', 'command'].includes(existing.kind ?? '')) continue;
     const id = existing?.id ?? message.taskId;
     if (!id) continue;
     rows.set(id, {
@@ -96,14 +122,16 @@ export function taskRuns(tasks: ConversationTask[], messages: ChatMessage[]): Ag
       report: message.detail ?? existing?.report,
     });
   }
-  const runs = [...rows.values()].sort((a, b) => {
-    const ai = order.get(a.id),
-      bi = order.get(b.id);
-    if (ai !== undefined && bi !== undefined) return ai - bi;
-    if (ai !== undefined) return -1;
-    if (bi !== undefined) return 1;
-    return 0;
-  });
+  const runs = [...rows.values()]
+    .filter((row) => row.kind === 'agent' || row.kind === 'command')
+    .sort((a, b) => {
+      const ai = order.get(a.id),
+        bi = order.get(b.id);
+      if (ai !== undefined && bi !== undefined) return ai - bi;
+      if (ai !== undefined) return -1;
+      if (bi !== undefined) return 1;
+      return 0;
+    });
   const names = new Map<string, string>();
   return runs.map((run) => {
     const key = run.agentKey ?? `task:${run.id}`;
@@ -139,6 +167,16 @@ export function groupAgentRuns(runs: AgentRun[]): AgentHistory[] {
       runs: history,
     };
   });
+}
+
+export type TaskKind = 'agent' | 'command';
+
+/** Selected types are combined; an empty selection shows every task. */
+export function filterTaskKinds<T extends Pick<ConversationTask, 'kind'>>(
+  tasks: T[],
+  selected: readonly TaskKind[]
+): T[] {
+  return selected.length ? tasks.filter((task) => selected.includes(task.kind ?? 'agent')) : tasks;
 }
 
 /** Only active runs advance; completed runs keep their recorded worker duration. */

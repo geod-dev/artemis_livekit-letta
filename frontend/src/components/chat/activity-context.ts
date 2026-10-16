@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { AgentRun } from '@/lib/agent-runs';
+import { type AgentRun, stripLeadingEmoji } from '@/lib/agent-runs';
 
 export type ActivityTask = AgentRun;
 
@@ -7,9 +7,8 @@ export function taskTitle(task: Pick<ActivityTask, 'title' | 'kind'>): string {
   const title = (task.title.trim() || 'Background task')
     .replace(/^Background task (?:finished|failed|stopped):\s*/i, '')
     .replace(/\s+-\s+background task (?:finished|failed|stopped)$/i, '');
-  return /^\p{Extended_Pictographic}/u.test(title)
-    ? title
-    : `${task.kind === 'command' ? '⚙️' : '🔎'} ${title}`;
+  if (task.kind === 'command') return stripLeadingEmoji(title).trim() || 'Command';
+  return /^\p{Extended_Pictographic}/u.test(title) ? title : `🔎 ${title}`;
 }
 
 export const ActivityContext = createContext<{

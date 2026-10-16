@@ -12,7 +12,7 @@ const end = patched.indexOf('\n}', start) + 2;
 function fixture() {
   const scope = { agentId: 'agent', conversationId: 'chat' };
   const backgroundTasks = new Map([
-    ['ours', { description: 'Research', runtimeScope: scope, status: 'running' }],
+    ['ours', { description: 'Research', subagentId: 'worker', runtimeScope: scope, status: 'running' }],
     ['other', { description: 'Private work', runtimeScope: { ...scope, conversationId: 'other' }, status: 'running' }],
   ]);
   const backgroundProcesses = new Map([
@@ -24,10 +24,12 @@ function fixture() {
   const handle = runInNewContext(patched.slice(start, end) + '\nhandleExecuteCommand', {
     backgroundTasks, backgroundProcesses,
     init_task_stop() {},
+    init_subagent_state() {},
+    getSnapshot2: () => ({ agents: [{ id: 'worker', prompt: 'Research the assignment' }] }),
     task_stop: async ({ task_id }) => { stopped.push(task_id); return { killed: true }; },
     emitExecuteCommandResponse: (_socket, _command, value) => { response = value; },
   });
-  return { stopped, async send(command_id, args) {
+  return { stopped, backgroundProcesses, async send(command_id, args) {
     await handle({ command_id, args, runtime: { agent_id: 'agent', conversation_id: 'chat' } }, {}, {}, {});
     return JSON.parse(JSON.stringify(response));
   } };
@@ -40,6 +42,19 @@ test('native task inventory includes agents and commands only in the requested c
   const tasks = JSON.parse(response.output);
   assert.deepEqual(tasks.map((t) => [t.id, t.kind]), [['ours', 'agent'], ['command', 'command']]);
   assert.equal(tasks[1].report, 'hello');
+  assert.equal(tasks[0].prompt, 'Research the assignment');
+  assert.equal(tasks[1].command, 'echo hello');
+  assert.equal(tasks[1].stdout, 'hello');
+  assert.equal(tasks[1].exitCode, null);
+});
+
+test('completed commands expose separate streams and their real nonzero exit code', async () => {
+  const state = fixture();
+  Object.assign(state.backgroundProcesses.get('command'), { status: 'failed', exitCode: 42, stderr: ['warning'] });
+  const task = JSON.parse((await state.send('assistant_tasks')).output).find((row) => row.id === 'command');
+  assert.equal(task.stdout, 'hello');
+  assert.equal(task.stderr, 'warning');
+  assert.equal(task.exitCode, 42);
 });
 
 test('native stop uses TaskStop and rejects unrelated or unknown work', async () => {

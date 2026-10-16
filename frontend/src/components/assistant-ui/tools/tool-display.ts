@@ -11,6 +11,7 @@ import {
   WrenchIcon,
 } from 'lucide-react';
 import { stripLeadingEmoji } from '../../../lib/agent-runs.ts';
+import { readToolOutput } from '../../../lib/tool-output.ts';
 
 /**
  * How tool calls look in the thread: the one place that knows tools. A call
@@ -315,7 +316,7 @@ export function getToolGroupLabel(calls: ToolCall[]): string {
 }
 
 /** The trigger label of a single call. */
-export function toolCallLabel(call: ToolCall, agentTitle?: string): string {
+export function toolCallLabel(call: ToolCall, agentTitle?: string, background = false): string {
   if (agentTitle && ['Agent', 'Task'].includes(call.toolName)) {
     const restarted =
       nonEmptyString(call.args.agent_id) || nonEmptyString(call.args.conversation_id);
@@ -324,7 +325,33 @@ export function toolCallLabel(call: ToolCall, agentTitle?: string): string {
       ? `${agentTitle} - Agent restarted: ${followup}`
       : `${agentTitle} - Agent started`;
   }
-  return getToolDisplay(call).describe(call) ?? defaultLabel(call);
+  const label = getToolDisplay(call).describe(call) ?? defaultLabel(call);
+  return background && ['Bash', 'exec_command'].includes(call.toolName)
+    ? `(background) ${label}`
+    : label;
+}
+
+/** A receipt or tracked command establishes background execution, even after completion. */
+export function commandIsBackground(call: ToolCall, result: unknown, tracked = false): boolean {
+  if (!['Bash', 'exec_command'].includes(call.toolName)) return false;
+  if (tracked) return true;
+  if (result === undefined) return call.args.run_in_background === true;
+  if (typeof result === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(result);
+      if (Array.isArray(parsed)) result = parsed;
+    } catch {
+      /* Plain text receipts need no decoding. */
+    }
+  }
+  const text = Array.isArray(result)
+    ? result
+        .map((part) => (part?.type === 'text' && typeof part.text === 'string' ? part.text : ''))
+        .join('\n')
+    : readToolOutput(result).text;
+  return /^Command (?:running in background with ID: |is still running with task ID: )[^\s\\]+(?:\r?\n|$)/.test(
+    text.trim()
+  );
 }
 
 function parseToolArgs(argsText: string | undefined): Record<string, unknown> {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  commandIsBackground,
   getToolGroupDisplay,
   getToolGroupLabel,
   shellCommand,
@@ -11,6 +12,37 @@ import {
 
 const bridge = (toolName: string, args: unknown) => toolCall(toolName, JSON.stringify(args));
 const bash = (command: string) => toolCall('Bash', JSON.stringify({ command }));
+
+test('only background command tool labels gain the background prefix', () => {
+  const call = bridge('Bash', { command: 'sleep 5', description: 'Wait five seconds' });
+  for (const receipt of [
+    'Command is still running with task ID: bash_1\nOutput file: /tmp/bash_1.log',
+    'Command running in background with ID: bash_1',
+    [{ type: 'text', text: 'Command running in background with ID: bash_1' }],
+    JSON.stringify([{ type: 'text', text: 'Command running in background with ID: bash_1' }]),
+    JSON.stringify({
+      content: [{ type: 'text', text: 'Command running in background with ID: bash_1' }],
+    }),
+  ]) {
+    assert.equal(commandIsBackground(call, receipt), true);
+    assert.equal(
+      toolCallLabel(call, undefined, commandIsBackground(call, receipt)),
+      '(background) Wait five seconds'
+    );
+  }
+  assert.equal(commandIsBackground(call, 'Exit code: 0\nOutput: done'), false);
+  assert.equal(toolCallLabel(call), 'Wait five seconds');
+  assert.equal(commandIsBackground(call, undefined, true), true);
+  assert.equal(commandIsBackground(bridge('Bash', { run_in_background: true }), undefined), true);
+  assert.equal(
+    commandIsBackground(bridge('Bash', { run_in_background: true }), 'Exit code: 0'),
+    false
+  );
+  assert.equal(
+    commandIsBackground(bridge('Read', {}), 'Command running in background with ID: bash_1'),
+    false
+  );
+});
 
 test('worker tool calls identify the agent and its launch separately from completion', () => {
   for (const name of ['Agent', 'Task']) {

@@ -456,12 +456,16 @@ class ConversationRuntime {
         await taskStopRequested(this.conversationId, args.task_id);
       return;
     }
+    // File reads, searches and other tools can quote task receipts in their
+    // output. They cannot launch a native worker or background shell command.
+    if (!AGENT_TOOLS.has(call.name) && !['Bash', 'exec_command'].includes(call.name)) return;
     const title = [args.description, args.command].find((v) => typeof v === 'string');
     await taskStarted({
       conversationId: this.conversationId,
       mode,
       depth,
       title: (title as string | undefined) ?? 'Background task',
+      prompt: typeof args.prompt === 'string' ? args.prompt : typeof args.command === 'string' ? args.command : typeof args.cmd === 'string' ? args.cmd : undefined,
       toolResult: stringify(result.content),
       worker: AGENT_TOOLS.has(call.name),
     });

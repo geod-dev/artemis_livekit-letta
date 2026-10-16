@@ -7,6 +7,7 @@ import type { BackgroundUpdate } from '../conversations/messages.ts';
 
 /** Application state which Letta does not persist for background tasks. */
 export interface TaskOrigin {
+  prompt?: string;
   conversationId: string;
   taskId: string;
   workerConversationId?: string;
@@ -21,6 +22,7 @@ export interface TaskOrigin {
 export type DeliveryState = 'held' | 'queued' | 'inflight' | 'delivered';
 
 export interface UpdateRecord extends BackgroundUpdate {
+  prompt?: string;
   taskId?: string;
   kind?: 'agent' | 'command';
   conversationId: string;
@@ -139,6 +141,7 @@ function validateState(value: unknown): BackgroundState {
       typeof item.conversationId !== 'string' ||
       typeof item.taskId !== 'string' ||
       typeof item.title !== 'string' ||
+      (item.prompt !== undefined && typeof item.prompt !== 'string') ||
       !['text', 'voice-short', 'voice-long'].includes(String(item.mode)) ||
       !Number.isInteger(item.depth) ||
       typeof item.startedAt !== 'string' ||
@@ -157,6 +160,7 @@ function validateState(value: unknown): BackgroundState {
       item.id !== key ||
       typeof item.conversationId !== 'string' ||
       typeof item.title !== 'string' ||
+      (item.prompt !== undefined && typeof item.prompt !== 'string') ||
       !['completed', 'failed', 'cancelled'].includes(String(item.status)) ||
       typeof item.needsInput !== 'boolean' ||
       typeof item.report !== 'string' ||

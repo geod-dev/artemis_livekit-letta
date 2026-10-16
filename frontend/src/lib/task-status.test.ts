@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatTaskDuration, taskStatusLabel, workedFor } from './task-status.ts';
+import { formatTaskDuration, taskDurationLabel, taskStatusLabel } from './task-status.ts';
 
 test('agent durations use compact seconds, minutes, and hours', () => {
   for (const [ms, expected] of [
@@ -23,12 +23,21 @@ test('all agent surfaces share terminal status labels without inventing unknown 
   assert.equal(taskStatusLabel({ status: 'completed' }), 'Done');
   assert.equal(taskStatusLabel({ status: 'failed', durationMs: 20000 }), 'Failed after 20s');
   assert.equal(taskStatusLabel({ status: 'cancelled', durationMs: 20000 }), 'Stopped after 20s');
-  assert.equal(taskStatusLabel({ status: 'running', durationMs: 20000 }), 'Running');
+  assert.equal(taskStatusLabel({ status: 'running', durationMs: 20000 }), 'Working');
 });
 
 test('worked duration wording is compact and does not invent missing timings', () => {
-  assert.equal(workedFor(11082), 'Worked for 11s');
-  assert.equal(workedFor(0), 'Worked for 0s');
-  assert.equal(workedFor(92000), 'Worked for 1min32s');
-  assert.equal(workedFor(undefined), 'Worked');
+  assert.equal(taskDurationLabel(11082), 'Worked for 11s');
+  assert.equal(taskDurationLabel(0), 'Worked for 0s');
+  assert.equal(taskDurationLabel(92000), 'Worked for 1min32s');
+  assert.equal(taskDurationLabel(undefined), 'Worked');
+});
+
+test('commands use execution wording while agents keep work wording', () => {
+  assert.equal(taskDurationLabel(11082, 'command'), 'Executed in 11s');
+  assert.equal(taskDurationLabel(0, 'command'), 'Executed in 0s');
+  assert.equal(taskDurationLabel(undefined, 'command'), 'Executed');
+  assert.equal(taskDurationLabel(11082, 'agent'), 'Worked for 11s');
+  assert.equal(taskStatusLabel({ kind: 'command', status: 'running' }), 'Running');
+  assert.equal(taskStatusLabel({ kind: 'agent', status: 'running' }), 'Working');
 });

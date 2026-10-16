@@ -61,6 +61,7 @@ function dependencies(): BackgroundPorts {
 
 /** Remember where work reported by Letta started. */
 export async function taskStarted(input: {
+  prompt?: string;
   conversationId: string;
   mode: TurnMode;
   depth: number;
@@ -68,7 +69,7 @@ export async function taskStarted(input: {
   toolResult: string;
   worker: boolean;
 }): Promise<void> {
-  const started = parseBackgroundStart(input.toolResult);
+  const started = parseBackgroundStart(input.toolResult, input.worker ? 'agent' : 'command');
   if (!started) return;
   const key = originKey(input.conversationId, started.taskId);
   const shouldPublish = await transact((s) => {
@@ -80,6 +81,7 @@ export async function taskStarted(input: {
         ? { workerConversationId: started.workerConversationId }
         : {}),
       title: input.title,
+      ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
       kind: input.worker ? 'agent' : 'command',
       mode: input.mode,
       depth: input.depth,
@@ -113,6 +115,7 @@ export function listTasks(conversationId: string, native: ConversationTask[]): C
     .filter((u) => u.conversationId === conversationId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const completedIds = new Set(updates.flatMap((u) => (u.taskId ? [u.taskId] : [])));
+  const nativeById = new Map(native.map((task) => [task.id, task]));
   const liveById = new Map<string, ConversationTask>(
     native
       .filter((task) => !completedIds.has(task.id))
@@ -120,7 +123,7 @@ export function listTasks(conversationId: string, native: ConversationTask[]): C
         const origin = state.origins[originKey(conversationId, task.id)];
         return [
           task.id,
-          { ...task, title: origin?.title ?? task.title, kind: origin?.kind ?? task.kind },
+          { ...task, title: origin?.title ?? task.title, kind: origin?.kind ?? task.kind, prompt: origin?.prompt ?? task.prompt },
         ];
       })
   );
@@ -133,6 +136,7 @@ export function listTasks(conversationId: string, native: ConversationTask[]): C
         id: origin.taskId,
         title: origin.title,
         kind: origin.kind,
+        prompt: origin.prompt,
         status: 'running',
       });
   }
@@ -140,10 +144,12 @@ export function listTasks(conversationId: string, native: ConversationTask[]): C
   return [
     ...live,
     ...updates.map((u): ConversationTask => ({
+      ...(u.kind === 'command' && u.taskId ? nativeById.get(u.taskId) : undefined),
       id: u.taskId ?? u.id,
       title: u.title,
       status: u.status,
       report: u.report,
+      prompt: u.prompt ?? (u.taskId ? nativeById.get(u.taskId)?.prompt : undefined),
       updateId: u.id,
       ...(u.durationMs !== undefined ? { durationMs: u.durationMs } : {}),
       ...(u.kind ? { kind: u.kind } : {}),
@@ -171,6 +177,7 @@ export async function taskStopped(conversationId: string, task: ConversationTask
       kind: origin?.kind ?? task.kind,
       status: 'cancelled',
       report: task.report || 'Stopped by you.',
+      ...(origin?.prompt !== undefined ? { prompt: origin.prompt } : {}),
       needsInput: false,
       depth: origin?.depth ?? 0,
       delivery: 'held',
@@ -251,6 +258,7 @@ export async function receiveNotifications(
         status: origin?.stopped && n.status === 'failed' ? 'cancelled' : n.status,
         needsInput: n.needsInput,
         report: n.report,
+        ...(origin?.prompt !== undefined ? { prompt: origin.prompt } : {}),
         depth: origin?.depth ?? 0,
         delivery: options.deliveredNatively ? 'delivered' : 'held',
         unread: !options.deliveredNatively,

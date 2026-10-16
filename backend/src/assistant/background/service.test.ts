@@ -209,11 +209,13 @@ test('background commands publish their start and cancellation persists without 
 test('natively delivered results decorate their history row without waking another reply or duplicating the notice', async () => {
   const id = 'native-result-chat';
   const previousRun = resolveRun;
-  await taskStarted({ conversationId: id, mode: 'text', depth: 0, title: '🧮 Multiplication', worker: true,
+  await taskStarted({ conversationId: id, mode: 'text', depth: 0, title: '🧮 Multiplication', worker: true, prompt: 'Multiply the numbers',
     toolResult: 'Task running in background with task ID: task_7' });
   await receiveNotifications(id, [notification.replace('job-1', 'task_7')], { deliveredNatively: true });
   const update = Object.values(snapshot().updates).find((u) => u.conversationId === id)!;
   assert.equal(update.delivery, 'delivered');
+  assert.equal(update.prompt, 'Multiply the numbers');
+  assert.equal(listTasks(id, [])[0].prompt, 'Multiply the numbers');
   const before = { id: 'launch', role: 'assistant' as const, text: 'Launched.' };
   const after = { id: 'answer', role: 'assistant' as const, text: 'The result.' };
   const rows = withUpdates(id, [before,

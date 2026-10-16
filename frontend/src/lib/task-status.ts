@@ -10,14 +10,20 @@ export function formatTaskDuration(durationMs: number | undefined): string | nul
 }
 
 /** Duration wording shared by completion notes and run details. */
-export function workedFor(durationMs: number | undefined): string {
+export function taskDurationLabel(
+  durationMs: number | undefined,
+  kind?: ConversationTask['kind']
+): string {
   const duration = formatTaskDuration(durationMs);
+  if (kind === 'command') return duration ? 'Executed in ' + duration : 'Executed';
   return duration ? 'Worked for ' + duration : 'Worked';
 }
 
 /** Status wording for failures and cancellation. */
-export function taskStatusLabel(task: Pick<ConversationTask, 'status' | 'durationMs'>): string {
-  if (task.status === 'running') return 'Running';
+export function taskStatusLabel(
+  task: Pick<ConversationTask, 'status' | 'durationMs' | 'kind'>
+): string {
+  if (task.status === 'running') return task.kind === 'command' ? 'Running' : 'Working';
   const duration = formatTaskDuration(task.durationMs);
   if (task.status === 'failed') return `Failed${duration ? ` after ${duration}` : ''}`;
   if (task.status === 'cancelled') return `Stopped${duration ? ` after ${duration}` : ''}`;

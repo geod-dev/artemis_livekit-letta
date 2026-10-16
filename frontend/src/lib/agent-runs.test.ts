@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ChatMessage, ConversationTask } from '@shared/chat-types';
-import { groupAgentRuns, runDuration, taskRuns } from './agent-runs.ts';
+import { filterTaskKinds, groupAgentRuns, runDuration, taskRuns } from './agent-runs.ts';
 
 const launch = (
   id: string,
@@ -93,7 +93,7 @@ test('live reruns keep one agent row and a completion event supersedes a stale r
   assert.equal(agents[0].durationMs, 2500);
 });
 
-test('gateway events match by update identity and unknown command durations remain unknown', () => {
+test('gateway events match by update identity and commands stay distinct tasks', () => {
   const runs = taskRuns(
     [{ id: 'x', title: 'Worker', status: 'completed', updateId: 'u' }],
     [
@@ -121,7 +121,55 @@ test('gateway events match by update identity and unknown command durations rema
     )
   );
   assert.equal(commands.length, 2);
+  assert.equal(commands[0].kind, 'command');
   assert.equal(commands[0].durationMs, undefined);
+  assert.deepEqual(taskRuns([], [result('bash_1', 100, 'Command output')]), []);
+  assert.deepEqual(taskRuns([{ id: 'legacy', title: 'Unknown work', status: 'running' }], []), []);
+});
+
+test('task type tags show all by default and combine agent and command selections', () => {
+  const tasks: ConversationTask[] = [
+    { id: 'worker', title: 'Worker', kind: 'agent', status: 'running' },
+    { id: 'bash_1', title: 'Command', kind: 'command', status: 'completed' },
+  ];
+  assert.deepEqual(filterTaskKinds(tasks, []), tasks);
+  assert.deepEqual(filterTaskKinds(tasks, ['agent']), [tasks[0]]);
+  assert.deepEqual(filterTaskKinds(tasks, ['command']), [tasks[1]]);
+  assert.deepEqual(filterTaskKinds(tasks, ['agent', 'command']), tasks);
+});
+
+test('persisted assignments remain available when the launch arguments are missing', () => {
+  const inventory: ConversationTask[] = [
+    { id: 'x', title: 'Worker', kind: 'agent', status: 'completed', prompt: 'Original assignment' },
+  ];
+  const message = launch('x', 'a', 'Worker', 'unused');
+  if (message.role === 'tool') message.args = undefined;
+  assert.equal(taskRuns(inventory, [message])[0].prompt, 'Original assignment');
+  assert.equal(taskRuns(inventory, [])[0].prompt, 'Original assignment');
+});
+
+test('background commands retain their command, output and tool identity without becoming agents', () => {
+  const runs = taskRuns(
+    [],
+    [
+      {
+        id: 'bash-call',
+        role: 'tool',
+        toolCallId: 'bash-call',
+        name: 'Bash',
+        args: JSON.stringify({ command: 'sleep 5; date', description: 'Read time' }),
+        result: 'Command is still running with task ID: bash_1\nOutput file: /tmp/bash_1.log',
+      },
+      result('bash_1', 5000, 'Current time'),
+    ]
+  );
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].kind, 'command');
+  assert.equal(runs[0].prompt, 'sleep 5; date');
+  assert.equal(runs[0].report, 'Current time');
+  assert.equal(runs[0].toolCallId, 'bash-call');
+  assert.equal(runs[0].status, 'completed');
+  assert.deepEqual(filterTaskKinds(runs, ['agent']), []);
 });
 
 test('live run durations advance independently while recorded completed durations stay fixed', () => {

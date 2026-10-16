@@ -181,9 +181,12 @@ export class SessionReader {
       void this.session
         .removeQueuedMessage(item.id)
         .then(({ removed }) => {
-          return this.ports.receiveNotifications(this.conversationId, [text], {
-            deliveredNatively: !removed,
-          });
+          // A missing queue item may only have been dequeued: turn_start can
+          // still hand it to the gateway. Recording it as delivered here makes
+          // that callback a duplicate, so the mod cancels the native turn and
+          // nobody wakes the assistant. Only accept work we actually own.
+          if (!removed) return;
+          return this.ports.receiveNotifications(this.conversationId, [text]);
         })
         .catch((error: unknown) => {
           this.claimed.delete(item.id);

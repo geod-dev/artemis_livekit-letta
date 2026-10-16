@@ -50,6 +50,11 @@ export interface ConversationTask {
   status: 'running' | 'completed' | 'failed' | 'cancelled';
   kind?: 'agent' | 'command';
   report?: string;
+  command?: string;
+  stdout?: string;
+  stderr?: string;
+  prompt?: string;
+  exitCode?: number | null;
   updateId?: string;
   durationMs?: number;
 }

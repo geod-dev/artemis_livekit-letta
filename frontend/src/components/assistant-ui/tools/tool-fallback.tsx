@@ -14,6 +14,7 @@ import {
 } from '@/components/assistant-ui/markdown/markdown-text';
 import { BashTerminal } from '@/components/assistant-ui/tools/bash-terminal';
 import {
+  commandIsBackground,
   getToolDisplay,
   toolCall,
   toolCallLabel,
@@ -121,6 +122,7 @@ function ToolFallbackTrigger({
   toolCallId,
   toolName,
   argsText,
+  result,
   status,
   className,
   ...props
@@ -128,6 +130,7 @@ function ToolFallbackTrigger({
   toolCallId: string;
   toolName: string;
   argsText?: string;
+  result?: unknown;
   status?: ToolCallMessagePartStatus;
 }) {
   const isRunning = status?.type === 'running';
@@ -165,7 +168,11 @@ function ToolFallbackTrigger({
           isRunning && 'shimmer motion-reduce:animate-none'
         )}
       >
-        {toolCallLabel(call, run?.agentTitle)}
+        {toolCallLabel(
+          call,
+          run?.agentTitle,
+          commandIsBackground(call, result, run?.kind === 'command')
+        )}
       </span>
       {!['Agent', 'Task'].includes(toolName) && <ToolFallbackDuration />}
       <ChevronDownIcon
@@ -402,6 +409,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
         toolCallId={toolCallId}
         toolName={toolName}
         argsText={argsText}
+        result={result}
         status={status}
       />
       <ToolFallbackContent>

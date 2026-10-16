@@ -7,6 +7,7 @@ const addition = `
   // Gateway task controls bypass the model and operate only on this runtime's work.
   if (command.command_id === "assistant_tasks" || command.command_id === "assistant_task_stop") {
     init_task_stop();
+    init_subagent_state();
     const owns = (entry) => entry.runtimeScope?.agentId === command.runtime.agent_id &&
       entry.runtimeScope?.conversationId === command.runtime.conversation_id;
     try {
@@ -20,10 +21,15 @@ const addition = `
         value = [
           ...Array.from(backgroundTasks.entries()).filter(([, entry]) => owns(entry)).map(([id, entry]) => ({
             id, title: entry.description || "Background task", kind: "agent", status: entry.status,
+            prompt: getSnapshot2().agents.find((agent) => agent.id === entry.subagentId)?.prompt,
             report: typeof entry.result === "string" ? entry.result : entry.error || undefined,
           })),
           ...Array.from(backgroundProcesses.entries()).filter(([, entry]) => owns(entry)).map(([id, entry]) => ({
             id, title: entry.description || entry.command || "Background command", kind: "command", status: entry.status,
+            command: entry.command,
+            stdout: (entry.stdout || []).join("\\n").slice(-65536),
+            stderr: (entry.stderr || []).join("\\n").slice(-65536),
+            exitCode: Number.isInteger(entry.exitCode) ? entry.exitCode : null,
             report: [...(entry.stdout || []), ...(entry.stderr || [])].join("\\n").slice(-65536) || undefined,
           })),
         ];
