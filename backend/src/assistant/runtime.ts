@@ -345,7 +345,8 @@ class ConversationRuntime {
       request.text,
       updates,
       request.attachments,
-      formatCurrentDateTime(new Date(), config.assistant.timezone)
+      formatCurrentDateTime(new Date(), config.assistant.timezone),
+      request.clientMessageId
     );
     const otid = randomUUID();
     publish(this.conversationId, { type: 'turn_start', turnId, modality: request.modality });

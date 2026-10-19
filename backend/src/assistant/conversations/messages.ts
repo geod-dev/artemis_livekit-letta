@@ -118,7 +118,8 @@ export function encodeTurn(
   text: string,
   updates: readonly BackgroundUpdate[] = [],
   attachments: readonly ChatAttachment[] = [],
-  currentDateTime?: string
+  currentDateTime?: string,
+  clientMessageId?: string
 ): string {
   const reminder = mode === 'text' ? '' : VOICE_REMINDER;
   const datetime = currentDateTime
@@ -133,7 +134,7 @@ export function encodeTurn(
   const prompt = body.join('\n');
   const userSeparator = '\n<user-content>\n';
   const metadata = Buffer.from(
-    JSON.stringify({ mode, currentDateTime, updates, attachments, contentOffset: prompt.length + userSeparator.length }),
+    JSON.stringify({ mode, currentDateTime, updates, attachments, clientMessageId, contentOffset: prompt.length + userSeparator.length }),
     'utf8'
   ).toString('base64url');
   const envelope = `[[app-envelope:v1:${metadata}]]`;
@@ -141,7 +142,13 @@ export function encodeTurn(
 }
 
 type DecodedPart =
-  | { kind: 'user'; text: string; modality: Modality; attachments?: ChatAttachment[] }
+  | {
+      kind: 'user';
+      text: string;
+      modality: Modality;
+      attachments?: ChatAttachment[];
+      clientMessageId?: string;
+    }
   | {
       kind: 'task_result';
       text: string;
@@ -197,7 +204,15 @@ export function decodeUserContent(raw: string): DecodedPart[] {
         ? metadata.attachments.filter(isChatAttachment)
         : [];
       if (body.trim() || attachments.length) {
-        parts.push({ kind: 'user', text: body, modality, ...(attachments.length ? { attachments } : {}) });
+        parts.push({
+          kind: 'user',
+          text: body,
+          modality,
+          ...(attachments.length ? { attachments } : {}),
+          ...(typeof metadata.clientMessageId === 'string'
+            ? { clientMessageId: metadata.clientMessageId }
+            : {}),
+        });
       }
       return parts;
     } catch {
@@ -383,6 +398,7 @@ export function normalizeHistory(messages: readonly LettaMessageLike[]): ChatMes
               role: 'user',
               text: part.text,
               modality: part.modality,
+              ...(part.clientMessageId ? { clientMessageId: part.clientMessageId } : {}),
               ...(part.attachments ? { attachments: part.attachments } : {}),
               createdAt,
             });
