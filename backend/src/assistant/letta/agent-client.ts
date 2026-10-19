@@ -3,10 +3,8 @@ import {
   type LettaCodeSocketConstructor,
 } from '@letta-ai/letta-agent-sdk';
 import WebSocket from 'ws';
-import type { CatalogTool } from '../../mcp-bridge/catalog';
 import { config } from '../config';
 import { assistantModelSettings } from './model-adapter.ts';
-import { mcpSystemContext } from '../mcp-context';
 import { initialHuman, initialPersona, systemPrompt } from '../prompts';
 
 interface AssistantIdentity {
@@ -17,18 +15,11 @@ interface AssistantIdentity {
 
 let lettaClient: LettaAgentClient | undefined;
 let identity: Promise<AssistantIdentity> | undefined;
-let inventory: () => readonly CatalogTool[] = () => [];
 let appliedPrompt: string | null = null;
 let promptChain: Promise<unknown> = Promise.resolve();
 
-export function configureMcpInventory(provider: () => readonly CatalogTool[]): void {
-  inventory = provider;
-}
-
 function currentSystemPrompt(): string {
-  return (
-    systemPrompt(config.assistant.name, config.workspace.agentDir) + mcpSystemContext(inventory())
-  );
+  return systemPrompt(config.assistant.name, config.workspace.agentDir);
 }
 
 /** The local backend recompiles existing conversations when the raw system prompt changes. */

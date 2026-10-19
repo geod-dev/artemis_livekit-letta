@@ -1,5 +1,5 @@
 import type { AnyAgentTool } from '@letta-ai/letta-agent-sdk';
-import type { CallMode, Modality } from '../chat-types';
+import type { CallMode } from '../chat-types';
 import { callControls } from './calls/state.ts';
 import { PRESENT_TOOL, presentDescription, presentOutcome, presentParameters } from './present';
 
@@ -48,12 +48,9 @@ export function createTools(conversationId: string): AnyAgentTool[] {
   ];
 }
 
-/**
- * The tools a turn of this modality is offered: `present` draws in the chat, so
- * voice turns go without it (and without its large schema in the prompt).
- */
-export function toolsFor(tools: AnyAgentTool[], modality: Modality): AnyAgentTool[] {
-  return modality === 'voice' ? tools.filter((tool) => tool.name !== PRESENT_TOOL) : tools;
+/** `present` stays implemented, but is not advertised to the model in any mode. */
+export function toolsFor(tools: AnyAgentTool[]): AnyAgentTool[] {
+  return tools.filter((tool) => tool.name !== PRESENT_TOOL);
 }
 
 function outcome(applied: boolean, done: string) {

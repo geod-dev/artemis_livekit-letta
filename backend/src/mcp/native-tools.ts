@@ -1,4 +1,4 @@
-import { assistant, configureMcpInventory, syncAssistantSystemPrompt } from '../assistant/letta/agent-client.ts';
+import { assistant, syncAssistantSystemPrompt } from '../assistant/letta/agent-client.ts';
 import {
   isLettaServerReady,
   lettaServerRequest,
@@ -166,7 +166,6 @@ export function isMcpReady(): boolean {
 export function startMcp(): () => Promise<void> {
   if (mcpStarted) return async () => {};
   mcpStarted = true;
-  configureMcpInventory(() => mcpCatalog.snapshot().tools);
   deviceHub.onChange(() => registry.reconcile());
   onLettaServerConnected(onConnected);
   return async () => {
@@ -175,7 +174,6 @@ export function startMcp(): () => Promise<void> {
     initialSyncComplete = false;
     removeLettaServerConnectedHook(onConnected);
     deviceHub.onChange();
-    configureMcpInventory(() => []);
     await Promise.allSettled([...connectionSyncs, modsChain]);
   };
 }

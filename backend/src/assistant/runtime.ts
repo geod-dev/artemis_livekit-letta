@@ -480,7 +480,7 @@ class ConversationRuntime {
   }
 
   private async openSession(): Promise<LettaCodeSession> {
-    const tools = createTools(this.conversationId);
+    const tools = toolsFor(createTools(this.conversationId));
     const session = letta().resumeSession(this.conversationId, {
       tools,
       toolset: { base: 'none', include: BUILTIN_TOOLS },
@@ -499,7 +499,7 @@ class ConversationRuntime {
           error
         );
       });
-      await registerToolsInline(session, toolsFor(tools, 'text'), this.conversationId);
+      await registerToolsInline(session, tools, this.conversationId);
       const conversation = await letta().conversations.retrieve(this.conversationId);
       this.nativeReader = new SessionReader(session, this.conversationId, {
           receiveNotifications,
@@ -534,7 +534,7 @@ class ConversationRuntime {
   /** The client tools follow the modality of the turn being run (see `toolsFor`). */
   private async useTools(session: LettaCodeSession, modality: Modality): Promise<void> {
     if (this.toolsModality === modality) return;
-    await registerToolsInline(session, toolsFor(this.tools, modality), this.conversationId);
+    await registerToolsInline(session, this.tools, this.conversationId);
     this.toolsModality = modality;
   }
 
