@@ -78,8 +78,8 @@ test('each device is persisted as a standard MCP server and uses the normal MCP 
     assert.equal((await mcpClient.listTools(stored[0]))[0].name, 'open_url');
     const handlers = bridgeHandlers(f.catalog, mcpClient);
     assert.match(
-      (await handlers.get('mcp_search')!({ query: 'Firefox' })).text,
-      /mcp__device_laptop__open_url/
+      (await handlers.get('mcp_describe')!({ tool: 'mcp__device_laptop__open_url' })).text,
+      /Open a URL/
     );
     assert.equal(
       (await handlers.get('mcp_call')!({ tool: 'mcp__device_laptop__open_url' })).isError,

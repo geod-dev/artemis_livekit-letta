@@ -168,7 +168,6 @@ export interface McpSettingsResponse {
     saved: true;
     catalog: 'synced' | 'failed' | 'pending';
     skill: 'synced' | 'failed' | 'pending';
-    prompt: 'synced' | 'failed' | 'pending';
     mod: 'synced' | 'failed' | 'pending';
     retryableRevision: string;
   };

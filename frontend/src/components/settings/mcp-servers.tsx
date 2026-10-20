@@ -50,7 +50,7 @@ export function McpServers({ active }: { active: boolean }) {
   const editableServers = servers.filter((server) => !server.managed);
   const syncNeedsRetry = Boolean(
     retryableSync &&
-    [retryableSync.skill, retryableSync.catalog, retryableSync.prompt, retryableSync.mod].some(
+    [retryableSync.skill, retryableSync.catalog, retryableSync.mod].some(
       (state) => state === 'failed' || state === 'pending'
     )
   );
@@ -105,7 +105,7 @@ export function McpServers({ active }: { active: boolean }) {
       const sync = saved.sync;
       setRetryableSync(
         sync &&
-          [sync.skill, sync.catalog, sync.prompt, sync.mod].some(
+          [sync.skill, sync.catalog, sync.mod].some(
             (state) => state === 'failed' || state === 'pending'
           )
           ? sync

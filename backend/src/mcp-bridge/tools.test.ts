@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { syncMods } from '../internal-tools/install.ts';
 import { renderToolsMod } from '../internal-tools/mod.ts';
 import type { McpServer } from '../mcp/settings.ts';
-import { McpCatalog, searchCatalog, toCatalogTools } from './catalog.ts';
+import { McpCatalog, toCatalogTools } from './catalog.ts';
 import type { McpClientPort } from './client.ts';
 import { BRIDGE_TOOL_SPECS, bridgeHandlers, resolveTool } from './tools.ts';
 
@@ -97,14 +97,6 @@ describe('catalog', () => {
     assert.equal(catalog.snapshot().failures.get('notes'), '401');
   });
 
-  test('search ranks name matches first', async () => {
-    const catalog = new McpCatalog({
-      servers: async () => [WEB, NOTES],
-      client: fakeClient(),
-    });
-    const hits = searchCatalog(await catalog.refresh(), 'search the web');
-    assert.equal(hits[0]?.qualified, 'mcp__web__web_search');
-  });
 });
 
 describe('bridge tools', () => {
@@ -147,39 +139,10 @@ describe('bridge tools', () => {
     assert.deepEqual(calls, ['notes.create_note {"title":"a"}']);
   });
 
-  test('up to 5 hits come described in full, so mcp_describe is not needed', async () => {
-    const answer = await handlers().get('mcp_search')!({ query: 'note' });
-    assert.match(answer.text, /mcp__notes__create_note \[writes: run with mcp_call_write\]/);
-    assert.match(answer.text, /Parameters \(JSON schema\)/);
-    assert.match(answer.text, /mcp_describe is not needed/);
-  });
-
-  test('more hits are listed one line each, marked read-only or writes', async () => {
-    const many: McpServer = {
-      name: 'many',
-      transport: 'http',
-      url: 'https://many.example.com',
-    };
-    const client: McpClientPort = {
-      listTools: async () =>
-        Array.from({ length: 6 }, (_, i) => ({
-          name: `note_tool_${i}`,
-          description: `Note tool ${i}.\nMore details.`,
-        })),
-      callTool: async () => ({ text: '', isError: false }),
-    };
-    const catalog = new McpCatalog({ servers: async () => [many], client });
-    const answer = await bridgeHandlers(catalog, client).get('mcp_search')!({
-      query: 'note',
-    });
-    assert.match(answer.text, /- mcp__many__note_tool_0: Note tool 0\. \[writes\]/);
-    assert.doesNotMatch(answer.text, /More details|Parameters/);
-    assert.match(answer.text, /Next: mcp_describe for parameters/);
-  });
 });
 
 describe('bridge mod', () => {
-  test('registers the four tools, calling the backend with the Letta token', () => {
+  test('registers the three tools, calling the backend with the Letta token', () => {
     const source = renderToolsMod({
       title: 'mcp-bridge v1',
       tools: BRIDGE_TOOL_SPECS,

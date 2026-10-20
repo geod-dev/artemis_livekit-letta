@@ -1,4 +1,4 @@
-import { assistant, syncAssistantSystemPrompt } from '../assistant/letta/agent-client.ts';
+import { assistant, configureMcpInventory } from '../assistant/letta/agent-client.ts';
 import {
   isLettaServerReady,
   lettaServerRequest,
@@ -71,15 +71,6 @@ export const mcpCatalog = new McpCatalog({
   servers: () => registry.list(),
   client: mcpClient,
   log,
-  changed: async () => {
-    try {
-      await syncAssistantSystemPrompt();
-      promptSyncState = 'synced';
-    } catch (error) {
-      promptSyncState = 'failed';
-      throw error;
-    }
-  },
 });
 /** The native tools the backend serves to its mods (`/api/letta/tools/<name>`). */
 export const toolHandlers: ReadonlyMap<string, ToolHandler> = bridgeHandlers(mcpCatalog, mcpClient);
@@ -91,7 +82,6 @@ const registry = new McpRegistry(
 );
 // Serialised: a save and a reconnect can land at once.
 let modsChain: Promise<unknown> = Promise.resolve();
-let promptSyncState: 'synced' | 'failed' | 'pending' = 'pending';
 
 /** Re-render the bridge mod (tools only while some server lists tools) and reload it. */
 function resyncMods(
@@ -99,14 +89,12 @@ function resyncMods(
   options: { refreshCatalog: boolean }
 ): Promise<{
   catalog: 'synced' | 'failed' | 'pending';
-  prompt: 'synced' | 'failed' | 'pending';
   mod: 'synced' | 'failed' | 'pending';
 }> {
   const run = modsChain.then(async () => {
     if (!isLettaServerReady())
-      return { catalog: 'pending', prompt: 'pending', mod: 'pending' } as const;
+      return { catalog: 'pending', mod: 'pending' } as const;
     let catalog: 'synced' | 'failed' = 'synced';
-    promptSyncState = 'pending';
     if (options.refreshCatalog) {
       try {
         await mcpCatalog.refresh();
@@ -129,7 +117,6 @@ function resyncMods(
     if (result !== 'unchanged') log(`bridge mod ${result} (${reason})`);
     return {
       catalog,
-      prompt: options.refreshCatalog ? promptSyncState : 'pending',
       mod: result === 'reload-pending' ? 'pending' : 'synced',
     } as const;
   });
@@ -166,12 +153,21 @@ export function isMcpReady(): boolean {
 export function startMcp(): () => Promise<void> {
   if (mcpStarted) return async () => {};
   mcpStarted = true;
+  configureMcpInventory(async () => {
+    try {
+      return await mcpCatalog.current();
+    } catch (error) {
+      log(`could not refresh MCP tool names for the next turn: ${errorMessage(error)}`);
+      return mcpCatalog.snapshot().tools;
+    }
+  });
   deviceHub.onChange(() => registry.reconcile());
   onLettaServerConnected(onConnected);
   return async () => {
     if (!mcpStarted) return;
     mcpStarted = false;
     initialSyncComplete = false;
+    configureMcpInventory(() => []);
     removeLettaServerConnectedHook(onConnected);
     deviceHub.onChange();
     await Promise.allSettled([...connectionSyncs, modsChain]);

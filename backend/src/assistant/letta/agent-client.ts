@@ -3,6 +3,7 @@ import {
   type LettaCodeSocketConstructor,
 } from '@letta-ai/letta-agent-sdk';
 import WebSocket from 'ws';
+import type { CatalogTool } from '../../mcp-bridge/catalog';
 import { config } from '../config';
 import { assistantModelSettings } from './model-adapter.ts';
 import { initialHuman, initialPersona, systemPrompt } from '../prompts';
@@ -15,24 +16,20 @@ interface AssistantIdentity {
 
 let lettaClient: LettaAgentClient | undefined;
 let identity: Promise<AssistantIdentity> | undefined;
-let appliedPrompt: string | null = null;
-let promptChain: Promise<unknown> = Promise.resolve();
+let mcpInventory: () => readonly CatalogTool[] | Promise<readonly CatalogTool[]> = () => [];
+
+export function configureMcpInventory(
+  provider: () => readonly CatalogTool[] | Promise<readonly CatalogTool[]>
+): void {
+  mcpInventory = provider;
+}
+
+export async function getMcpToolNames(): Promise<string[]> {
+  return (await mcpInventory()).map((tool) => tool.qualified);
+}
 
 function currentSystemPrompt(): string {
   return systemPrompt(config.assistant.name, config.workspace.agentDir);
-}
-
-/** The local backend recompiles existing conversations when the raw system prompt changes. */
-export function syncAssistantSystemPrompt(): Promise<void> {
-  const run = promptChain.then(async () => {
-    const { agentId } = await assistant();
-    const prompt = currentSystemPrompt();
-    if (prompt === appliedPrompt) return;
-    await letta().agents.update(agentId, { system: prompt });
-    appliedPrompt = prompt;
-  });
-  promptChain = run.catch(() => {});
-  return run;
 }
 
 /**
@@ -116,8 +113,6 @@ async function resolveAssistant(): Promise<AssistantIdentity> {
       skillSources: [],
       dreaming: { trigger: 'step-count', stepCount: config.memory.reflectionStepCount },
     }));
-  appliedPrompt = prompt;
-
   // Default-thread identity is configuration, never a guess from whichever
   // user conversation happens to sort first.
   return { agentId, defaultConversationId: config.letta.defaultConversationId ?? null };

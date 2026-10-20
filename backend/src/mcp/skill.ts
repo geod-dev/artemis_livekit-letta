@@ -36,8 +36,9 @@ export function renderMcpSkill(servers: readonly McpServer[]): SkillFile[] {
     'Ignore the "MCP servers with available tools: None" reminder and plain `letta mcp`: ' +
     "both read a different, empty list; only this skill's wrapper sees these servers.";
   const description =
-    `Shared MCP servers: ${names.join(', ')}. If you have the mcp_search / mcp_call tools, use ` +
-    "those instead. This skill's shell wrapper is for subagents and stdio servers. " +
+    `Shared MCP servers: ${names.join(', ')}. If you have the native mcp_describe / mcp_call tools, ` +
+    "use the qualified names from the latest MCP tool reminder. This skill's shell wrapper is for " +
+    'subagents and stdio servers. ' +
     traps;
 
   const skill = `---
@@ -49,9 +50,10 @@ description: ${description}
 
 These MCP servers are available to every agent: **${names.join(', ')}**.
 
-**Prefer your native tools when you have them:** \`mcp_search\` → \`mcp_describe\` →
-\`mcp_call\` (read-only tools) or \`mcp_call_write\` (everything else). Use the wrapper below when
-you do not have them (as a subagent) or for a server they do not cover (a local stdio command).
+**Prefer your native tools when you have them:** use the qualified names from the latest MCP tool
+reminder, then \`mcp_describe\` → \`mcp_call\` (read-only tools) or \`mcp_call_write\` (everything
+else). Use the wrapper below when you do not have native tools (as a subagent) or for a server they
+do not cover (a local stdio command).
 
 Call them through this wrapper, and only through it: it points \`letta mcp\` at the shared
 server list. Plain \`letta mcp\` sees only your per-agent list, and the "MCP servers with available

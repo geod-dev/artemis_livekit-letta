@@ -124,7 +124,7 @@ describe('renderMcpSkill', () => {
     const description = frontmatter(skill?.content ?? '').description ?? '';
     assert.ok(description.includes('MCP servers with available tools: None'));
     assert.ok(description.includes('plain `letta mcp`'));
-    assert.ok(description.includes('mcp_search / mcp_call'));
+    assert.ok(description.includes('mcp_describe / mcp_call'));
     assert.ok(skill?.content.includes('`mcp_call_write`'));
   });
 

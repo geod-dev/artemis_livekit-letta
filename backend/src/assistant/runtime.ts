@@ -24,7 +24,8 @@ import {
   renameConversationIfUntitled,
 } from './conversations/titles.ts';
 import { claimAttachmentReferenceToken } from './filesystem/attachment-retention';
-import { assistant, letta } from './letta/agent-client.ts';
+import { assistant, getMcpToolNames, letta } from './letta/agent-client.ts';
+import { mcpToolsReminder } from './mcp-context';
 import { assistantModelSettings } from './letta/model-adapter.ts';
 import { executeTurn } from './runtime/executor';
 import { createRuntimeRegistry } from './runtime/registry';
@@ -89,6 +90,8 @@ class ConversationRuntime {
   /** The session's client tools, and the modality whose tools are registered with Letta. */
   private tools: AnyAgentTool[] = [];
   private toolsModality: Modality | null = null;
+  /** Last MCP inventory shown to this conversation, for incremental reminders. */
+  private mcpToolNames: string[] | null = null;
   private titled = true;
   private scheduler = new SerialScheduler();
   /** Stops the turn being run (the user pressed stop). */
@@ -340,13 +343,17 @@ class ConversationRuntime {
     const held = await takeHeldUpdates(this.conversationId);
     this.heldClaims = held;
     const updates = [...(request.updates ?? []), ...held];
+    const currentMcpToolNames = await getMcpToolNames();
+    const toolReminder = mcpToolsReminder(currentMcpToolNames, this.mcpToolNames);
+    this.mcpToolNames = [...new Set(currentMcpToolNames)];
     const encoded = encodeTurn(
       mode,
       request.text,
       updates,
       request.attachments,
       formatCurrentDateTime(new Date(), config.assistant.timezone),
-      request.clientMessageId
+      request.clientMessageId,
+      toolReminder
     );
     const otid = randomUUID();
     publish(this.conversationId, { type: 'turn_start', turnId, modality: request.modality });

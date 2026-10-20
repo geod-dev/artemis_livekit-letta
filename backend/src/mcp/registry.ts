@@ -15,7 +15,6 @@ export interface McpSaveResult {
   sync?: {
     skill: 'synced' | 'failed' | 'pending';
     catalog: 'synced' | 'failed' | 'pending';
-    prompt: 'synced' | 'failed' | 'pending';
     mod: 'synced' | 'failed' | 'pending';
   };
 }
@@ -28,7 +27,6 @@ export class McpRegistry {
     private readonly devices: () => McpServer[],
     private readonly changed: () => Promise<void | {
       catalog: 'synced' | 'failed' | 'pending';
-      prompt: 'synced' | 'failed' | 'pending';
       mod: 'synced' | 'failed' | 'pending';
     }>
   ) {}
@@ -76,7 +74,6 @@ export class McpRegistry {
           skill: skillSync.skill,
           ...((await this.changed()) ?? {
             catalog: 'synced',
-            prompt: 'synced',
             mod: 'synced',
           }),
         };
@@ -86,7 +83,6 @@ export class McpRegistry {
         sync = {
           skill: skillSync.skill,
           catalog: 'failed',
-          prompt: 'pending',
           mod: 'pending',
         };
       }

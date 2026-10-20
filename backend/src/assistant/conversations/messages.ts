@@ -119,7 +119,8 @@ export function encodeTurn(
   updates: readonly BackgroundUpdate[] = [],
   attachments: readonly ChatAttachment[] = [],
   currentDateTime?: string,
-  clientMessageId?: string
+  clientMessageId?: string,
+  toolReminder?: string
 ): string {
   const reminder = mode === 'text' ? '' : VOICE_REMINDER;
   const datetime = currentDateTime
@@ -130,6 +131,7 @@ export function encodeTurn(
     datetime,
     ...updates.map(encodeBackgroundUpdate),
     ...attachments.map(encodeAttachment),
+    ...(toolReminder ? [toolReminder] : []),
   ].filter(Boolean);
   const prompt = body.join('\n');
   const userSeparator = '\n<user-content>\n';

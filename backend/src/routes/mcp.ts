@@ -72,7 +72,6 @@ mcp.put('/', async (c) => {
     const sync = saved.sync ?? {
       skill: 'pending' as const,
       catalog: 'pending' as const,
-      prompt: 'pending' as const,
       mod: 'pending' as const,
     };
     const response: McpSettingsResponse = {
