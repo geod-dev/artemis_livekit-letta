@@ -108,7 +108,7 @@ export function useConversations() {
     setConversations((list) => list.map((c) => (c.id === id ? body : c)));
   }, []);
 
-  /** Archive a conversation (Letta keeps it, the list no longer shows it). */
+  /** Archive a conversation (it is kept, the list no longer shows it). */
   const remove = useCallback(async (id: string) => {
     const revision = ++mutationRevision.current;
     refreshRevision.current += 1;

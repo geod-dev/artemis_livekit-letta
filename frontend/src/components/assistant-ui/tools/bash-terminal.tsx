@@ -1,11 +1,17 @@
 import { TerminalBlock } from '@/components/assistant-ui/tools/terminal-block';
-import type { BashOutput } from '@/lib/bash-result';
+import type { TerminalOutput } from '@/lib/tool-renderer';
 
 /**
  * A shell command's details as a terminal: the command, its output and its
  * exit status. `output` is null while the command runs.
  */
-export function BashTerminal({ command, output }: { command: string; output: BashOutput | null }) {
+export function BashTerminal({
+  command,
+  output,
+}: {
+  command: string;
+  output: TerminalOutput | null;
+}) {
   const lines = output?.lines ?? [];
   return (
     <TerminalBlock

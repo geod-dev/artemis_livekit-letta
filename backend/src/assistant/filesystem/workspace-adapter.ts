@@ -1,89 +1,55 @@
-import type { ImageContent } from '@letta-ai/letta-agent-sdk';
 import { randomUUID } from 'node:crypto';
-import { ATTACHMENT_PATH, registerAttachment, removeUnwrittenAttachment } from './attachment-retention';
 import { mkdir, open, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { ChatAttachment } from '../../chat-types';
 import { config } from '../config';
+import { ATTACHMENT_PATH, registerAttachment, removeUnusedAttachment } from './attachment-retention';
 
 /**
- * The agent's workspace, shared with the Letta container (its working
- * directory there). Paths in the API, in turns and in the agent's replies are
- * relative to the workspace root. The backend keeps its own files under
- * `data/`; everything else belongs to the agent.
+ * The agent's workspace, shared with the agent-server. Paths in the API and in
+ * turns are relative to the workspace root. The gateway stores uploads under
+ * `data/attachments`; the agent-server owns everything else under `data/`.
  */
 
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export const MAX_RECORDING_BYTES = 25 * 1024 * 1024;
-export const MAX_RECORDING_DURATION_MS = 5 * 60 * 1000;
-/** Larger images stay on disk only: providers reject big inline images. */
-const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Larger files are not read to sniff their type; their name and size decide. */
+const MAX_SNIFF_BYTES = 5 * 1024 * 1024;
 const ATTACHMENTS = 'data/attachments';
 
-type ImageType = ImageContent['source']['media_type'];
+type ImageType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
 
-/** Store app-owned attachment bytes in `data/attachments`; never use for user outputs. */
+/** Store an uploaded file in `data/attachments`, with metadata derived from its actual bytes. */
 export async function saveAttachment(file: File): Promise<ChatAttachment> {
   if (file.size > MAX_ATTACHMENT_BYTES) throw new Error('File is larger than 25 MB');
   const bytes = Buffer.from(await file.arrayBuffer());
-  return saveAttachmentBytes(bytes, file.name, 'upload');
-}
-
-/** Store a bounded MCP artifact with metadata derived from its actual bytes. */
-export async function saveMcpArtifact(input: {
-  bytes: Uint8Array | Buffer;
-  mimeType: string;
-  name: string;
-}): Promise<ChatAttachment> {
-  if (!input || typeof input.name !== 'string' || typeof input.mimeType !== 'string') {
-    throw new Error('Artifact metadata is invalid');
-  }
-  return saveAttachmentBytes(Buffer.from(input.bytes), input.name, 'mcp-output');
-}
-
-async function saveAttachmentBytes(
-  bytes: Buffer,
-  originalName: string,
-  kind: 'upload' | 'mcp-output',
-): Promise<ChatAttachment> {
-  if (bytes.length > MAX_ATTACHMENT_BYTES) throw new Error('File is larger than 25 MB');
-  const path = `${ATTACHMENTS}/${randomUUID()}/${safeName(originalName)}`;
+  const name = safeName(file.name);
+  const path = `${ATTACHMENTS}/${randomUUID()}/${name}`;
   const target = join(config.workspace.dir, path);
   await mkdir(dirname(target), { recursive: true });
-  await registerAttachment(path, kind);
+  await registerAttachment(path);
   try {
     await writeFile(target, bytes, { flag: 'wx' });
   } catch (error) {
-    await removeUnwrittenAttachment(path).catch(() => {});
+    await removeUnusedAttachment(path).catch(() => {});
     throw error;
   }
-  const image = imageType(bytes);
-  const attachment = {
+  return {
     path,
-    name: safeName(originalName),
-    kind: image ? 'image' : 'file',
+    name,
+    kind: imageType(bytes) ? 'image' : 'file',
     mimeType: inspectedMimeType(bytes),
     size: bytes.length,
   } satisfies ChatAttachment;
-  return attachment;
 }
 
-/** Check the attachments of a turn, and load the images among them to show inline. */
-export async function resolveAttachments(
-  attachments: readonly ChatAttachment[]
-): Promise<{ attachments: ChatAttachment[]; images: ImageContent[] }> {
+/** Check the attachments of a turn against the workspace and report their inspected metadata. */
+export async function resolveAttachments(attachments: readonly ChatAttachment[]): Promise<ChatAttachment[]> {
   const resolved: ChatAttachment[] = [];
-  const images: ImageContent[] = [];
   for (const a of attachments) {
     const file = ATTACHMENT_PATH.test(a.path) ? await workspaceFile(a.path) : null;
     if (!file) throw new Error(`Unknown attachment ${a.path}`);
-    const bytes = file.size <= MAX_INLINE_IMAGE_BYTES ? await readFile(file.path) : null;
-    const image = bytes && imageType(bytes);
-    if (image)
-      images.push({
-        type: 'image',
-        source: { type: 'base64', media_type: image, data: bytes.toString('base64') },
-      });
+    const bytes = file.size <= MAX_SNIFF_BYTES ? await readFile(file.path) : null;
     const detected = bytes ? inspectedMimeType(bytes) : await mimeTypeForFile(file.path);
     resolved.push({
       path: a.path,
@@ -93,7 +59,7 @@ export async function resolveAttachments(
       size: file.size,
     });
   }
-  return { attachments: resolved, images };
+  return resolved;
 }
 
 /**

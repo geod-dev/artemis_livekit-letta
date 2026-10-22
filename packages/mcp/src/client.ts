@@ -8,12 +8,21 @@ export interface ListedTool {
   annotations?: { readOnlyHint?: boolean };
 }
 
+/** Image types the model accepts inline (same union as `ImageBlock` in `@artemis/llm`). */
+export type InlineImageType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+
+export interface InlineImage {
+  mediaType: InlineImageType;
+  /** Base64, no `data:` prefix. */
+  data: string;
+}
+
 export interface McpCallResult {
-  /** Model-facing text (bounded). */
+  /** Model-facing text (the MCP result envelope, bounded by the caller). */
   text: string;
   isError: boolean;
-  /** Images inlined for the model (small), base64. */
-  images: Array<{ mediaType: string; data: string }>;
+  /** Small images inlined for the model. */
+  images: InlineImage[];
   /** Binary results saved in the workspace (`data/artifacts/...`). */
   artifacts: ChatAttachment[];
 }
@@ -36,6 +45,6 @@ export abstract class McpClient {
     args: Record<string, unknown>,
     options: { conversationId: string; signal?: AbortSignal }
   ): Promise<McpCallResult>;
-  /** Close pooled sessions / stdio processes. */
+  /** Close open sessions and stdio processes. */
   abstract close(): Promise<void>;
 }

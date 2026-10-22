@@ -21,7 +21,6 @@ test('all personal APIs, files, event streams and voice tokens require a session
     '/attachments',
     '/mcp',
     '/voice/token',
-    '/letta/tools/test',
     '/devices/register',
   ]) {
     assert.equal((await app.request('https://example.com/api' + path)).status, 401, path);

@@ -64,7 +64,7 @@ async function fetchHistory(id: string, signal?: AbortSignal): Promise<ChatMessa
 }
 
 /**
- * One conversation as the UI sees it: persisted history from Letta plus live
+ * One conversation as the UI sees it: persisted history plus live
  * events (text turns, voice turns, background task results) streamed over SSE.
  * Live items of a turn are replaced by the persisted history when it ends.
  *
@@ -408,6 +408,8 @@ export function useConversation(
                       args: event.args ?? i.message.args,
                       result: event.result,
                       isError: event.isError,
+                      display: event.display,
+                      task: event.task,
                     },
                   }
                 : i
@@ -437,12 +439,20 @@ export function useConversation(
           setTasks((ts) => {
             const rest = ts.filter((t) => t.id !== event.taskId);
             return event.status === 'running'
-              ? [...rest, { id: event.taskId, title: event.title, status: event.status }]
+              ? [
+                  ...rest,
+                  {
+                    id: event.taskId,
+                    title: event.title,
+                    status: event.status,
+                    ...(event.kind ? { kind: event.kind } : {}),
+                  },
+                ]
               : rest;
           });
           break;
         case 'updates_changed':
-          // Completion notices can arrive during an autonomous Letta turn.
+          // Completion notices can arrive during an autonomous turn.
           // Refresh history without discarding its streamed response.
           void reconcileHistory();
           break;

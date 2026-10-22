@@ -1,4 +1,4 @@
-import { notImplemented } from '@artemis/core';
+import Ajv from 'ajv';
 import type { JsonSchema, ToolDefinition } from '@artemis/llm';
 import type { ToolContext } from './context.ts';
 import type { ToolResult } from './result.ts';
@@ -10,6 +10,9 @@ export class ToolInputError extends Error {
     this.name = 'ToolInputError';
   }
 }
+
+// Ajv caches compiled validators per schema object, so each tool compiles once.
+const ajv = new Ajv({ strict: false, allErrors: false });
 
 /**
  * One tool the model can call. Subclasses declare name/description/schema and
@@ -32,8 +35,12 @@ export abstract class Tool<I = Record<string, unknown>, C extends ToolContext = 
   }
 
   /** Validate `input` against `inputSchema` (ajv, cached per tool); throws `ToolInputError`. */
-  parse(_input: unknown): I {
-    return notImplemented('Tool.parse');
+  parse(input: unknown): I {
+    const validate = ajv.compile(this.inputSchema);
+    if (!validate(input)) {
+      throw new ToolInputError(`${this.name}: ${ajv.errorsText(validate.errors, { dataVar: 'input' })}`);
+    }
+    return input as I;
   }
 
   abstract execute(input: I, context: C): Promise<ToolResult>;

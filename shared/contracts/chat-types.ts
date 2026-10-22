@@ -258,9 +258,9 @@ export interface McpSettingsResponse {
   sync?: {
     saved: true;
     catalog: 'synced' | 'failed' | 'pending';
-    /** @deprecated Letta artifact; never sent by the agent-server. Remove with the frontend update. */
+    /** @deprecated Never sent by the agent-server and not shown in the UI; removed with the contract cleanup. */
     skill?: 'synced' | 'failed' | 'pending';
-    /** @deprecated Letta artifact; never sent by the agent-server. Remove with the frontend update. */
+    /** @deprecated Never sent by the agent-server and not shown in the UI; removed with the contract cleanup. */
     mod?: 'synced' | 'failed' | 'pending';
     retryableRevision: string;
   };

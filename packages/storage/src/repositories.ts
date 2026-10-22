@@ -1,7 +1,7 @@
 /**
  * Repository interfaces. Business logic depends only on these; the Postgres
- * implementation lives in `@artemis/storage/postgres`. An in-memory
- * implementation for tests may be added under `src/memory/` (WP-03).
+ * implementation lives in `@artemis/storage/postgres`; the test fake is
+ * `InMemoryStorage` (`src/memory/`).
  */
 import type {
   AppStateKey,

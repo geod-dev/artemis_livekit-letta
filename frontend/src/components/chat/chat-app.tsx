@@ -32,7 +32,7 @@ import { useContextUsage } from '@/hooks/use-context-usage';
 import { useConversation } from '@/hooks/use-conversation';
 import { useConversations } from '@/hooks/use-conversations';
 
-/** UI for the tools Letta runs (generative UI). */
+/** UI for the tools the agent runs (generative UI). */
 const AUI_CONFIG = AuiConfig({ tools: Tools({ toolkit: generativeUIToolkit }) });
 
 /** Keep the selected conversation in `?c=<id>` without remounting anything. */

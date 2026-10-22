@@ -52,7 +52,7 @@ class GenerativeUIErrorBoundary extends Component<{ children: ReactNode }, { fai
 
 /**
  * A `present` call: the component tree the assistant composed, once the call
- * has completed (Letta runs the tool; its arguments reach the chat with the
+ * has completed (the agent-server runs the tool; its arguments reach the chat with the
  * result). While it runs, and when it failed, it shows as a tool call.
  * Controls answer through the `reply` action, which sends a user message.
  */
@@ -90,7 +90,7 @@ const PresentToolUI: ToolCallMessagePartComponent = (part) => {
 };
 
 /**
- * Render-only toolkit for the tools Letta runs: `present` draws its UI on its
+ * Render-only toolkit for the tools the agent runs: `present` draws its UI on its
  * own, outside the collapsed tool groups.
  */
 export const generativeUIToolkit = defineToolkit({

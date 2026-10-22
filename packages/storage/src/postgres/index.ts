@@ -1,4 +1,6 @@
-import { notImplemented } from '@artemis/core';
+import { fileURLToPath } from 'node:url';
+import { consoleLogger } from '@artemis/core';
+import { Pool } from 'pg';
 import {
   type AppStateRepository,
   type BackgroundUpdateRepository,
@@ -14,8 +16,11 @@ import {
   type ToolCallRepository,
   type TurnRepository,
 } from '../repositories.ts';
+import { PgRepositories } from './repositories.ts';
+import { PgSession } from './session.ts';
+import { Migrator, type MigrationFile, readMigrationFiles } from './migrator.ts';
 
-export { Migrator, type MigrationFile } from './migrator.ts';
+export { Migrator, type MigrationFile, readMigrationFiles, migrationChecksum } from './migrator.ts';
 
 export interface PostgresStorageOptions {
   /** `postgresql://artemis:...@postgres:5432/artemis` */
@@ -25,56 +30,87 @@ export interface PostgresStorageOptions {
   migrationsDir?: string;
 }
 
+const DEFAULT_MIGRATIONS_DIR = fileURLToPath(new URL('../../migrations', import.meta.url));
+
 /** `pg` (node-postgres) Pool-backed storage. Repositories are thin SQL mappers (snake_case <-> camelCase). */
 export class PostgresStorage extends Storage {
+  private readonly pool: Pool;
+  private readonly session: PgSession;
+  private readonly root: PgRepositories;
+  private readonly migrationsDir: string;
+
   constructor(readonly options: PostgresStorageOptions) {
     super();
+    this.pool = new Pool({ connectionString: options.connectionString, max: options.poolSize ?? 10 });
+    // An idle client can fail (e.g. server restart); the pool discards it, so log instead of crashing.
+    this.pool.on('error', (error) => consoleLogger('postgres').error('idle client error', { message: error.message }));
+    this.session = new PgSession(this.pool, null);
+    this.root = new PgRepositories(this.session);
+    this.migrationsDir = options.migrationsDir ?? DEFAULT_MIGRATIONS_DIR;
   }
 
   get conversations(): ConversationRepository {
-    return notImplemented('PostgresStorage.conversations');
+    return this.root.conversations;
   }
   get promptSnapshots(): PromptSnapshotRepository {
-    return notImplemented('PostgresStorage.promptSnapshots');
+    return this.root.promptSnapshots;
   }
   get turns(): TurnRepository {
-    return notImplemented('PostgresStorage.turns');
+    return this.root.turns;
   }
   get messages(): MessageRepository {
-    return notImplemented('PostgresStorage.messages');
+    return this.root.messages;
   }
   get toolCalls(): ToolCallRepository {
-    return notImplemented('PostgresStorage.toolCalls');
+    return this.root.toolCalls;
   }
   get tasks(): TaskRepository {
-    return notImplemented('PostgresStorage.tasks');
+    return this.root.tasks;
   }
   get updates(): BackgroundUpdateRepository {
-    return notImplemented('PostgresStorage.updates');
+    return this.root.updates;
   }
   get mcpSettings(): McpSettingsRepository {
-    return notImplemented('PostgresStorage.mcpSettings');
+    return this.root.mcpSettings;
   }
   get appState(): AppStateRepository {
-    return notImplemented('PostgresStorage.appState');
+    return this.root.appState;
   }
   get memoryRetentions(): MemoryRetentionRepository {
-    return notImplemented('PostgresStorage.memoryRetentions');
+    return this.root.memoryRetentions;
   }
   get recallLedger(): RecallLedgerRepository {
-    return notImplemented('PostgresStorage.recallLedger');
+    return this.root.recallLedger;
   }
 
-  transaction<T>(_fn: (tx: Repositories) => Promise<T>): Promise<T> {
-    return notImplemented('PostgresStorage.transaction');
+  transaction<T>(fn: (tx: Repositories) => Promise<T>): Promise<T> {
+    return this.session.transaction((tx) => fn(new PgRepositories(tx)));
   }
-  migrate(): Promise<string[]> {
-    return notImplemented('PostgresStorage.migrate');
+
+  /** Applies pending migrations on one dedicated connection (the advisory lock is per session). */
+  async migrate(): Promise<string[]> {
+    const client = await this.pool.connect();
+    try {
+      const migrator = new Migrator(
+        (sql, params) => client.query(sql, params),
+        () => readMigrationFiles(this.migrationsDir)
+      );
+      return await migrator.run();
+    } finally {
+      client.release();
+    }
   }
-  healthy(): Promise<boolean> {
-    return notImplemented('PostgresStorage.healthy');
+
+  async healthy(): Promise<boolean> {
+    try {
+      await this.session.query('SELECT 1');
+      return true;
+    } catch {
+      return false;
+    }
   }
-  close(): Promise<void> {
-    return notImplemented('PostgresStorage.close');
+
+  async close(): Promise<void> {
+    await this.pool.end();
   }
 }

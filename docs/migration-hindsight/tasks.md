@@ -90,7 +90,9 @@ history projection tests, title tests.
 cancel, handoff -> task -> update turn wakes a reaped worker, voice-short success stays held, depth limit, recovery.
 
 **WP-10** `MemoryCoordinator` (§7: last-active swap + flush, batch of 3, outbox with retries, recall with timeout
-and dedup), `CallSessions` (port calls/state.ts + voice-input.ts), Hono API (§13, incl. OpenAI-compatible voice
+and dedup), memory tools `memory_search` / `memory_remember` (architecture §5; files under
+`services/agent-server/src/memory/tools.ts`, exported as a factory WP-09's `createAgentToolset` appends in
+`TOOL_NAMES` order), `CallSessions` (port calls/state.ts + voice-input.ts), Hono API (§13, incl. OpenAI-compatible voice
 stream and call routes, error mapping, SSE). Accept: coordinator tests with fake `MemoryStore` + fake clock
 (3-turn batching, switch flush, timeout), API tests with `app.request()` and stubbed services.
 

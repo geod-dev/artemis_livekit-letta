@@ -1,25 +1,28 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ChatMessage, ConversationTask } from '@shared/chat-types';
-import { filterTaskKinds, groupAgentRuns, runDuration, taskRuns } from './agent-runs.ts';
+import {
+  commandOutput,
+  filterTaskKinds,
+  groupAgentRuns,
+  runDuration,
+  stripLeadingEmoji,
+  taskRuns,
+} from './agent-runs.ts';
 
-const launch = (
+const agent = (
   id: string,
-  agent: string,
   title: string,
-  prompt: string,
-  resumed = false
-): ChatMessage => ({
-  id: `call-${id}`,
-  role: 'tool',
+  startedAt: string,
+  extra: Partial<ConversationTask> = {}
+): ConversationTask => ({
+  id,
+  title,
+  kind: 'agent',
+  status: 'completed',
   toolCallId: `call-${id}`,
-  name: 'Agent',
-  args: JSON.stringify({
-    description: title,
-    prompt,
-    ...(resumed ? { agent_id: agent, conversation_id: 'default' } : {}),
-  }),
-  result: `Task running in background with task ID: ${id}\nAgent ID: ${agent}\nConversation ID: default`,
+  startedAt,
+  ...extra,
 });
 const result = (id: string, durationMs: number, report: string): ChatMessage => ({
   id: `event-${id}`,
@@ -32,23 +35,32 @@ const result = (id: string, durationMs: number, report: string): ChatMessage => 
   detail: report,
 });
 
-test('two agents with default conversations stay distinct while reruns retain names, prompts and per-run timing', () => {
-  const messages = [
-    launch('7', 'agent-a', '🔢 Product', 'Compute product'),
-    launch('8', 'agent-b', '🔢 Power', 'Compute power'),
-    result('7', 11082, 'Product answer'),
-    result('8', 14248, 'Power answer'),
-    launch('9', 'agent-a', '🔢 Explain product', 'How did you compute it?', true),
-    launch('10', 'agent-b', '🔢 Explain power', 'Which tool did you use?', true),
-    result('9', 3844, 'Python'),
-    result('10', 4060, 'Also Python'),
+test('two agents stay distinct while follow-ups keep their agent name and per-run timing', () => {
+  const tasks: ConversationTask[] = [
+    agent('7', '🔢 Product', '2026-10-20T10:00:00Z', {
+      prompt: 'Compute product',
+      durationMs: 11082,
+      report: 'Product answer',
+    }),
+    agent('8', '🔢 Power', '2026-10-20T10:00:01Z', {
+      prompt: 'Compute power',
+      durationMs: 14248,
+      report: 'Power answer',
+    }),
+    agent('9', '🔢 Explain product', '2026-10-20T10:05:00Z', {
+      prompt: 'How did you compute it?',
+      resumedFromTaskId: '7',
+      durationMs: 3844,
+      report: 'Python',
+    }),
+    agent('10', '🔢 Explain power', '2026-10-20T10:06:00Z', {
+      prompt: 'Which tool did you use?',
+      resumedFromTaskId: '8',
+      durationMs: 4060,
+      report: 'Also Python',
+    }),
   ];
-  const inventory: ConversationTask[] = ['10', '9', '8', '7'].map((id) => ({
-    id,
-    title: 'Native name',
-    status: 'completed',
-  }));
-  const runs = taskRuns(inventory, messages);
+  const runs = taskRuns(tasks, []);
   assert.deepEqual(
     runs.map((run) => run.durationMs),
     [11082, 14248, 3844, 4060]
@@ -60,11 +72,11 @@ test('two agents with default conversations stay distinct while reruns retain na
   const agents = groupAgentRuns(runs);
   assert.equal(agents.length, 2);
   assert.deepEqual(
-    agents.map((agent) => agent.durationMs),
+    agents.map((group) => group.durationMs),
     [14926, 18308]
   );
   assert.deepEqual(
-    agents.map((agent) => agent.runs.length),
+    agents.map((group) => group.runs.length),
     [2, 2]
   );
   assert.deepEqual(
@@ -76,28 +88,31 @@ test('two agents with default conversations stay distinct while reruns retain na
   );
 });
 
-test('live reruns keep one agent row and a completion event supersedes a stale running inventory', () => {
-  const messages = [
-    launch('1', 'a', 'Original', 'first'),
-    result('1', 2000, 'Done'),
-    launch('2', 'a', 'Follow-up', 'second', true),
-  ];
-  const inventory: ConversationTask[] = [{ id: '2', title: 'Follow-up', status: 'running' }];
-  let agents = groupAgentRuns(taskRuns(inventory, messages));
+test('a follow-up of a running task keeps one agent row, and its completion event settles it', () => {
+  const first = agent('1', 'Original', '2026-10-20T10:00:00Z', {
+    status: 'completed',
+    durationMs: 2000,
+  });
+  const follow = agent('2', 'Follow-up', '2026-10-20T10:01:00Z', {
+    status: 'running',
+    resumedFromTaskId: '1',
+  });
+  let agents = groupAgentRuns(taskRuns([first, follow], [result('1', 2000, 'Done')]));
   assert.equal(agents.length, 1);
   assert.equal(agents[0].status, 'running');
   assert.equal(agents[0].title, 'Original');
   assert.equal(agents[0].durationMs, 2000);
-  agents = groupAgentRuns(taskRuns(inventory, [...messages, result('2', 500, 'Again')]));
+  agents = groupAgentRuns(
+    taskRuns([first, { ...follow, status: 'completed' }], [result('2', 500, 'Again')])
+  );
   assert.equal(agents[0].status, 'completed');
   assert.equal(agents[0].durationMs, 2500);
 });
 
-test('gateway events match by update identity and commands stay distinct tasks', () => {
+test('an update event refreshes the task it names by update identity', () => {
   const runs = taskRuns(
-    [{ id: 'x', title: 'Worker', status: 'completed', updateId: 'u' }],
+    [agent('x', 'Worker', '2026-10-20T10:00:00Z', { updateId: 'u' })],
     [
-      launch('x', 'a', 'Worker', 'Prompt'),
       {
         id: 'e',
         role: 'event',
@@ -111,6 +126,10 @@ test('gateway events match by update identity and commands stay distinct tasks',
   );
   assert.equal(runs.length, 1);
   assert.equal(runs[0].durationMs, 4060);
+  assert.equal(runs[0].report, 'Response');
+});
+
+test('commands stay distinct tasks, outside any agent group', () => {
   const commands = groupAgentRuns(
     taskRuns(
       [
@@ -123,8 +142,24 @@ test('gateway events match by update identity and commands stay distinct tasks',
   assert.equal(commands.length, 2);
   assert.equal(commands[0].kind, 'command');
   assert.equal(commands[0].durationMs, undefined);
-  assert.deepEqual(taskRuns([], [result('bash_1', 100, 'Command output')]), []);
+});
+
+test('tasks without a known kind are not runs', () => {
   assert.deepEqual(taskRuns([{ id: 'legacy', title: 'Unknown work', status: 'running' }], []), []);
+});
+
+test('runs are ordered by when they started', () => {
+  const runs = taskRuns(
+    [
+      agent('late', 'Late', '2026-10-20T11:00:00Z'),
+      agent('early', 'Early', '2026-10-20T09:00:00Z'),
+    ],
+    []
+  );
+  assert.deepEqual(
+    runs.map((run) => run.id),
+    ['early', 'late']
+  );
 });
 
 test('task type tags show all by default and combine agent and command selections', () => {
@@ -138,38 +173,47 @@ test('task type tags show all by default and combine agent and command selection
   assert.deepEqual(filterTaskKinds(tasks, ['agent', 'command']), tasks);
 });
 
-test('persisted assignments remain available when the launch arguments are missing', () => {
-  const inventory: ConversationTask[] = [
-    { id: 'x', title: 'Worker', kind: 'agent', status: 'completed', prompt: 'Original assignment' },
-  ];
-  const message = launch('x', 'a', 'Worker', 'unused');
-  if (message.role === 'tool') message.args = undefined;
-  assert.equal(taskRuns(inventory, [message])[0].prompt, 'Original assignment');
-  assert.equal(taskRuns(inventory, [])[0].prompt, 'Original assignment');
+test('the recorded prompt of a worker is kept', () => {
+  const runs = taskRuns(
+    [agent('x', 'Worker', '2026-10-20T10:00:00Z', { prompt: 'Original assignment' })],
+    []
+  );
+  assert.equal(runs[0].prompt, 'Original assignment');
 });
 
-test('background commands retain their command, output and tool identity without becoming agents', () => {
+test('a background command keeps its command, output and tool call', () => {
   const runs = taskRuns(
-    [],
     [
       {
-        id: 'bash-call',
-        role: 'tool',
+        id: 'bash_1',
+        title: 'Read time',
+        kind: 'command',
+        status: 'completed',
+        command: 'sleep 5; date',
+        stdout: 'Current time',
+        exitCode: 0,
         toolCallId: 'bash-call',
-        name: 'Bash',
-        args: JSON.stringify({ command: 'sleep 5; date', description: 'Read time' }),
-        result: 'Command is still running with task ID: bash_1\nOutput file: /tmp/bash_1.log',
       },
-      result('bash_1', 5000, 'Current time'),
-    ]
+    ],
+    []
   );
   assert.equal(runs.length, 1);
-  assert.equal(runs[0].kind, 'command');
-  assert.equal(runs[0].prompt, 'sleep 5; date');
-  assert.equal(runs[0].report, 'Current time');
   assert.equal(runs[0].toolCallId, 'bash-call');
-  assert.equal(runs[0].status, 'completed');
+  assert.deepEqual(commandOutput(runs[0]), {
+    command: 'sleep 5; date',
+    output: 'Current time',
+    exitCode: 0,
+  });
   assert.deepEqual(filterTaskKinds(runs, ['agent']), []);
+});
+
+test('command output falls back to the report and keeps stdout before stderr', () => {
+  assert.deepEqual(commandOutput({ report: 'only report', prompt: 'ls' }), {
+    command: 'ls',
+    output: 'only report',
+    exitCode: undefined,
+  });
+  assert.equal(commandOutput({ stdout: 'out', stderr: 'err', command: 'x' }).output, 'out\nerr');
 });
 
 test('live run durations advance independently while recorded completed durations stay fixed', () => {
@@ -188,12 +232,14 @@ test('live run durations advance independently while recorded completed duration
     3844
   );
   const runs = taskRuns(
-    [],
     [
-      launch('1', 'a', 'Name', 'Original'),
-      result('1', 11082, 'Done'),
-      launch('2', 'a', 'Follow-up', 'Again', true),
-    ]
+      agent('1', 'Name', '2026-10-15T13:00:00Z', { prompt: 'Original', durationMs: 11082 }),
+      agent('2', 'Follow-up', '2026-10-15T13:30:00Z', {
+        resumedFromTaskId: '1',
+        status: 'running',
+      }),
+    ],
+    []
   );
   assert.equal(runs[0].rerunName, undefined);
   assert.equal(runs[1].rerunName, 'Follow-up');
@@ -203,4 +249,9 @@ test('live run durations advance independently while recorded completed duration
     )
   );
   assert.equal(total[0].durationMs, 14082);
+});
+
+test('emoji are stripped from the start of rerun labels', () => {
+  assert.equal(stripLeadingEmoji('🔢 Explain power'), 'Explain power');
+  assert.equal(stripLeadingEmoji('Plain'), 'Plain');
 });

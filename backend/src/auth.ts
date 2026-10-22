@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { isLettaServer, isVoiceAgent } from './http';
+import { isVoiceAgent } from './http';
 
 const COOKIE = 'artemis_session';
 const TTL = 90 * 24 * 60 * 60;
@@ -32,9 +32,7 @@ export function createAuth(password: string, deviceToken: string) {
   app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     const path = c.req.path;
-    const internal =
-      (path.startsWith('/api/letta/') && isLettaServer(c.req.raw)) ||
-      (path.startsWith('/api/voice/conversations/') && isVoiceAgent(c.req.raw));
+    const internal = path.startsWith('/api/voice/conversations/') && isVoiceAgent(c.req.raw);
     const device =
       path.startsWith('/api/devices/') &&
       deviceToken &&

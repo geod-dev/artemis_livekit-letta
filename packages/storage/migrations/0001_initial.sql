@@ -14,7 +14,7 @@ CREATE TABLE conversations (
   mcp_tool_names_shown   text[]
 );
 CREATE INDEX conversations_recent_idx
-  ON conversations ((coalesce(last_message_at, created_at)) DESC, id)
+  ON conversations ((coalesce(last_message_at, created_at)) DESC, id DESC)
   WHERE archived_at IS NULL;
 
 -- Frozen system prompt + tool definitions per conversation (and per subagent task).

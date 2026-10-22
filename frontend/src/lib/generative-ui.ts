@@ -10,7 +10,7 @@ import { type PresentValidation, validatePresentTree } from '../../../shared/pre
 /**
  * Generative UI: the assistant calls the `present` tool with a JSON tree of
  * components (`{ componentType, ...props, children }`) and the chat renders it. The
- * backend registers the tool with Letta from `shared/generated/present-tool.json`,
+ * agent-server registers the tool from `shared/generated/present-tool.json`,
  * generated from this library by `pnpm generate:present-tool`; a test fails
  * when the two differ.
  */

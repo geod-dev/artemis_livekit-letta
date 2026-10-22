@@ -39,6 +39,7 @@ import {
   getToolGroupDisplay,
   getToolGroupLabel,
   toolCall,
+  toolCallUi,
 } from '@/components/assistant-ui/tools/tool-display';
 import { ToolFallback } from '@/components/assistant-ui/tools/tool-fallback';
 import {
@@ -154,13 +155,13 @@ const StoppedNotice: FC = () => {
 
 /** The tool calls of a group, as displays read them. */
 function groupCalls(
-  parts: readonly { type: string; toolName?: string; argsText?: string }[],
+  parts: readonly { type: string; toolName?: string; argsText?: string; artifact?: unknown }[],
   group: ThreadGroupPart
 ): ToolCall[] {
   return group.indices.flatMap((index) => {
     const part = parts[index];
     return part?.type === 'tool-call' && part.toolName
-      ? [toolCall(part.toolName, part.argsText)]
+      ? [toolCall(part.toolName, part.argsText, toolCallUi(part.artifact))]
       : [];
   });
 }

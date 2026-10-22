@@ -23,7 +23,7 @@ export type ThreadMessageCache = Map<string, CachedMessage>;
  *   turn renders as a single response with its tool calls inline.
  * - Voice user messages carry `metadata.modality: "voice"`, and so do the
  *   replies that follow them, so the thread draws a call as one spoken block.
- * - Events (task results, memory updates) become system messages; their kind,
+ * - Events (task results) become system messages; their kind,
  *   background update id, full report and unread state are kept in
  *   `metadata.custom`.
  *
@@ -168,6 +168,10 @@ function toAssistantPart(message: ChatMessage): AssistantPart {
       argsText: message.args ?? '',
       result: message.result,
       isError: message.isError,
+      // The server's display and background task of the call, for the tool UI.
+      ...(message.display || message.task
+        ? { artifact: { display: message.display, task: message.task } }
+        : {}),
     };
   }
   return { type: 'text', text: message.role === 'assistant' ? message.text : '' };

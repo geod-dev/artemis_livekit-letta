@@ -130,7 +130,8 @@ adopts immediately (`reason: 'requested'`). Synchronous policy (subagents): wait
 
 One toolset for main agents and subagents (order = `TOOL_NAMES`; append-only to keep caches):
 `read_file, write_file, edit_file, delete_file, list_files, search_files, bash, run_agent, list_tasks, get_task,
-stop_task, present, set_call_mode, end_call, mcp_describe, mcp_call, mcp_call_write`.
+stop_task, present, set_call_mode, end_call, mcp_describe, mcp_call, mcp_call_write, memory_search,
+memory_remember`.
 
 - Writes refuse `data/` (`WorkspaceAccessPolicy.readOnlyPrefixes`); attachments are read-only.
 - `run_agent {subagent_type, description, prompt, resume_task_id?}`: interactive -> background task (receipt with
@@ -142,6 +143,11 @@ stop_task, present, set_call_mode, end_call, mcp_describe, mcp_call, mcp_call_wr
 - MCP bridge: `mcp_describe`/`mcp_call`(read-only)/`mcp_call_write`, unchanged semantics; binary results saved
   to `data/artifacts/<conversationId>/...` and returned as `display.artifacts` (replaces the
   `[[mcp-managed-artifacts]]` marker and the backend retention tokens).
+- Memory tools (user decision, on top of automatic retain/recall §7), implemented in agent-server on the
+  `MemoryStore` abstraction (never Hindsight directly): `memory_search {query, budget?: low|mid|high}` -> on-demand
+  recall rendered with the same memories renderer (default budget = `recallBudget()` for the current turn);
+  `memory_remember {content, context?}` -> immediate retain (async) with `document_id = memory-note:<uuid>`,
+  metadata `{conversationId, source:'tool'}`, returns a short receipt. Available to main agent and subagents.
 - Execution policy is the only difference between main agent (`interactive`) and subagents (`synchronous`).
 
 Subagents (`services/agent-server/prompts/agents/{general-purpose,research}.md`, ported from
@@ -360,8 +366,8 @@ Removed: `LETTA_URL`, `LETTA_SERVER_TOKEN`, `LETTA_AGENT_NAME`, `LETTA_DEFAULT_C
 3. **Subagents get the same tools but synchronous**: no background handoff, `run_in_background` refused, nested
    `run_agent` awaited (keeps "the worker's final answer ends the task").
 4. `present` stays off by default (current behaviour) behind `ASSISTANT_PRESENT_TOOL`.
-5. No explicit memory tool: memories come from automatic retention + recall; explicit "remember/forget"
-   requests are retained like any turn (forgetting is not supported by this design).
+5. DECIDED (user): automatic retention + recall AND explicit tools `memory_search` / `memory_remember` (§5).
+   Forgetting is still not supported.
 6. Recalled memories are persisted in the user message (cache-stable); repeats are filtered per conversation.
 7. One agent-server instance (in-process event hub, registry); horizontal scaling is out of scope.
 8. Upload retention stays a JSON file in the gateway data dir; MCP artifacts move to agent-server-owned

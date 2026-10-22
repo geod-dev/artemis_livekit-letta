@@ -2,42 +2,55 @@ import {
   BotIcon,
   CircleStopIcon,
   EyeIcon,
+  FolderOpenIcon,
   GlobeIcon,
   LayoutDashboardIcon,
+  ListIcon,
   type LucideIcon,
   PenLineIcon,
+  PhoneIcon,
+  PhoneOffIcon,
   PlugIcon,
+  SearchIcon,
   TerminalIcon,
+  Trash2Icon,
   WrenchIcon,
 } from 'lucide-react';
+import type { ToolDisplay, ToolTaskRef } from '@shared/chat-types';
 import { stripLeadingEmoji } from '../../../lib/agent-runs.ts';
-import { readToolOutput } from '../../../lib/tool-output.ts';
+import { TOOL_NAMES } from '../../../lib/tool-names.ts';
 
 /**
  * How tool calls look in the thread: the one place that knows tools. A call
- * shows the first display that matches it, or the default display.
+ * shows the first presentation that matches it, or the default one. Calls are
+ * matched by the agent-server's tool names, and labelled from the structured
+ * `display` and `task` the server sends with them.
  */
 
-/** A tool call, as displays match and describe it. */
+/** What the server sent with a call: its display, and the background task it started or moved. */
+export type ToolCallUi = { display?: ToolDisplay; task?: ToolTaskRef };
+
+/** A tool call, as presentations match and describe it. */
 export type ToolCall = {
   toolName: string;
   /** The raw arguments, possibly still streaming. */
   argsText: string | undefined;
   args: Record<string, unknown>;
+  ui: ToolCallUi;
 };
 
 /** A titled card in a call's details. */
 export type ToolCard = { title: string; content: unknown };
 
-export type ToolDisplay = {
-  /** Whether this display presents the call. */
+export type ToolPresentation = {
+  /** Whether this presentation presents the call. */
   match: (call: ToolCall) => boolean;
   icon: LucideIcon;
   hideIcon?: boolean;
   /** Trigger label for a single call, or undefined to keep the default label. */
   describe: (call: ToolCall) => string | undefined;
   /**
-   * Group trigger label when every call in the group shows this display, from
+   * Group trigger label when every call in the group shows this presentation, from
    * the calls the label is about (see `getToolGroupLabel`): one or more.
    */
   groupLabel: (calls: ToolCall[]) => string;
@@ -55,7 +68,7 @@ const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? 
 
 /** The file a call works on, by its name. */
 const fileName = (args: Record<string, unknown>) => {
-  const path = nonEmptyString(args.file_path) ?? nonEmptyString(args.path);
+  const path = nonEmptyString(args.path) ?? nonEmptyString(args.file_path);
   return path ? basename(path) : undefined;
 };
 
@@ -73,39 +86,19 @@ function argumentCards({ argsText }: ToolCall): ToolCard[] {
   }
 }
 
-/**
- * An MCP tool call from Bash: `letta mcp call <tool>` (older chats), or the
- * `mcp-servers` skill's wrapper, `sh …/mcp.sh call <tool>`.
- */
-const BASH_MCP_CALL = /^(?:letta mcp|sh \S*\/mcp\.sh) call (\S+)/;
-
 /** The bridge tools that run an MCP tool: `{ tool, arguments }`. */
-const BRIDGE_CALLS = ['mcp_call', 'mcp_call_write'];
-
-/** The JSON of `… call <tool> --args '<json>'`, unquoted as the shell would. */
-function lettaMcpArgs(command: string): string | undefined {
-  const value = /--args(?:=|\s+)('(?:[^']|'\\'')*'|"(?:[^"\\]|\\.)*"|\S+)/.exec(command)?.[1];
-  if (value?.startsWith("'")) return value.slice(1, -1).replaceAll("'\\''", "'");
-  if (value?.startsWith('"')) return value.slice(1, -1).replace(/\\([\\"$`])/g, '$1');
-  return value;
-}
+const BRIDGE_CALLS: readonly string[] = [TOOL_NAMES.mcpCall, TOOL_NAMES.mcpCallWrite];
 
 /**
- * The MCP tool a call runs (`mcp__<server>__<tool>`, or a bare name through
- * the bridge) and the JSON of its arguments, through the bridge or from Bash;
- * undefined for other calls.
+ * The MCP tool a bridge call runs (`mcp__<server>__<tool>`, or a bare name) and
+ * the JSON of its arguments; undefined for other calls.
  */
 function mcpToolCall(call: ToolCall): { tool: string; argsText: string | undefined } | undefined {
-  if (BRIDGE_CALLS.includes(call.toolName)) {
-    const tool = nonEmptyString(call.args.tool)?.trim();
-    const args = call.args.arguments;
-    if (!tool) return undefined;
-    return { tool, argsText: typeof args === 'string' ? args : JSON.stringify(args ?? {}) };
-  }
-  if (call.toolName !== 'Bash') return undefined;
-  const command = nonEmptyString(call.args.command)?.trim();
-  const match = command && BASH_MCP_CALL.exec(command);
-  return match ? { tool: match[1], argsText: lettaMcpArgs(command) } : undefined;
+  if (!BRIDGE_CALLS.includes(call.toolName)) return undefined;
+  const tool = nonEmptyString(call.args.tool)?.trim();
+  const args = call.args.arguments;
+  if (!tool) return undefined;
+  return { tool, argsText: typeof args === 'string' ? args : JSON.stringify(args ?? {}) };
 }
 
 /**
@@ -143,13 +136,6 @@ export function webSearchQuery(call: ToolCall): string | undefined {
   }
 }
 
-/** The shell command of a `Bash` call, unless it is an MCP tool call. */
-export function shellCommand(call: ToolCall): string | undefined {
-  if (call.toolName !== 'Bash') return undefined;
-  const command = nonEmptyString(call.args.command)?.trim();
-  return command && BASH_MCP_CALL.test(command) ? undefined : command;
-}
-
 /** An MCP tool call shows the tool's arguments, any other call its own. */
 function mcpCards(call: ToolCall): ToolCard[] {
   const mcp = mcpToolCall(call);
@@ -163,11 +149,35 @@ function mcpToolLabel(value: unknown): string | undefined {
   return match ? `${match[2]} (${match[1]})` : name;
 }
 
-/** A display for the calls of these tools, unless `match` narrows them (by arguments, say). */
+/** The command display of a shell call, when the server sent one. */
+function commandDisplay(call: ToolCall) {
+  return call.ui.display?.type === 'command' ? call.ui.display : undefined;
+}
+
+/** A worker call that resumes an earlier task (a follow-up), not a fresh one. */
+function isWorkerRestart(call: ToolCall): boolean {
+  return (
+    (call.ui.display?.type === 'agent' && Boolean(call.ui.display.resumedFromTaskId)) ||
+    nonEmptyString(call.args.resume_task_id) !== undefined
+  );
+}
+
+/** The trigger label of a worker call: its launch, or its follow-up. */
+function workerLabel(call: ToolCall, agentTitle?: string): string {
+  const description = nonEmptyString(call.args.description);
+  if (isWorkerRestart(call)) {
+    const followup = stripLeadingEmoji(description ?? '') || 'Follow-up';
+    return `${agentTitle ?? 'Agent'} - Agent restarted: ${followup}`;
+  }
+  return `${agentTitle ?? description ?? 'Agent'} - Agent started`;
+}
+
+/** A presentation for the calls of these tools, unless `match` narrows them (by arguments, say). */
 function toolDisplay(
-  toolNames: string | string[],
-  display: Omit<ToolDisplay, 'match' | 'cards'> & Partial<Pick<ToolDisplay, 'match' | 'cards'>>
-): ToolDisplay {
+  toolNames: string | readonly string[],
+  display: Omit<ToolPresentation, 'match' | 'cards'> &
+    Partial<Pick<ToolPresentation, 'match' | 'cards'>>
+): ToolPresentation {
   const names = [toolNames].flat();
   return {
     ...display,
@@ -176,10 +186,10 @@ function toolDisplay(
   };
 }
 
-const TOOL_DISPLAYS: ToolDisplay[] = [
-  // Exa's tools, through the MCP bridge or from Bash, ahead of the generic
-  // displays. Searches and fetches share one display, so a mix of them groups as pages.
-  toolDisplay(['Bash', ...BRIDGE_CALLS], {
+const TOOL_DISPLAYS: ToolPresentation[] = [
+  // Exa's tools, through the MCP bridge, ahead of the generic presentations.
+  // Searches and fetches share one presentation, so a mix of them groups as pages.
+  toolDisplay(BRIDGE_CALLS, {
     match: (call) => isWebSearch(call) || isWebFetch(call),
     icon: GlobeIcon,
     describe: (call) => (isWebFetch(call) ? 'Visited web page' : 'Searched the web'),
@@ -191,20 +201,19 @@ const TOOL_DISPLAYS: ToolDisplay[] = [
     },
     cards: mcpCards,
   }),
-  toolDisplay(['Bash', ...BRIDGE_CALLS], {
+  toolDisplay(BRIDGE_CALLS, {
     match: isDeepResearch,
     icon: BotIcon,
     describe: () => 'Deep research',
     groupLabel: (calls) => `Launched ${counted(calls.length, 'deep research task')}`,
     cards: mcpCards,
   }),
-  toolDisplay('Bash', {
+  toolDisplay(TOOL_NAMES.bash, {
     icon: TerminalIcon,
-    describe: ({ args }) => nonEmptyString(args.description),
+    describe: (call) => nonEmptyString(commandDisplay(call)?.description ?? call.args.description),
     groupLabel: (calls) => `Ran ${counted(calls.length, 'command')}`,
-    cards: mcpCards,
   }),
-  toolDisplay('Read', {
+  toolDisplay(TOOL_NAMES.readFile, {
     icon: EyeIcon,
     describe: ({ args }) => {
       const name = fileName(args);
@@ -212,7 +221,7 @@ const TOOL_DISPLAYS: ToolDisplay[] = [
     },
     groupLabel: (calls) => `Opened ${counted(calls.length, 'file')}`,
   }),
-  toolDisplay('Edit', {
+  toolDisplay(TOOL_NAMES.editFile, {
     icon: PenLineIcon,
     describe: ({ args }) => {
       const name = fileName(args);
@@ -220,7 +229,7 @@ const TOOL_DISPLAYS: ToolDisplay[] = [
     },
     groupLabel: (calls) => `Made ${counted(calls.length, 'edit')}`,
   }),
-  toolDisplay('Write', {
+  toolDisplay(TOOL_NAMES.writeFile, {
     icon: PenLineIcon,
     describe: ({ args }) => {
       const name = fileName(args);
@@ -228,44 +237,79 @@ const TOOL_DISPLAYS: ToolDisplay[] = [
     },
     groupLabel: (calls) => `Wrote ${counted(calls.length, 'file')}`,
   }),
-  // Workers: `Task` starts one, `Agent` starts or resumes one.
-  toolDisplay(['Task', 'Agent'], {
+  toolDisplay(TOOL_NAMES.deleteFile, {
+    icon: Trash2Icon,
+    describe: ({ args }) => {
+      const name = fileName(args);
+      return name ? `Deleted ${name}` : undefined;
+    },
+    groupLabel: (calls) => `Deleted ${counted(calls.length, 'file')}`,
+  }),
+  toolDisplay(TOOL_NAMES.listFiles, {
+    icon: FolderOpenIcon,
+    describe: ({ args }) => {
+      const path = nonEmptyString(args.path);
+      return path ? `Listed ${basename(path)}` : 'Listed files';
+    },
+    groupLabel: (calls) => `Listed ${counted(calls.length, 'folder')}`,
+  }),
+  toolDisplay(TOOL_NAMES.searchFiles, {
+    icon: SearchIcon,
+    describe: ({ args }) => {
+      const pattern = nonEmptyString(args.pattern) ?? nonEmptyString(args.query);
+      return pattern ? `Searched files for ${pattern}` : 'Searched files';
+    },
+    groupLabel: (calls) => `Ran ${counted(calls.length, 'file search')}`,
+  }),
+  // Workers: `run_agent` starts one, or resumes one with `resume_task_id`.
+  toolDisplay(TOOL_NAMES.runAgent, {
     icon: BotIcon,
     hideIcon: true,
-    describe: ({ args }) => {
-      const restarted = Boolean(
-        nonEmptyString(args.conversation_id) || nonEmptyString(args.agent_id)
-      );
-      const description = nonEmptyString(args.description);
-      const followup = description ? stripLeadingEmoji(description) || 'Follow-up' : 'Follow-up';
-      return restarted
-        ? `Agent - Agent restarted: ${followup}`
-        : `${description ?? 'Agent'} - Agent started`;
-    },
+    describe: (call) => workerLabel(call),
     groupLabel: (calls) => `Started ${counted(calls.length, 'agent')}`,
   }),
-  toolDisplay('TaskStop', {
-    icon: CircleStopIcon,
-    describe: () => 'Stopped an agent',
-    groupLabel: (calls) => `Stopped ${counted(calls.length, 'agent')}`,
+  toolDisplay(TOOL_NAMES.listTasks, {
+    icon: ListIcon,
+    describe: () => 'Listed tasks',
+    groupLabel: (calls) => `Listed ${counted(calls.length, 'task list')}`,
   }),
-  // The MCP bridge (Settings -> MCP servers): search, describe, then call a server's tool.
-  toolDisplay(['mcp_search', 'mcp_describe', 'mcp_call', 'mcp_call_write'], {
+  toolDisplay(TOOL_NAMES.getTask, {
+    icon: ListIcon,
+    describe: () => 'Checked a task',
+    groupLabel: (calls) => `Checked ${counted(calls.length, 'task')}`,
+  }),
+  toolDisplay(TOOL_NAMES.stopTask, {
+    icon: CircleStopIcon,
+    describe: () => 'Stopped a task',
+    groupLabel: (calls) => `Stopped ${counted(calls.length, 'task')}`,
+  }),
+  // The MCP bridge: describe a server's tool, then call it.
+  toolDisplay([TOOL_NAMES.mcpDescribe, ...BRIDGE_CALLS], {
     icon: PlugIcon,
     describe: ({ toolName, args }) => {
-      if (toolName === 'mcp_search') {
-        const query = nonEmptyString(args.query);
-        return query ? `Looked for tools: ${query}` : 'Looked for tools';
-      }
       const tool = mcpToolLabel(args.tool);
       if (!tool) return undefined;
-      return toolName === 'mcp_describe' ? `Read about ${tool}` : `Used ${tool}`;
+      return toolName === TOOL_NAMES.mcpDescribe ? `Read about ${tool}` : `Used ${tool}`;
     },
     groupLabel: (calls) => `Made ${counted(calls.length, 'MCP call')}`,
     cards: mcpCards,
   }),
+  // Calls: changing the mode of the voice call, and ending it.
+  toolDisplay(TOOL_NAMES.setCallMode, {
+    icon: PhoneIcon,
+    describe: ({ args }) => {
+      const mode = nonEmptyString(args.mode);
+      return mode ? `Set call mode to ${mode}` : 'Changed the call mode';
+    },
+    groupLabel: (calls) => `Changed ${counted(calls.length, 'call mode')}`,
+  }),
+  toolDisplay(TOOL_NAMES.endCall, {
+    icon: PhoneOffIcon,
+    describe: () => 'Ended the call',
+    groupLabel: (calls) => `Ended ${counted(calls.length, 'call')}`,
+  }),
   // Generative UI: shown as a call only while it runs or when it failed.
-  toolDisplay('present', {
+  toolDisplay(TOOL_NAMES.present, {
     icon: LayoutDashboardIcon,
     describe: () => 'Interactive view',
     groupLabel: (calls) => `Showed ${counted(calls.length, 'view')}`,
@@ -274,8 +318,8 @@ const TOOL_DISPLAYS: ToolDisplay[] = [
 
 const defaultLabel = ({ toolName }: ToolCall) => toolName;
 
-/** Any other tool call, and groups of calls that show different displays. */
-const DEFAULT_TOOL_DISPLAY: ToolDisplay = {
+/** Any other tool call, and groups of calls that show different presentations. */
+const DEFAULT_TOOL_DISPLAY: ToolPresentation = {
   match: () => true,
   icon: WrenchIcon,
   describe: defaultLabel,
@@ -283,20 +327,31 @@ const DEFAULT_TOOL_DISPLAY: ToolDisplay = {
   cards: argumentCards,
 };
 
-export function toolCall(toolName: string, argsText: string | undefined): ToolCall {
-  return { toolName, argsText, args: parseToolArgs(argsText) };
+/** The UI data of a tool-call part, which the thread keeps in the part's `artifact`. */
+export function toolCallUi(artifact: unknown): ToolCallUi {
+  if (!artifact || typeof artifact !== 'object') return {};
+  const { display, task } = artifact as ToolCallUi;
+  return { display: display ?? undefined, task: task ?? undefined };
 }
 
-export function getToolDisplay(call: ToolCall): ToolDisplay {
+export function toolCall(
+  toolName: string,
+  argsText: string | undefined,
+  ui: ToolCallUi = {}
+): ToolCall {
+  return { toolName, argsText, args: parseToolArgs(argsText), ui };
+}
+
+export function getToolDisplay(call: ToolCall): ToolPresentation {
   return TOOL_DISPLAYS.find((display) => display.match(call)) ?? DEFAULT_TOOL_DISPLAY;
 }
 
 /**
- * Calls that only prepare the next ones (finding and reading about MCP tools):
- * a group's label is about what those next calls did, so these do not count,
- * and "search, describe, three web searches" reads as three web searches.
+ * Calls that only prepare the next ones (reading about MCP tools): a group's
+ * label is about what those next calls did, so these do not count, and
+ * "describe, three web searches" reads as three web searches.
  */
-const PREPARATORY_TOOLS = new Set(['mcp_search', 'mcp_describe']);
+const PREPARATORY_TOOLS = new Set<string>([TOOL_NAMES.mcpDescribe]);
 
 /** The calls a group's label is about: all of them when every one only prepares. */
 function labelledCalls(calls: ToolCall[]): ToolCall[] {
@@ -304,54 +359,37 @@ function labelledCalls(calls: ToolCall[]): ToolCall[] {
   return doing.length > 0 ? doing : calls;
 }
 
-/** The display of a group: the one its calls share, or the default. */
-export function getToolGroupDisplay(calls: ToolCall[]): ToolDisplay {
+/** The presentation of a group: the one its calls share, or the default. */
+export function getToolGroupDisplay(calls: ToolCall[]): ToolPresentation {
   const [first, ...rest] = labelledCalls(calls).map(getToolDisplay);
   return first && rest.every((display) => display === first) ? first : DEFAULT_TOOL_DISPLAY;
 }
 
-/** A group's trigger label, from the calls its display is about. */
+/** A group's trigger label, from the calls its presentation is about. */
 export function getToolGroupLabel(calls: ToolCall[]): string {
   return getToolGroupDisplay(calls).groupLabel(labelledCalls(calls));
 }
 
 /** The trigger label of a single call. */
 export function toolCallLabel(call: ToolCall, agentTitle?: string, background = false): string {
-  if (agentTitle && ['Agent', 'Task'].includes(call.toolName)) {
-    const restarted =
-      nonEmptyString(call.args.agent_id) || nonEmptyString(call.args.conversation_id);
-    const followup = stripLeadingEmoji(nonEmptyString(call.args.description) ?? '') || 'Follow-up';
-    return restarted
-      ? `${agentTitle} - Agent restarted: ${followup}`
-      : `${agentTitle} - Agent started`;
-  }
-  const label = getToolDisplay(call).describe(call) ?? defaultLabel(call);
-  return background && ['Bash', 'exec_command'].includes(call.toolName)
-    ? `(background) ${label}`
-    : label;
+  const label =
+    call.toolName === TOOL_NAMES.runAgent
+      ? workerLabel(call, agentTitle)
+      : (getToolDisplay(call).describe(call) ?? defaultLabel(call));
+  return background && call.toolName === TOOL_NAMES.bash ? `(background) ${label}` : label;
 }
 
-/** A receipt or tracked command establishes background execution, even after completion. */
-export function commandIsBackground(call: ToolCall, result: unknown, tracked = false): boolean {
-  if (!['Bash', 'exec_command'].includes(call.toolName)) return false;
-  if (tracked) return true;
-  if (result === undefined) return call.args.run_in_background === true;
-  if (typeof result === 'string') {
-    try {
-      const parsed: unknown = JSON.parse(result);
-      if (Array.isArray(parsed)) result = parsed;
-    } catch {
-      /* Plain text receipts need no decoding. */
-    }
-  }
-  const text = Array.isArray(result)
-    ? result
-        .map((part) => (part?.type === 'text' && typeof part.text === 'string' ? part.text : ''))
-        .join('\n')
-    : readToolOutput(result).text;
-  return /^Command (?:running in background with ID: |is still running with task ID: )[^\s\\]+(?:\r?\n|$)/.test(
-    text.trim()
-  );
+/**
+ * Whether a shell call runs in the background: it started a background task,
+ * or its display says so. `tracked` is set when the activity already knows the
+ * call's task to be a command.
+ */
+export function commandIsBackground(call: ToolCall, tracked = false): boolean {
+  if (call.toolName !== TOOL_NAMES.bash) return false;
+  if (tracked || call.ui.task?.kind === 'command') return true;
+  const display = commandDisplay(call);
+  if (display) return Boolean(display.background);
+  return call.args.run_in_background === true;
 }
 
 function parseToolArgs(argsText: string | undefined): Record<string, unknown> {

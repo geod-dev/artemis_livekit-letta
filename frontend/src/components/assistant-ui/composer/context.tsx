@@ -1,6 +1,6 @@
 // Assistant-ui ComposerContext, installed from @assistant-ui/elements-composer.
 // https://www.assistant-ui.com/elements/composer-context
-// Accept Letta's aggregate usage when no category breakdown is available.
+// Accept the aggregate usage when no category breakdown is available.
 import type { ComponentProps } from 'react';
 import { ghostButton, mono } from '@/components/assistant-ui/shared/surfaces';
 import { clamp } from '@/components/assistant-ui/utils/range';

@@ -92,6 +92,7 @@ export abstract class WorkspaceTransport {
 
   abstract stat(path: string): Promise<FileStat | null>;
   abstract readFile(path: string): Promise<Uint8Array>;
+  /** The whole text, or `limit` lines starting at the zero-based line `offset`. */
   abstract readText(path: string, options?: { offset?: number; limit?: number }): Promise<string>;
   /** Atomic (tmp + rename); creates parent directories. */
   abstract writeFile(path: string, data: Uint8Array | string): Promise<void>;

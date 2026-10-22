@@ -25,6 +25,9 @@ export const TOOL_NAMES = {
   mcpDescribe: 'mcp_describe',
   mcpCall: 'mcp_call',
   mcpCallWrite: 'mcp_call_write',
+  // agent-server memory tools (MemoryStore)
+  memorySearch: 'memory_search',
+  memoryRemember: 'memory_remember',
 } as const;
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];

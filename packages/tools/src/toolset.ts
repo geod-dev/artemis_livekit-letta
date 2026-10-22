@@ -1,8 +1,7 @@
-import { notImplemented } from '@artemis/core';
 import type { ToolDefinition } from '@artemis/llm';
 import type { ToolContext } from './context.ts';
-import type { ToolResult } from './result.ts';
-import type { AnyTool } from './tool.ts';
+import { errorResult, type ToolResult } from './result.ts';
+import { type AnyTool, ToolInputError } from './tool.ts';
 
 /**
  * An ordered, name-unique set of tools. `definitions()` is deterministic
@@ -13,23 +12,50 @@ import type { AnyTool } from './tool.ts';
  * offers but the code no longer has returns an error result.
  */
 export class Toolset<C extends ToolContext = ToolContext> {
-  constructor(readonly tools: readonly AnyTool<C>[]) {}
+  private readonly byName = new Map<string, AnyTool<C>>();
+  private readonly defs: ToolDefinition[];
 
-  definitions(): ToolDefinition[] {
-    return notImplemented('Toolset.definitions');
+  constructor(readonly tools: readonly AnyTool<C>[]) {
+    for (const tool of tools) {
+      if (this.byName.has(tool.name)) throw new Error(`Duplicate tool name: ${tool.name}`);
+      this.byName.set(tool.name, tool);
+    }
+    this.defs = tools.map((tool) => tool.definition());
   }
 
-  get(_name: string): AnyTool<C> | undefined {
-    return notImplemented('Toolset.get');
+  definitions(): ToolDefinition[] {
+    return [...this.defs];
+  }
+
+  get(name: string): AnyTool<C> | undefined {
+    return this.byName.get(name);
   }
 
   /** parse -> execute; unknown tool, invalid input and unexpected throws become error results. */
-  execute(_name: string, _input: unknown, _context: C): Promise<ToolResult> {
-    return notImplemented('Toolset.execute');
+  async execute(name: string, input: unknown, context: C): Promise<ToolResult> {
+    const tool = this.byName.get(name);
+    if (!tool) return errorResult(`Unknown tool "${name}".`);
+    let parsed: unknown;
+    try {
+      parsed = tool.parse(input);
+    } catch (error) {
+      if (error instanceof ToolInputError) return errorResult(error.message);
+      return errorResult(`${name}: invalid input (${messageOf(error)}).`);
+    }
+    try {
+      return await tool.execute(parsed, context);
+    } catch (error) {
+      context.logger.error('tool threw', { tool: name, error: messageOf(error) });
+      return errorResult(`${name} failed: ${messageOf(error)}`);
+    }
   }
 
   /** A new toolset with `tools` appended (names must stay unique). */
-  with(_tools: readonly AnyTool<C>[]): Toolset<C> {
-    return notImplemented('Toolset.with');
+  with(tools: readonly AnyTool<C>[]): Toolset<C> {
+    return new Toolset<C>([...this.tools, ...tools]);
   }
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

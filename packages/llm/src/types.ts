@@ -106,6 +106,7 @@ export type StopReason =
   | 'error';
 
 export interface LlmUsage {
+  /** All prompt tokens, including cache reads and writes (comparable across providers). */
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens?: number;
@@ -121,6 +122,8 @@ export interface LlmResponse {
   usage: LlmUsage;
   /** Measured by the provider adapter. */
   timings: { startedAt: string; firstTokenMs?: number; durationMs: number };
+  /** Set when `stopReason` is `error` (a failure after output had started). */
+  error?: { code: string; message: string };
 }
 
 /** Streaming events, in order, for one model step. */
