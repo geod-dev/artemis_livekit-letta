@@ -1,5 +1,6 @@
 import {
   BotIcon,
+  BrainIcon,
   CircleStopIcon,
   EyeIcon,
   FolderOpenIcon,
@@ -63,6 +64,12 @@ const nonEmptyString = (value: unknown) =>
 
 /** "1 page", "3 pages". */
 const counted = (count: number, noun: string) => `${count} ${count === 1 ? noun : `${noun}s`}`;
+
+/** A text as one line, cut to `max` characters for a label. */
+const excerpt = (text: string, max = 60) => {
+  const line = text.replace(/\s+/g, ' ').trim();
+  return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
+};
 
 const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
@@ -260,6 +267,25 @@ const TOOL_DISPLAYS: ToolPresentation[] = [
       return pattern ? `Searched files for ${pattern}` : 'Searched files';
     },
     groupLabel: (calls) => `Ran ${counted(calls.length, 'file search')}`,
+  }),
+  // Memory: searched for what the agent knows, or remembered something new.
+  toolDisplay(TOOL_NAMES.memorySearch, {
+    icon: SearchIcon,
+    describe: ({ args }) => {
+      const query = nonEmptyString(args.query);
+      return query ? `Searching memory: ${excerpt(query)}` : 'Searching memory';
+    },
+    groupLabel: (calls) =>
+      calls.length === 1 ? 'Ran 1 memory search' : `Ran ${calls.length} memory searches`,
+  }),
+  toolDisplay(TOOL_NAMES.memoryRemember, {
+    icon: BrainIcon,
+    describe: ({ args }) => {
+      const content = nonEmptyString(args.content);
+      return content ? `Remembering: ${excerpt(content)}` : 'Remembering';
+    },
+    groupLabel: (calls) =>
+      calls.length === 1 ? 'Saved 1 memory' : `Saved ${calls.length} memories`,
   }),
   // Workers: `run_agent` starts one, or resumes one with `resume_task_id`.
   toolDisplay(TOOL_NAMES.runAgent, {

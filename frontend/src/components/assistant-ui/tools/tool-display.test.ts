@@ -151,3 +151,28 @@ test('a call without a display falls back to its tool name', () => {
   assert.equal(toolCallLabel(bridge('some_tool', {})), 'some_tool');
   assert.equal(toolCallLabel(bridge('end_call', {})), 'Ended the call');
 });
+
+test('memory calls say what was searched for or remembered', () => {
+  assert.equal(toolCallLabel(bridge('memory_search', { query: 'dentist appointment' })), 'Searching memory: dentist appointment');
+  assert.equal(toolCallLabel(bridge('memory_search', {})), 'Searching memory');
+  assert.equal(toolCallLabel(bridge('memory_remember', { content: 'Lucas prefers metric units' })), 'Remembering: Lucas prefers metric units');
+  assert.equal(toolCallLabel(bridge('memory_remember', {})), 'Remembering');
+});
+
+test('long memory text is cut to one line in its label', () => {
+  const long = `first line\n\n${'word '.repeat(40)}`;
+  const label = toolCallLabel(bridge('memory_remember', { content: long }));
+  assert.ok(label.startsWith('Remembering: first line word word'));
+  assert.ok(label.endsWith('…'));
+  assert.ok(!label.includes('\n'));
+  assert.ok(label.length <= 'Remembering: '.length + 60);
+});
+
+test('memory groups count searches and saves separately', () => {
+  const search = bridge('memory_search', { query: 'q' });
+  const remember = bridge('memory_remember', { content: 'c' });
+  assert.equal(getToolGroupLabel([search]), 'Ran 1 memory search');
+  assert.equal(getToolGroupLabel([search, search]), 'Ran 2 memory searches');
+  assert.equal(getToolGroupLabel([remember]), 'Saved 1 memory');
+  assert.equal(getToolGroupLabel([remember, remember]), 'Saved 2 memories');
+});

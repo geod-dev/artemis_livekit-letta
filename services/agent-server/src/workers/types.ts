@@ -65,3 +65,9 @@ export interface SubagentSpec {
   resumedFromTaskId: string | null;
   depth: number;
 }
+
+/**
+ * `background`: the outcome becomes a background update for the main agent.
+ * `synchronous`: a nested run whose report is returned to the calling tool.
+ */
+export type SubagentStartMode = 'background' | 'synchronous';

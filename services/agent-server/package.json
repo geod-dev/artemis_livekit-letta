@@ -23,6 +23,7 @@
     "@artemis/mcp": "workspace:*",
     "@artemis/agent": "workspace:*",
     "@hono/node-server": "^1.19.5",
+    "ajv": "^8.20.0",
     "hono": "^4.10.1",
     "tsx": "^4.20.6"
   },

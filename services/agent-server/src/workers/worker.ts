@@ -1,4 +1,4 @@
-import type { Reapable } from '@artemis/core';
+import { type Clock, type Reapable, systemClock } from '@artemis/core';
 import type { WorkerKind, WorkerState } from './types.ts';
 
 /**
@@ -12,7 +12,11 @@ export abstract class Worker implements Reapable {
   abstract readonly conversationId: string;
 
   protected currentState: WorkerState = 'spawning';
-  protected lastActivity = Date.now();
+  protected lastActivity: number;
+
+  constructor(protected readonly clock: Clock = systemClock) {
+    this.lastActivity = clock.now();
+  }
 
   get state(): WorkerState {
     return this.currentState;
@@ -22,8 +26,8 @@ export abstract class Worker implements Reapable {
     return this.lastActivity;
   }
 
-  protected touch(now = Date.now()): void {
-    this.lastActivity = now;
+  protected touch(): void {
+    this.lastActivity = this.clock.now();
   }
 
   /** Load state from storage; `idle` (main) or `busy` (task) afterwards. */

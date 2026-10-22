@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Provider-agnostic agent loop: stream a model step, run tool calls, repeat until the answer is final.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./test-support": "./src/test-support.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
