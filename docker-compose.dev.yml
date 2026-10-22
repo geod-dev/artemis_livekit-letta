@@ -1,7 +1,8 @@
-# Local hot-reload setup: keep Letta and LiveKit in Docker, run app code on host.
+# Local hot-reload setup: keep Postgres, Hindsight and LiveKit in Docker, run app code on host.
 services:
-  letta:
-    environment:
-      ASSISTANT_GATEWAY_URL: http://host.docker.internal:3000
+  postgres:
     ports:
-      - "127.0.0.1:4500:4500"
+      - "127.0.0.1:5432:5432"
+  hindsight:
+    ports:
+      - "127.0.0.1:8888:8888"

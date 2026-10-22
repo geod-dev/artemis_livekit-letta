@@ -6,8 +6,3 @@ packages:
   - packages/*
   - services/*
   - backend
-
-# Temporary: the backend still depends on Letta until work package WP-13
-# (cleanup) removes it together with this entry.
-onlyBuiltDependencies:
-  - '@letta-ai/letta-code'

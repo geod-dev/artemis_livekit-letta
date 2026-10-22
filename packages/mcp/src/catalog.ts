@@ -49,7 +49,7 @@ export function toCatalogTools(server: McpServer, listed: readonly ListedTool[])
 /**
  * Cached tool list across all configured servers (port of mcp-bridge/catalog.ts).
  * Refreshed when older than the TTL, on demand, and by the owner on every
- * settings change. Unlike the Letta bridge, stdio servers are included: the
+ * settings change. Unlike the legacy bridge, stdio servers are included: the
  * agent-server spawns them itself. A server that fails keeps no tools and is
  * reported in `status()`; the others still list.
  */

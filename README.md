@@ -1,8 +1,17 @@
 # Persistent assistant
 
-A personal assistant with one Letta identity and memory, shared across text chat,
+A personal assistant with one identity and Hindsight-backed memory, shared across text chat,
 voice calls, and background work. The repository contains the web app, gateway,
-LiveKit voice agent, Android WebView wrapper, and deployment configuration.
+agent server, LiveKit voice agent, Android WebView wrapper, and deployment configuration.
+
+## Services
+
+- `frontend`: static React app served by nginx.
+- `backend`: authenticated gateway for the browser, devices, files, and voice tokens.
+- `agent-server`: conversations, workers, tools, MCP, and the memory coordinator.
+- `postgres` (pgvector): databases for the agent server (`artemis`) and Hindsight (`hindsight`).
+- `hindsight`: long-term memory service.
+- `livekit` and `voice-agent`: voice calls.
 
 ## Start here
 

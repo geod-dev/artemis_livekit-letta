@@ -24,7 +24,8 @@ import { wakesThread } from './policy.ts';
  * (-> delivered) or roll back. Call end: unspoken `queued` -> `held` + wake.
  */
 export abstract class BackgroundDeliveryService {
-  abstract taskFinished(task: TaskRecord): Promise<BackgroundUpdateRecord>;
+  /** `null` when the conversation is archived (nothing is recorded or woken). */
+  abstract taskFinished(task: TaskRecord): Promise<BackgroundUpdateRecord | null>;
   abstract claimHeld(conversationId: string): Promise<{ token: string; updates: BackgroundUpdateRecord[] }>;
   abstract claimQueued(conversationId: string, updateId: string): Promise<{ token: string; update: BackgroundUpdateRecord } | null>;
   abstract complete(conversationId: string, token: string, turnId: string): Promise<void>;
@@ -51,8 +52,10 @@ export class StorageBackgroundDeliveryService extends BackgroundDeliveryService 
     super();
   }
 
-  async taskFinished(task: TaskRecord): Promise<BackgroundUpdateRecord> {
+  async taskFinished(task: TaskRecord): Promise<BackgroundUpdateRecord | null> {
     const { storage, calls, logger } = this.deps;
+    // A task cancelled by archive still ends here: an archived conversation records and wakes nothing.
+    if (!(await this.live(task.conversationId))) return null;
     const status = task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled' ? task.status : 'failed';
     const durationMs = task.endedAt ? Math.max(0, Date.parse(task.endedAt) - Date.parse(task.startedAt)) : null;
     const update = await storage.updates.create({
@@ -121,6 +124,7 @@ export class StorageBackgroundDeliveryService extends BackgroundDeliveryService 
   }
 
   async callEnded(conversationId: string, pendingUpdateIds: string[]): Promise<void> {
+    if (!(await this.live(conversationId))) return;
     const unqueued = await this.deps.storage.updates.unqueue(conversationId, pendingUpdateIds);
     this.changed(conversationId);
     if (unqueued > 0) this.deps.wake(conversationId);
@@ -133,6 +137,11 @@ export class StorageBackgroundDeliveryService extends BackgroundDeliveryService 
 
   private now(): string {
     return new Date(this.deps.clock.now()).toISOString();
+  }
+
+  /** False for archived (or unknown) conversations: no updates, no wake-ups. */
+  private async live(conversationId: string): Promise<boolean> {
+    return Boolean(await this.deps.storage.conversations.get(conversationId));
   }
 
   /** Read state and delivery changed: live event plus the unread count for the list. */

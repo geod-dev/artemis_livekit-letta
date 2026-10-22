@@ -86,6 +86,29 @@ test('a handoff becomes a task, the update wakes the conversation and the worker
   await h.runtime.supervisor.shutdown();
 });
 
+test('a task cancelled by archive creates no update and does not respawn the main worker', async () => {
+  const h = await createHarness((request) =>
+    lastUserText(request).includes('run it') ? bashTurn('sleep 30 && echo late') : { content: [{ type: 'text', text: 'Started' }] }
+  );
+  await seedConversation(h, 'c1');
+  const worker = await h.runtime.supervisor.mainAgent('c1');
+  assert.equal((await worker.submit(textTurn('run it')).done).status, 'completed');
+  await until(async () => (await h.storage.tasks.listByConversation('c1'))[0]?.status === 'running');
+  const requestsBefore = h.provider.requests.length;
+
+  // Archive as the conversations service does: the record first, then the supervisor's stop hook.
+  assert.equal(await h.storage.conversations.archive('c1'), true);
+  await h.runtime.supervisor.stopConversation('c1');
+  await until(async () => (await h.storage.tasks.listByConversation('c1'))[0]?.status === 'cancelled');
+  await until(() => h.hub.events.some(({ event }) => event.type === 'task' && event.status === 'finished'));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.deepEqual(await h.storage.updates.listByConversation('c1'), []);
+  assert.equal(h.runtime.supervisor.peekMainAgent('c1'), undefined);
+  assert.equal(h.provider.requests.length, requestsBefore);
+  await h.runtime.supervisor.shutdown();
+});
+
 test('a successful voice-short task stays held and does not wake the conversation', async () => {
   const h = await createHarness(() => ({ content: [{ type: 'text', text: 'unused' }] }));
   await seedConversation(h, 'c1');
@@ -122,6 +145,7 @@ test('a successful voice-short task stays held and does not wake the conversatio
   });
   const update = await h.runtime.delivery.taskFinished(finished!);
   await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(update);
   assert.equal(update.delivery, 'held');
   assert.equal(h.provider.requests.length, 0);
   await h.runtime.supervisor.shutdown();

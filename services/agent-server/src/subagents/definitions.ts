@@ -2,8 +2,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
- * Subagent definitions from `prompts/agents/*.md` (ported from
- * infrastructure/letta/agents/): frontmatter `name`, `description`; body =
+ * Subagent definitions from `prompts/agents/*.md` (ported from the legacy
+ * agent markdown files): frontmatter `name`, `description`; body =
  * instructions. Every subagent gets the full main-agent toolset under the
  * `synchronous` policy and runs on the `worker` model route.
  */

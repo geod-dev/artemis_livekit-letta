@@ -28,7 +28,7 @@ function clock(start = 1_000) {
 }
 
 describe('qualified names and catalog entries', () => {
-  test("names tools like the Letta bridge did and reads the server's read-only hint", () => {
+  test("names tools mcp__<server>__<tool> and reads the server's read-only hint", () => {
     const [tool] = toCatalogTools(WEB, [{ name: 'web_search', annotations: { readOnlyHint: true } }]);
     assert.equal(tool?.qualified, 'mcp__web__web_search');
     assert.equal(tool?.readOnly, true);

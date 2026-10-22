@@ -2,7 +2,7 @@ import type { ChatMessage, Modality } from '@artemis/contracts/chat-types';
 import type { BackgroundUpdateRecord, DeliveredUpdate, MessageRecord, ToolCallRecord } from '@artemis/storage';
 
 /**
- * Pure projection of stored messages into UI rows (replaces Letta's
+ * Pure projection of stored messages into UI rows (replaces the legacy
  * `normalizeHistory`). Row ids are shared with live SSE events:
  * - user message -> `{role:'user', id: message.id, text: envelope.text, attachments, modality, clientMessageId}`
  *   preceded by one `event` row per delivered update (`id: <updateId>`);

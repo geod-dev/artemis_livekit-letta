@@ -1,10 +1,10 @@
 """LiveKit voice front-end for the persistent assistant.
 
 This process only handles audio: speech-to-text, turn taking and text-to-speech.
-The "brain" is the same Letta agent and conversation used by the text chat; it
+The "brain" is the same assistant and conversation used by the text chat; it
 is reached through the backend's OpenAI-compatible endpoint, scoped to the
 call's conversation. The gateway forwards each finished user turn into the
-Letta conversation and streams the reply back, so voice turns land in the chat
+conversation and streams the reply back, so voice turns land in the chat
 history like any other message.
 
 A per-call control channel to the gateway (`call.py`) decides when the call
@@ -40,7 +40,7 @@ server = AgentServer()
 
 class VoiceFrontEnd(Agent):
     def __init__(self) -> None:
-        # Instructions are not used by the gateway (Letta owns the prompt and
+        # Instructions are not used by the gateway (the backend owns the prompt and
         # memory); they only document intent for LiveKit tooling.
         super().__init__(instructions="Relay the user's speech to the assistant backend.")
 
@@ -60,7 +60,7 @@ async def entrypoint(ctx: JobContext) -> None:
         vad=inference.VAD(model="silero"),
         tts=speech.tts,
         llm=openai.LLM(
-            model="letta",
+            model="artemis",
             base_url=settings.conversation_base_url(conversation_id),
             api_key=settings.gateway_token,
         ),

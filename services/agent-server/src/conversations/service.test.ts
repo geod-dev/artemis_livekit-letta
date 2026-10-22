@@ -124,6 +124,53 @@ describe('ConversationService', () => {
     assert.deepEqual(received.at(-1), { type: 'conversation_updated', conversation: renamed });
   });
 
+  it('reports the unread count in create and rename summaries, as the list does', async () => {
+    const { conversations } = service();
+    const created = await conversations.create({});
+    assert.equal(created.unread, 0);
+
+    const task = await storage.tasks.create({
+      id: 'task_unread',
+      conversationId: created.id,
+      kind: 'agent',
+      status: 'running',
+      title: 'Research',
+      prompt: 'p',
+      subagentType: 'general-purpose',
+      command: null,
+      cwd: null,
+      outputPath: null,
+      needsInput: false,
+      originMode: 'text',
+      originTurnId: null,
+      originToolCallId: null,
+      parentTaskId: null,
+      resumedFromTaskId: null,
+      depth: 0,
+      model: null,
+      startedAt: new Date().toISOString(),
+    });
+    await storage.updates.create({
+      id: 'upd_unread',
+      conversationId: created.id,
+      taskId: task.id,
+      title: task.title,
+      status: 'completed',
+      needsInput: false,
+      report: 'Done',
+      durationMs: 1,
+      depth: 0,
+      delivery: 'held',
+      unread: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    const renamed = await conversations.rename(created.id, 'Renamed');
+    assert.equal(renamed.unread, 1);
+    const listed = await conversations.list({ limit: 10 });
+    assert.equal(listed.items.find((item) => item.id === created.id)?.unread, renamed.unread);
+  });
+
   it('archives and then reports the conversation as not found', async () => {
     const { conversations } = service();
     const created = await conversations.create({});

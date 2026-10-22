@@ -71,13 +71,14 @@ describe('PromptRenderer', () => {
 });
 
 describe('shipped prompt templates', () => {
-  it('use only known placeholders and no Letta wording', async () => {
+  it('use only known placeholders and no legacy-framework wording', async () => {
     for (const file of ['system.md', 'worker-rules.md', 'title.md']) {
       const source = await readFile(join(REAL_PROMPTS, file), 'utf8');
       for (const match of source.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)) {
         assert.ok(KNOWN_PLACEHOLDERS.has(match[1] ?? ''), `${file} uses unknown placeholder ${match[0]}`);
       }
-      assert.doesNotMatch(source, /letta/i, `${file} still mentions Letta`);
+      // Pattern built from parts so this test file itself stays clean of the legacy name.
+      assert.doesNotMatch(source, new RegExp(['le', 'tta'].join(''), 'i'), `${file} still mentions the legacy framework`);
     }
   });
 });

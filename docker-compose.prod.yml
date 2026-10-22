@@ -1,9 +1,9 @@
 # Production requirements layered over the shared service definition.
 services:
-  letta:
+  agent-server:
     volumes:
       - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}:/workspace
-      - ${ASSISTANT_DATA_ROOT:?set ASSISTANT_DATA_ROOT in the production environment}:/workspace/data:ro
+      - ${ASSISTANT_DATA_ROOT:?set ASSISTANT_DATA_ROOT in the production environment}:/workspace/data
 
   backend:
     environment:
@@ -11,8 +11,3 @@ services:
     volumes:
       - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}:/workspace
       - ${ASSISTANT_DATA_ROOT:?set ASSISTANT_DATA_ROOT in the production environment}:/data/backend
-
-volumes:
-  letta-data:
-    name: ${LETTA_DATA_VOLUME:?set LETTA_DATA_VOLUME to the retained or new volume name}
-    external: ${LETTA_DATA_EXTERNAL:-false}

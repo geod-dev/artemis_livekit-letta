@@ -50,12 +50,7 @@ class StorageConversationService extends ConversationService {
   async list(options: { limit: number; after?: string }) {
     const page = await this.deps.storage.conversations.list(options);
     // Unread background results per row (the list's badge; live changes arrive as `unread` list events).
-    const items = await Promise.all(
-      page.items.map(async (record) => ({
-        ...summarize(record),
-        unread: await this.deps.storage.updates.unreadCount(record.id),
-      }))
-    );
+    const items = await Promise.all(page.items.map((record) => this.withUnread(record)));
     return { items, nextCursor: page.nextCursor };
   }
 
@@ -78,7 +73,7 @@ class StorageConversationService extends ConversationService {
         templateHash: prompt.templateHash,
       }
     );
-    return summarize(record);
+    return this.withUnread(record);
   }
 
   async require(id: string): Promise<ConversationSummary> {
@@ -90,7 +85,7 @@ class StorageConversationService extends ConversationService {
     if (!clean) throw new AppError('invalid_title', 'Title must not be empty', 400);
     const record = await this.deps.storage.conversations.rename(id, clean, 'user');
     if (!record) throw new NotFoundError('Conversation');
-    const conversation = summarize(record);
+    const conversation = await this.withUnread(record);
     this.deps.events.publish(id, { type: 'conversation_updated', conversation });
     return conversation;
   }
@@ -136,6 +131,11 @@ class StorageConversationService extends ConversationService {
       model,
       reportedAt: turn.endedAt ?? turn.startedAt,
     };
+  }
+
+  /** A summary with the list's unread count (unread background results of the conversation). */
+  private async withUnread(record: ConversationRecord): Promise<ConversationSummary> {
+    return { ...summarize(record), unread: await this.deps.storage.updates.unreadCount(record.id) };
   }
 
   private async record(id: string): Promise<ConversationRecord> {

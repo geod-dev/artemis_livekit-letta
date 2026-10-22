@@ -3,8 +3,8 @@ import type { TextEffort } from '@artemis/contracts/chat-types';
 import type { AgentServerConfig } from '../config.ts';
 
 /**
- * Model routing (port of infrastructure/letta/patching/model-requests.mjs and
- * assistant/letta/model-adapter.ts):
+ * Model routing (ported from the legacy model-request patching and
+ * model adapter):
  * - `assistant-text`: ASSISTANT_MODEL, thinking adaptive (summaries streamed),
  *   effort = the turn's effort (default medium), cache + compaction on.
  * - `assistant-voice`: ASSISTANT_MODEL, thinking disabled, effort medium.
