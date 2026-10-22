@@ -1,0 +1,22 @@
+{
+  "name": "@artemis/http",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HTTP helpers shared by services: SSE server stream, SSE client parser, bearer auth, errors.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@artemis/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

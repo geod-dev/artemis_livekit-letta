@@ -1,0 +1,19 @@
+{
+  "name": "@artemis/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Generic building blocks: serial scheduler, keyed registry with idle reaper, clock, logger, errors.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

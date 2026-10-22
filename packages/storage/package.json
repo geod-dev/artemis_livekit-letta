@@ -1,0 +1,26 @@
+{
+  "name": "@artemis/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Domain records, repository interfaces and the Postgres implementation with SQL migrations.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@artemis/core": "workspace:*",
+    "@artemis/contracts": "workspace:*",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "@types/pg": "^8.15.0"
+  }
+}

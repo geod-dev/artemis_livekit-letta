@@ -1,0 +1,20 @@
+{
+  "name": "@artemis/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Type-only API contracts shared by the frontend, the gateway (backend/) and the agent-server.",
+  "exports": {
+    "./chat-types": "./contracts/chat-types.ts",
+    "./agent-server": "./contracts/agent-server.ts",
+    "./present-tool.json": "./generated/present-tool.json",
+    "./present-components.json": "./generated/present-components.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}

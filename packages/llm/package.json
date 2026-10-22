@@ -1,0 +1,26 @@
+{
+  "name": "@artemis/llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LLM provider abstraction (LlmProvider) with Anthropic and OpenAI-compatible implementations.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./anthropic": "./src/anthropic/index.ts",
+    "./openai-compatible": "./src/openai-compatible/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@artemis/core": "workspace:*",
+    "@anthropic-ai/sdk": "^1.1.0",
+    "openai": "^7.42.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

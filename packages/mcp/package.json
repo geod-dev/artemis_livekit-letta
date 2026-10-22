@@ -1,0 +1,27 @@
+{
+  "name": "@artemis/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server settings, client, catalog, registry and the mcp_describe/mcp_call/mcp_call_write bridge tools.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sdk": "./src/sdk/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@artemis/core": "workspace:*",
+    "@artemis/contracts": "workspace:*",
+    "@artemis/tools": "workspace:*",
+    "@artemis/workspace": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,13 @@
+# One pnpm workspace and one lockfile (pnpm-lock.yaml at the root) for every
+# Node package except the frontend, which keeps its own hoisted install.
+# See docs/migration-hindsight/architecture.md#package-layout.
+packages:
+  - shared
+  - packages/*
+  - services/*
+  - backend
+
+# Temporary: the backend still depends on Letta until work package WP-13
+# (cleanup) removes it together with this entry.
+onlyBuiltDependencies:
+  - '@letta-ai/letta-code'
