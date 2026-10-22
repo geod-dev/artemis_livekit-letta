@@ -15,11 +15,11 @@ import { WorkspaceFilePreview } from '@/components/assistant-ui/files/workspace-
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { type TaskKind, filterTaskKinds, groupAgentRuns } from '@/lib/agent-runs';
+import { type TaskKind, commandOutput, filterTaskKinds, groupAgentRuns } from '@/lib/agent-runs';
 import { workspacePath, workspaceUrl } from '@/lib/attachments';
-import { commandReport } from '@/lib/command-report';
 import { cn } from '@/lib/shadcn/utils';
 import { formatTaskDuration, taskDurationLabel, taskStatusLabel } from '@/lib/task-status';
+import { TOOL_NAMES } from '@/lib/tool-names';
 import { readToolOutput } from '@/lib/tool-output';
 import { type ActivityTask, taskTitle, useActivity } from './activity-context';
 import { TaskBubble } from './task-bubble';
@@ -47,9 +47,9 @@ function conversationFiles(messages: ChatMessage[], opened: Set<string>, reports
         message.role === 'event' ? `${message.text}\n${message.detail ?? ''}` : message.text;
       addLinks(text);
     } else if (message.role === 'tool') {
-      const output = readToolOutput(message.result);
+      const output = readToolOutput(message.result, message.display);
       addLinks(output.text);
-      if (message.name === 'present' && message.args) addLinks(message.args);
+      if (message.name === TOOL_NAMES.present && message.args) addLinks(message.args);
       for (const artifact of output.artifacts) {
         const path = workspacePath(artifact.url);
         if (path) outputs.set(path, artifact.name);
@@ -373,7 +373,7 @@ export function WorkspacePanel({
         ) : selectedTask ? (
           <div className="space-y-8 p-5">
             {selectedTask.runs.map((run, index) => {
-              const command = run.kind === 'command' ? commandReport(run) : null;
+              const command = run.kind === 'command' ? commandOutput(run) : null;
               return (
                 <section key={run.id} className="space-y-3">
                   {index > 0 && (

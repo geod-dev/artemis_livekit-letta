@@ -16,20 +16,15 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "ajv": "^8.20.0",
     "@hono/node-server": "^1.19.5",
-    "@letta-ai/letta-agent-sdk": "0.8.30",
-    "@letta-ai/letta-code": "0.34.4",
     "@modelcontextprotocol/sdk": "1.30.0",
     "hono": "^4.10.1",
     "livekit-server-sdk": "^2.19.1",
-    "tsx": "^4.20.6",
-    "ws": "^8.18.3"
+    "tsx": "^4.20.6"
   },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
     "@types/node": "^24.0.0",
-    "@types/ws": "^8.18.1",
     "eslint": "^9",
     "eslint-config-prettier": "^10.1.5",
     "prettier": "^3.4.2",
@@ -37,10 +32,5 @@
     "typescript-eslint": "^8",
     "undici-types": "7.24.6"
   },
-  "packageManager": "pnpm@10.18.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@letta-ai/letta-code"
-    ]
-  }
+  "packageManager": "pnpm@10.18.0"
 }

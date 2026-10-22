@@ -1,10 +1,10 @@
 # Coolify operations
 
-Use the root `docker-compose.yml` as the application's Compose file and set the
+Use `docker-compose.coolify.yml` as the application's Compose file and set the
 production environment values in Coolify. The application requires unique
-secrets, distinct persistent workspace and backend-data roots, and the existing
-external Letta data volume. See [deployment](../../docs/deployment.md) for
-storage migration and recovery instructions.
+secrets, persistent workspace and data host roots (`/data/artemis/workspace` and
+`/data/artemis/workspace/data`), and the Compose-managed `postgres-data` volume.
+See [deployment](../../docs/deployment.md) for storage and recovery instructions.
 
 ## Deployment poller
 

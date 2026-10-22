@@ -1,4 +1,4 @@
-import { toolOutputText } from './tool-output.ts';
+import { readToolOutput } from './tool-output.ts';
 
 /** One result of an Exa web search. */
 export interface WebResult {
@@ -17,70 +17,26 @@ export interface WebSearchOutput {
   truncated: boolean;
 }
 
-/** Letta's cut of long Bash output, or the MCP bridge's cut of a long tool result. */
-const TRUNCATION =
-  /\n*(?:\[Output truncated: [^\]]*\](?:\n\[Full output written to: [^\]]*\])?|\[Cut at [\d,]+ characters[^\]]*\])\s*$/;
+/** The MCP bridge's cut of a long tool result. */
+const TRUNCATION = /\n*\[Cut at [\d,]+ characters[^\]]*\]\s*$/;
 const FIELD = /^(Title|URL|Published|Author):[ \t]*(.*)$/;
 const SNIPPET_CHARS = 280;
 
 /**
  * Read the result of Exa's `web_search_exa` tool: one `Title: / URL: /
  * Published: / Author: / Highlights:` block per result, separated by `---`.
- * Through the MCP bridge (`mcp_call`) the result is that text; from Bash
- * (`letta mcp call`, the `mcp-servers` skill's wrapper) it is the MCP result
- * as JSON, which Letta cuts short when long, so its text is read leniently.
  * Returns null when no result can be read.
  */
 export function parseWebSearchResult(result: unknown): WebSearchOutput | null {
-  const outputText = toolOutputText(result);
-  if (outputText === null) return null;
+  const outputText = readToolOutput(result).text;
+  if (!outputText) return null;
   const truncated = TRUNCATION.test(outputText);
   const body = outputText.replace(TRUNCATION, '');
-  const results = searchText(body)
-    .split(/\n-{3,}\n/)
-    .flatMap((block) => {
-      const parsed = parseBlock(block);
-      return parsed ? [parsed] : [];
-    });
+  const results = body.split(/\n-{3,}\n/).flatMap((block) => {
+    const parsed = parseBlock(block);
+    return parsed ? [parsed] : [];
+  });
   return results.length > 0 ? { results, truncated } : null;
-}
-
-/** The text of the MCP result, or the output itself when it is not one. */
-function searchText(body: string): string {
-  const trimmed = body.trim();
-  if (!trimmed.startsWith('{')) return body;
-  try {
-    const parsed = JSON.parse(trimmed) as { content?: { text?: unknown }[] };
-    return (parsed.content ?? []).map((part) => String(part.text ?? '')).join('\n---\n');
-  } catch {
-    const start = /"text"\s*:\s*"/.exec(trimmed);
-    return start ? decodeJsonString(trimmed.slice(start.index + start[0].length)) : '';
-  }
-}
-
-/** A JSON string's value up to its closing quote, or as far as it goes when cut short. */
-function decodeJsonString(source: string): string {
-  const escapes: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f' };
-  let out = '';
-  for (let i = 0; i < source.length; i++) {
-    const char = source[i];
-    if (char === '"') break;
-    if (char !== '\\') {
-      out += char;
-      continue;
-    }
-    const next = source[++i];
-    if (next === undefined) break;
-    if (next === 'u') {
-      const code = Number.parseInt(source.slice(i + 1, i + 5), 16);
-      if (Number.isNaN(code)) break;
-      out += String.fromCharCode(code);
-      i += 4;
-    } else {
-      out += escapes[next] ?? next;
-    }
-  }
-  return out;
 }
 
 function parseBlock(block: string): WebResult | null {

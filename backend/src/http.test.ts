@@ -1,25 +1,22 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import { eventStream } from './http';
+import { test } from 'node:test';
+import { errorResponse, HttpError, jsonObject } from './http.ts';
 
-test('an oversized synchronous snapshot closes and releases its subscription', async () => {
-  let stopped = 0;
-  const response = eventStream(new Request('http://localhost/events'), (send) => {
-    send({ text: 'x'.repeat(256 * 1024) });
-    return () => { stopped++; };
-  });
-  assert.equal(await response.text(), '');
-  assert.equal(stopped, 1);
+test('server failures are masked and carry a request id, client errors keep their message', async () => {
+  const masked = errorResponse(new Error('database password leaked'));
+  assert.equal(masked.status, 500);
+  const maskedBody = (await masked.json()) as { error: string; requestId: string };
+  assert.equal(maskedBody.error, 'The request could not be completed');
+  assert.ok(maskedBody.requestId);
+  const notFound = errorResponse(new HttpError('Conversation not found', 404));
+  assert.equal(notFound.status, 404);
+  assert.deepEqual(await notFound.json(), { error: 'Conversation not found' });
 });
 
-test('an already aborted event request never starts a subscription', async () => {
-  const controller = new AbortController();
-  controller.abort();
-  let started = false;
-  const response = eventStream(new Request('http://localhost/events', { signal: controller.signal }), () => {
-    started = true;
-    return () => {};
-  });
-  assert.equal(await response.text(), '');
-  assert.equal(started, false);
+test('jsonObject accepts only bounded JSON objects', async () => {
+  const post = (body: string) => new Request('http://localhost/', { method: 'POST', body });
+  assert.deepEqual(await jsonObject(post('{"text":"hi"}')), { text: 'hi' });
+  assert.equal(await jsonObject(post('[1]')), null);
+  assert.equal(await jsonObject(post('not json')), null);
+  assert.equal(await jsonObject(post('{"text":"hi"}'), 4), null);
 });

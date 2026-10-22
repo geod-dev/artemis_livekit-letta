@@ -32,11 +32,9 @@ async function errorText(response: Response, fallback: string): Promise<string> 
 }
 
 /**
- * One MCP server list shared by every agent. Letta keeps MCP servers per agent
- * and overwrites edits made from outside, so the backend keeps this list in a
- * file of its own and tells agents about it through the `mcp-servers` skill and
- * the native `mcp_*` tools (backend/src/mcp/). Reads and writes go through
- * /api/mcp.
+ * One MCP server list shared by every agent. The agent-server keeps the list and
+ * tells agents about changes on their next turn, through the `mcp_*` tools.
+ * Reads and writes go through /api/mcp.
  */
 export function McpServers({ active }: { active: boolean }) {
   const [settings, setSettings] = useState<McpSettingsResponse | null>(null);
@@ -44,16 +42,9 @@ export function McpServers({ active }: { active: boolean }) {
   const [draft, setDraft] = useState<McpServerDraft | null>(null);
   const [draftIndex, setDraftIndex] = useState<number | null>(null);
   const [draftRevision, setDraftRevision] = useState<string | null>(null);
-  const [retryableSync, setRetryableSync] = useState<McpSettingsResponse['sync'] | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
   const servers = settings?.servers ?? [];
   const editableServers = servers.filter((server) => !server.managed);
-  const syncNeedsRetry = Boolean(
-    retryableSync &&
-    [retryableSync.skill, retryableSync.catalog, retryableSync.mod].some(
-      (state) => state === 'failed' || state === 'pending'
-    )
-  );
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setStatus('Loading…');
@@ -100,22 +91,8 @@ export function McpServers({ active }: { active: boolean }) {
         setStatus(await errorText(response, 'Save failed'));
         return false;
       }
-      const saved = (await response.json()) as McpSettingsResponse;
-      setSettings(saved);
-      const sync = saved.sync;
-      setRetryableSync(
-        sync &&
-          [sync.skill, sync.catalog, sync.mod].some(
-            (state) => state === 'failed' || state === 'pending'
-          )
-          ? sync
-          : null
-      );
-      setStatus(
-        sync && Object.values(sync).some((value) => value === 'failed' || value === 'pending')
-          ? 'Saved. Some MCP updates are still syncing and can be retried.'
-          : 'Saved. Agents see the change on their next turn.'
-      );
+      setSettings((await response.json()) as McpSettingsResponse);
+      setStatus('Saved. Agents see the change on their next turn.');
       return true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
@@ -175,23 +152,7 @@ export function McpServers({ active }: { active: boolean }) {
         automatically while connected and are managed by their connections.
       </p>
 
-      {(status || syncNeedsRetry) && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          {status && <p className="text-muted-foreground">{status}</p>}
-          {syncNeedsRetry && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                void persist(editableServers, retryableSync?.retryableRevision ?? null)
-              }
-            >
-              Retry sync
-            </Button>
-          )}
-        </div>
-      )}
+      {status && <p className="text-muted-foreground text-sm">{status}</p>}
 
       {settings?.diagnostics.map((entry) => (
         <p
@@ -220,7 +181,6 @@ export function McpServers({ active }: { active: boolean }) {
                     ? `External device · ${server.managed.tools} ${server.managed.tools === 1 ? 'tool' : 'tools'} · Managed automatically`
                     : describeServer(server)}
                 </p>
-                <ServerStatus server={server} bridge={settings?.bridge} />
               </div>
               {server.managed ? (
                 <span className="bg-mint/10 text-mint rounded-full px-2.5 py-1 text-xs font-medium">
@@ -292,31 +252,6 @@ header: Authorization: Bearer <API key>`}</pre>
   );
 }
 
-function ServerStatus({
-  server,
-  bridge,
-}: {
-  server: McpServer;
-  bridge: McpSettingsResponse['bridge'] | undefined;
-}) {
-  if (!bridge) return null;
-  if (!isRemote(server.transport)) {
-    return <p className="text-muted-foreground mt-1 text-xs">Workers only, through the skill</p>;
-  }
-  const failure = bridge.failures[server.name];
-  if (failure) {
-    return (
-      <p className="text-destructive mt-1 truncate text-xs">
-        Not reachable: {failure}
-      </p>
-    );
-  }
-  if (bridge.servers.includes(server.name)) {
-    return <p className="text-mint mt-1 text-xs">Connected</p>;
-  }
-  return <p className="text-muted-foreground mt-1 text-xs">No tools listed</p>;
-}
-
 function ServerDialog({
   draft,
   adding,
@@ -374,7 +309,7 @@ function ServerDialog({
             >
               <option value="http">http (Streamable HTTP)</option>
               <option value="sse">sse (legacy)</option>
-              <option value="stdio">stdio (a command in the Letta container)</option>
+              <option value="stdio">stdio (a command in the agent-server container)</option>
             </select>
           </label>
 

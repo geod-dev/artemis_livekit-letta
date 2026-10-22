@@ -1,7 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 
 const commands = {
   backend: [
@@ -22,12 +20,12 @@ const commands = {
   devices: [
     ['tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_device.py'], 'devices'],
   ],
-  letta: [['tests', process.execPath, ['--test', 'infrastructure/letta/extensions/*.test.mjs'], '.']],
+  packages: [
+    ['typecheck', process.execPath, [process.env.npm_execpath ?? 'pnpm', 'run', 'typecheck:packages'], '.'],
+    ['tests', process.execPath, [process.env.npm_execpath ?? 'pnpm', 'run', 'test:packages'], '.'],
+  ],
   operations: [
     ['mocked deployment tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'infrastructure/coolify', '-p', 'test_*.py'], '.'],
-  ],
-  'letta-bundle': [
-    ['pinned bundle regression tests', process.execPath, ['--test', 'infrastructure/letta/patching/*.test.mjs'], '.'],
   ],
   schema: [
     ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'scripts/generate-present-tool.ts', '--check'], 'frontend'],
@@ -36,9 +34,9 @@ const commands = {
 
 const selected = process.argv[2];
 const groups = selected === 'all'
-  ? ['backend', 'frontend', 'voice', 'devices', 'letta', 'letta-bundle', 'operations', 'schema']
+  ? ['backend', 'frontend', 'voice', 'devices', 'packages', 'operations', 'schema']
   : selected === undefined
-    ? ['backend', 'frontend', 'voice', 'devices', 'letta', 'letta-bundle', 'operations', 'schema']
+    ? ['backend', 'frontend', 'voice', 'devices', 'packages', 'operations', 'schema']
     : [selected];
 
 if (groups.some((group) => !(group in commands))) {
@@ -49,23 +47,13 @@ if (groups.some((group) => !(group in commands))) {
 
 let failed = false;
 for (const group of groups) {
-  const checkEnvironment = { ...process.env };
-  if (group === 'letta-bundle' && !checkEnvironment.LETTA_BUNDLE) {
-    const bundle = new URL('../backend/node_modules/@letta-ai/letta-code/letta.js', import.meta.url);
-    if (!existsSync(bundle)) {
-      console.error('letta-bundle: install backend dependencies or set LETTA_BUNDLE to the pinned Letta 0.34.4 bundle path');
-      failed = true;
-      continue;
-    }
-    checkEnvironment.LETTA_BUNDLE = fileURLToPath(bundle);
-  }
   for (const [label, executable, args, directory] of commands[group]) {
     process.stdout.write(`\n> ${group}: ${label}\n`);
     const result = spawnSync(executable, args, {
       cwd: new URL(`../${directory}/`, import.meta.url),
       stdio: 'inherit',
       shell: false,
-      env: checkEnvironment,
+      env: process.env,
     });
     if (result.error) {
       console.error(`${group}: ${label} could not start: ${result.error.message}`);

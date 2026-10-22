@@ -13,6 +13,20 @@ const isAttachment = (value: unknown) =>
   optionalString(value.mimeType, 255) &&
   (value.size === undefined || (typeof value.size === 'number' && Number.isFinite(value.size)));
 
+const TOOL_DISPLAY_TYPES = ['command', 'file', 'agent', 'task', 'mcp', 'present', 'call'];
+const isToolDisplay = (value: unknown) =>
+  isRecord(value) && typeof value.type === 'string' && TOOL_DISPLAY_TYPES.includes(value.type);
+const isToolTaskRef = (value: unknown) =>
+  isRecord(value) &&
+  boundedString(value.taskId, 512) &&
+  (value.kind === 'agent' || value.kind === 'command') &&
+  ['started', 'backgrounded', 'stopped', 'inspected'].includes(value.relation as string) &&
+  optionalString(value.title, 512);
+/** A tool call's structured display and task, when the server sent them. */
+const hasToolUi = (value: Record<string, unknown>) =>
+  (value.display === undefined || isToolDisplay(value.display)) &&
+  (value.task === undefined || isToolTaskRef(value.task));
+
 export function isChatMessage(value: unknown): value is ChatMessage {
   if (!isRecord(value) || !boundedString(value.id, 512) || typeof value.role !== 'string')
     return false;
@@ -36,12 +50,13 @@ export function isChatMessage(value: unknown): value is ChatMessage {
       optionalString(value.args) &&
       optionalString(value.result) &&
       (value.isError === undefined || typeof value.isError === 'boolean') &&
+      hasToolUi(value) &&
       optionalString(value.createdAt, 128)
     );
   return (
     value.role === 'event' &&
     boundedString(value.text) &&
-    (value.kind === 'task_result' || value.kind === 'memory') &&
+    value.kind === 'task_result' &&
     optionalString(value.updateId, 512) &&
     optionalString(value.taskId, 512) &&
     (value.durationMs === undefined ||
@@ -75,7 +90,8 @@ export function isConversationEvent(value: unknown): value is ConversationEvent 
         string('turnId') &&
         string('toolCallId') &&
         string('result') &&
-        typeof value.isError === 'boolean'
+        typeof value.isError === 'boolean' &&
+        hasToolUi(value)
       );
     case 'turn_end':
       return (
@@ -87,7 +103,8 @@ export function isConversationEvent(value: unknown): value is ConversationEvent 
       return (
         string('taskId', 512) &&
         (value.status === 'running' || value.status === 'finished') &&
-        string('title', 512)
+        string('title', 512) &&
+        (value.kind === undefined || value.kind === 'agent' || value.kind === 'command')
       );
     case 'updates_changed':
     case 'context_usage':

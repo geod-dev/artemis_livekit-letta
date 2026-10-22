@@ -1,0 +1,27 @@
+{
+  "name": "@artemis/tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tool abstraction, toolset registry and the default workspace tools (files, bash).",
+  "exports": {
+    ".": "./src/index.ts",
+    "./workspace-tools": "./src/workspace-tools/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@artemis/core": "workspace:*",
+    "@artemis/contracts": "workspace:*",
+    "@artemis/llm": "workspace:*",
+    "@artemis/workspace": "workspace:*",
+    "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

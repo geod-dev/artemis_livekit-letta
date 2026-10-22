@@ -64,7 +64,7 @@ function decodeNode(
   const node = { ...input };
   for (const [wire, native] of [
     ['componentType', '$type'], ['componentKey', '$key'], ['action', '$action'],
-  ]) {
+  ] as const) {
     if (!Object.hasOwn(node, wire)) continue;
     if (Object.hasOwn(node, native))
       return { ok: false, error: "A component contains conflicting reserved properties." };

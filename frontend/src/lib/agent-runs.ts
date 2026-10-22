@@ -10,98 +10,44 @@ export type AgentRun = ConversationTask & {
 };
 export type AgentHistory = AgentRun & { runs: AgentRun[] };
 
-function record(text: string | undefined): Record<string, unknown> {
-  try {
-    const value: unknown = JSON.parse(text ?? '');
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-const string = (value: unknown) => (typeof value === 'string' && value.trim() ? value : undefined);
-
 /** Remove one leading emoji from a rerun label when the agent name already carries it. */
 export function stripLeadingEmoji(value: string): string {
   return value.replace(
-    /^(?:(?:\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?\p{Emoji_Modifier}?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?\p{Emoji_Modifier}?)*)|\p{Regional_Indicator}{2})\s*/u,
+    /^(?:(?:\p{Extended_Pictographic}(?:️|︎)?\p{Emoji_Modifier}?(?:‍\p{Extended_Pictographic}(?:️|︎)?\p{Emoji_Modifier}?)*)|\p{Regional_Indicator}{2})\s*/u,
     ''
   );
 }
 
-function receiptText(value: string | undefined): string {
-  if (!value) return '';
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (Array.isArray(parsed)) return parsed.map((part) => string(part?.text) ?? '').join('\n');
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'content' in parsed &&
-      Array.isArray(parsed.content)
-    )
-      return parsed.content.map((part) => string(part?.text) ?? '').join('\n');
-  } catch {
-    /* Native receipts are usually plain text. */
+/**
+ * The root of a follow-up chain: the first task a resumed subagent continues
+ * from, or the task itself. A task whose ancestor is unknown keeps that
+ * ancestor's id, so the chain still groups.
+ */
+function rootTaskId(task: ConversationTask, known: Map<string, ConversationTask>): string {
+  let id = task.resumedFromTaskId ?? task.id;
+  for (let hops = 0; hops < known.size; hops++) {
+    const parent = known.get(id)?.resumedFromTaskId;
+    if (!parent) break;
+    id = parent;
   }
-  return value;
+  return id;
 }
 
-/** Recover run identity and prompts from persisted tool receipts, including older tasks. */
+/**
+ * The background tasks of a conversation as runs, in the order they started.
+ * Identity, tool calls and prompts come from the tasks the server reports;
+ * completion events from the gateway refresh the runs they name.
+ */
 export function taskRuns(tasks: ConversationTask[], messages: ChatMessage[]): AgentRun[] {
-  const rows = new Map<string, AgentRun>(tasks.map((task) => [task.id, { ...task }]));
-  const order = new Map<string, number>();
-  for (const message of messages) {
-    if (message.role !== 'tool') continue;
-    const worker = ['Agent', 'Task'].includes(message.name);
-    if (!worker && !['Bash', 'exec_command'].includes(message.name)) continue;
-    const args = record(message.args);
-    const receipt = receiptText(message.result);
-    const id = worker
-      ? receipt.match(
-          /^(?:Task running in background with task ID: |Background task ID: )([^\s\\]+)(?:\r?\n|$)/
-        )?.[1]
-      : receipt.match(
-          /^Command (?:running in background with ID: |is still running with task ID: )([^\s\\]+)(?:\r?\n|$)/
-        )?.[1];
-    if (!id) continue;
-    if (!worker) {
-      const existing = rows.get(id);
-      rows.set(id, {
-        ...existing,
-        id,
-        title: string(args.description) ?? existing?.title ?? string(args.command) ?? 'Command',
-        kind: 'command',
-        status: existing?.status ?? 'running',
-        agentKey: `command:${id}`,
-        toolCallId: message.toolCallId,
-        prompt: string(args.command) ?? string(args.cmd) ?? existing?.prompt,
-        startedAt: message.createdAt,
-      });
-      if (!order.has(id)) order.set(id, order.size);
-      continue;
-    }
-    const agent = receipt.match(/^Agent ID: (\S+)/m)?.[1] ?? string(args.agent_id);
-    const conversation =
-      receipt.match(/^Conversation ID: (\S+)/m)?.[1] ?? string(args.conversation_id);
-    const existing = rows.get(id);
-    rows.set(id, {
-      ...existing,
-      id,
-      title: string(args.description) ?? existing?.title ?? 'Agent',
-      kind: 'agent',
-      status: existing?.status ?? 'running',
-      agentKey: agent
-        ? `agent:${agent}`
-        : conversation && conversation !== 'default'
-          ? `conversation:${conversation}`
-          : `task:${id}`,
-      toolCallId: message.toolCallId,
-      prompt: string(args.prompt) ?? existing?.prompt,
-      startedAt: message.createdAt,
-    });
-    if (!order.has(id)) order.set(id, order.size);
+  const known = new Map<string, ConversationTask>(
+    tasks
+      .filter((task) => task.kind === 'agent' || task.kind === 'command')
+      .map((task) => [task.id, task])
+  );
+  const rows = new Map<string, AgentRun>();
+  for (const task of known.values()) {
+    const key = task.kind === 'command' ? `command:${task.id}` : `agent:${rootTaskId(task, known)}`;
+    rows.set(task.id, { ...task, agentKey: key });
   }
   for (const message of messages) {
     if (message.role !== 'event' || message.kind !== 'task_result') continue;
@@ -109,29 +55,16 @@ export function taskRuns(tasks: ConversationTask[], messages: ChatMessage[]): Ag
       ? rows.get(message.taskId)
       : [...rows.values()].find((row) => row.updateId === message.updateId && message.updateId);
     // An event alone does not establish a task's type. Enrich known tasks only.
-    if (!existing || !['agent', 'command'].includes(existing.kind ?? '')) continue;
-    const id = existing?.id ?? message.taskId;
-    if (!id) continue;
-    rows.set(id, {
+    if (!existing) continue;
+    rows.set(existing.id, {
       ...existing,
-      id,
-      title: existing?.title ?? message.text,
-      status: message.status ?? existing?.status ?? 'completed',
-      updateId: message.updateId ?? existing?.updateId,
-      durationMs: message.durationMs ?? existing?.durationMs,
-      report: message.detail ?? existing?.report,
+      status: message.status ?? existing.status,
+      updateId: message.updateId ?? existing.updateId,
+      durationMs: message.durationMs ?? existing.durationMs,
+      report: message.detail ?? existing.report,
     });
   }
-  const runs = [...rows.values()]
-    .filter((row) => row.kind === 'agent' || row.kind === 'command')
-    .sort((a, b) => {
-      const ai = order.get(a.id),
-        bi = order.get(b.id);
-      if (ai !== undefined && bi !== undefined) return ai - bi;
-      if (ai !== undefined) return -1;
-      if (bi !== undefined) return 1;
-      return 0;
-    });
+  const runs = [...rows.values()].sort((a, b) => startOrder(a) - startOrder(b));
   const names = new Map<string, string>();
   return runs.map((run) => {
     const key = run.agentKey ?? `task:${run.id}`;
@@ -139,6 +72,12 @@ export function taskRuns(tasks: ConversationTask[], messages: ChatMessage[]): Ag
     if (!names.has(key)) names.set(key, run.title);
     return { ...run, agentKey: key, agentTitle: names.get(key), rerunName };
   });
+}
+
+/** Sort key of a run's start: earlier starts first, unknown starts last. */
+function startOrder(run: AgentRun): number {
+  const start = Date.parse(run.startedAt ?? '');
+  return Number.isFinite(start) ? start : Number.POSITIVE_INFINITY;
 }
 
 /** Panel totals are independent of the duration shown for each individual run. */
@@ -167,6 +106,21 @@ export function groupAgentRuns(runs: AgentRun[]): AgentHistory[] {
       runs: history,
     };
   });
+}
+
+/** A command run's command line and output, from what the server recorded for it. */
+export function commandOutput(
+  run: Pick<ConversationTask, 'command' | 'prompt' | 'stdout' | 'stderr' | 'report' | 'exitCode'>
+) {
+  const output =
+    run.stdout !== undefined || run.stderr !== undefined
+      ? [run.stdout, run.stderr].filter(Boolean).join('\n')
+      : (run.report ?? '');
+  return {
+    command: run.command ?? run.prompt,
+    output,
+    exitCode: typeof run.exitCode === 'number' ? run.exitCode : undefined,
+  };
 }
 
 export type TaskKind = 'agent' | 'command';

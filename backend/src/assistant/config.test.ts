@@ -4,13 +4,18 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { validateConfig } from './config.ts';
 
-test('configuration rejects invalid ports, reflection counts, and timezones', () => {
+test('configuration rejects invalid ports', () => {
   assert.throws(() => validateConfig({ BACKEND_PORT: '0' }), /BACKEND_PORT/);
-  assert.throws(
-    () => validateConfig({ ASSISTANT_REFLECTION_STEPS: '-1' }),
-    /ASSISTANT_REFLECTION_STEPS/
-  );
-  assert.throws(() => validateConfig({ ASSISTANT_TIMEZONE: 'Mars/Olympus' }), /IANA timezone/);
+  assert.throws(() => validateConfig({ AGENT_SERVER_PORT: '0' }), /AGENT_SERVER_PORT/);
+});
+
+test('the gateway reaches the agent-server at AGENT_SERVER_URL with its shared token', () => {
+  const config = validateConfig({
+    AGENT_SERVER_URL: 'http://agent-server:4000',
+    AGENT_SERVER_TOKEN: 'shared-token',
+  });
+  assert.deepEqual(config.agentServer, { url: 'http://agent-server:4000', token: 'shared-token' });
+  assert.equal(validateConfig({ AGENT_SERVER_PORT: '4100' }).agentServer.url, 'http://127.0.0.1:4100');
 });
 
 test('production requires external roots and explicitly configured secrets', () => {
@@ -20,7 +25,7 @@ test('production requires external roots and explicitly configured secrets', () 
     ASSISTANT_DATA_ROOT: join(tmpdir(), 'artemis-data'),
     ARTEMIS_PASSWORD: 'long-password',
     ARTEMIS_DEVICE_TOKEN: 'device-token',
-    LETTA_SERVER_TOKEN: 'private-letta-token',
+    AGENT_SERVER_TOKEN: 'private-agent-server-token',
     LIVEKIT_API_KEY: 'prodkey',
     LIVEKIT_API_SECRET: 'private-livekit-secret',
     VOICE_GATEWAY_TOKEN: 'private-voice-token',
@@ -29,6 +34,10 @@ test('production requires external roots and explicitly configured secrets', () 
   assert.throws(
     () => validateConfig({ ...env, VOICE_GATEWAY_TOKEN: 'dev-voice-token-change-me' }),
     /VOICE_GATEWAY_TOKEN/
+  );
+  assert.throws(
+    () => validateConfig({ ...env, AGENT_SERVER_TOKEN: undefined }),
+    /AGENT_SERVER_TOKEN/
   );
   assert.throws(
     () =>

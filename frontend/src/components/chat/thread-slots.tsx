@@ -1,5 +1,5 @@
 import { type CSSProperties, createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ArrowUpRightIcon, BrainIcon, XIcon } from 'lucide-react';
+import { ArrowUpRightIcon, XIcon } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
   ComposerPrimitive,
@@ -158,6 +158,8 @@ const EFFORT_LABELS: Record<TextEffort, string> = {
   low: 'Low',
   medium: 'Medium',
   high: 'High',
+  xhigh: 'Extra high',
+  max: 'Max',
 };
 
 function ComposerEffortControl() {
@@ -330,7 +332,7 @@ function useReadWhenSeen(updateId: string | undefined, unread: boolean) {
   return ref;
 }
 
-/** Background task results and memory updates, as small notes between turns. */
+/** Background task results, as small notes between turns. */
 function SystemMessage() {
   const custom = useAuiState((s) => s.message.metadata.custom) as {
     kind?: string;
@@ -365,34 +367,21 @@ function SystemMessage() {
   return (
     <MessagePrimitive.Root data-role="system" className="flex w-full flex-col items-start px-2">
       <div ref={ref} className="text-muted-foreground flex max-w-full items-center gap-2 text-sm">
-        {custom.kind === 'memory' ? (
-          <>
-            <BrainIcon aria-hidden className="size-4 shrink-0 text-violet-500" />
-            <span>
-              <MessagePrimitive.Parts />
-            </span>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => openTask(task)}
-              className="text-muted-foreground hover:text-foreground focus-visible:outline-ring min-w-0 cursor-pointer rounded-md py-1 text-left transition-colors focus-visible:outline-2"
-            >
-              <TaskLabel task={task} />
-              <span className="text-muted-foreground/60">
-                {' '}
-                - {taskDurationLabel(task.durationMs, task.kind)}
-                {recordedTask?.rerunName
-                  ? ' (' + stripLeadingEmoji(recordedTask.rerunName) + ')'
-                  : ''}
-                {task.status === 'failed' || task.status === 'cancelled'
-                  ? ' · ' + taskStatusLabel({ status: task.status })
-                  : ''}
-              </span>
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          onClick={() => openTask(task)}
+          className="text-muted-foreground hover:text-foreground focus-visible:outline-ring min-w-0 cursor-pointer rounded-md py-1 text-left transition-colors focus-visible:outline-2"
+        >
+          <TaskLabel task={task} />
+          <span className="text-muted-foreground/60">
+            {' '}
+            - {taskDurationLabel(task.durationMs, task.kind)}
+            {recordedTask?.rerunName ? ' (' + stripLeadingEmoji(recordedTask.rerunName) + ')' : ''}
+            {task.status === 'failed' || task.status === 'cancelled'
+              ? ' · ' + taskStatusLabel({ status: task.status })
+              : ''}
+          </span>
+        </button>
       </div>
     </MessagePrimitive.Root>
   );

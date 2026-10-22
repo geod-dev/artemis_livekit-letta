@@ -4,17 +4,15 @@ import { fileURLToPath } from 'node:url';
 
 export interface AppConfig {
   port: number;
-  letta: { url: string; token?: string; agentName: string; defaultConversationId?: string };
-  assistant: { name: string; timezone: string };
-  model: { handle: string };
-  workspace: { dir: string; dataDir: string; agentDir: string };
-  memory: { reflectionStepCount: number };
+  agentServer: { url: string; token: string };
+  workspace: { dir: string; dataDir: string };
   transcription: { groqApiKey?: string; model: string };
   livekit: { url: string; apiKey: string; apiSecret: string; agentName: string };
   voiceGatewayToken: string;
   auth: { password: string; deviceToken: string };
 }
 
+const DEV_AGENT_SERVER_TOKEN = 'dev-agent-server-token-change-me';
 const backendDir = fileURLToPath(new URL('../../', import.meta.url));
 // In the repository, backendDir is <repo>/backend. The container copies that
 // package to /app, so its checkout root is /app rather than the filesystem root.
@@ -92,19 +90,14 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
         'WORKSPACE_PATH and ASSISTANT_DATA_ROOT must be separate, non-overlapping roots'
       );
     }
-    try {
-      new Intl.DateTimeFormat('en', { timeZone: value(env, 'ASSISTANT_TIMEZONE', 'Europe/Paris') });
-    } catch {
-      throw new Error('ASSISTANT_TIMEZONE must be a valid IANA timezone');
-    }
     const port = integer(env, 'BACKEND_PORT', 3000, 1);
     if (port > 65535) throw new Error('BACKEND_PORT must be between 1 and 65535');
-    integer(env, 'ASSISTANT_REFLECTION_STEPS', 12, 1);
+    integer(env, 'AGENT_SERVER_PORT', 4000, 1);
     if (production) {
       for (const [name, fallback] of [
         ['ARTEMIS_PASSWORD', ''],
         ['ARTEMIS_DEVICE_TOKEN', ''],
-        ['LETTA_SERVER_TOKEN', 'dev-letta-token-change-me'],
+        ['AGENT_SERVER_TOKEN', DEV_AGENT_SERVER_TOKEN],
         ['LIVEKIT_API_KEY', 'devkey'],
         ['LIVEKIT_API_SECRET', 'secret'],
         ['VOICE_GATEWAY_TOKEN', 'dev-voice-token-change-me'],
@@ -127,19 +120,11 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
     );
   return {
     port: integer(env, 'BACKEND_PORT', 3000, 1),
-    letta: {
-      url: value(env, 'LETTA_URL', `http://${ip}:4500`),
-      token: env.LETTA_SERVER_TOKEN?.trim() || undefined,
-      agentName: value(env, 'LETTA_AGENT_NAME', 'personal-assistant'),
-      defaultConversationId: env.LETTA_DEFAULT_CONVERSATION_ID?.trim() || undefined,
+    agentServer: {
+      url: value(env, 'AGENT_SERVER_URL', `http://${ip}:${integer(env, 'AGENT_SERVER_PORT', 4000, 1)}`),
+      token: value(env, 'AGENT_SERVER_TOKEN', DEV_AGENT_SERVER_TOKEN),
     },
-    assistant: {
-      name: value(env, 'ASSISTANT_NAME', 'Artemis'),
-      timezone: value(env, 'ASSISTANT_TIMEZONE', 'Europe/Paris'),
-    },
-    model: { handle: value(env, 'ASSISTANT_MODEL', 'anthropic/claude-haiku-5-5') },
-    workspace: { dir: workspaceDir, dataDir, agentDir: '/workspace' },
-    memory: { reflectionStepCount: integer(env, 'ASSISTANT_REFLECTION_STEPS', 12, 1) },
+    workspace: { dir: workspaceDir, dataDir },
     transcription: {
       groqApiKey: env.GROQ_API_KEY?.trim() || undefined,
       model: value(env, 'ASSISTANT_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'),
@@ -182,5 +167,3 @@ export function loadConfig(): AppConfig {
   loaded = true;
   return config;
 }
-
-export type { Modality } from '../chat-types';

@@ -31,7 +31,7 @@ const identity = (message: ThreadMessageLike) => message;
 type ComposerContentPart = { type: string; text?: string };
 
 /**
- * Bridges the conversation hooks (Letta history + SSE events) to assistant-ui
+ * Bridges the conversation hooks (history + SSE events) to assistant-ui
  * through an external store runtime: the hooks stay the source of truth and
  * assistant-ui renders them and reports user actions back.
  */

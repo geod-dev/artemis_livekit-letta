@@ -14,15 +14,18 @@ import {
 } from '@/components/assistant-ui/markdown/markdown-text';
 import { BashTerminal } from '@/components/assistant-ui/tools/bash-terminal';
 import {
+  type ToolCallUi,
   commandIsBackground,
   getToolDisplay,
   toolCall,
   toolCallLabel,
+  toolCallUi,
 } from '@/components/assistant-ui/tools/tool-display';
 import { WebSearchResults } from '@/components/assistant-ui/tools/web-search-results';
 import { ActivityContext } from '@/components/chat/activity-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/shadcn/utils';
+import { TOOL_NAMES } from '@/lib/tool-names';
 import { formatToolValue, readToolOutput } from '@/lib/tool-output';
 import { selectToolRenderer, toolResultFormat } from '@/lib/tool-renderer';
 
@@ -122,7 +125,7 @@ function ToolFallbackTrigger({
   toolCallId,
   toolName,
   argsText,
-  result,
+  ui,
   status,
   className,
   ...props
@@ -130,13 +133,13 @@ function ToolFallbackTrigger({
   toolCallId: string;
   toolName: string;
   argsText?: string;
-  result?: unknown;
+  ui?: ToolCallUi;
   status?: ToolCallMessagePartStatus;
 }) {
   const isRunning = status?.type === 'running';
   const isCancelled = status?.type === 'incomplete' && status.reason === 'cancelled';
 
-  const call = toolCall(toolName, argsText);
+  const call = toolCall(toolName, argsText, ui);
   const activity = useContext(ActivityContext);
   const run = activity?.tasks.find((task) => task.toolCallId === toolCallId);
   const display = getToolDisplay(call);
@@ -168,13 +171,9 @@ function ToolFallbackTrigger({
           isRunning && 'shimmer motion-reduce:animate-none'
         )}
       >
-        {toolCallLabel(
-          call,
-          run?.agentTitle,
-          commandIsBackground(call, result, run?.kind === 'command')
-        )}
+        {toolCallLabel(call, run?.agentTitle, commandIsBackground(call, run?.kind === 'command'))}
       </span>
-      {!['Agent', 'Task'].includes(toolName) && <ToolFallbackDuration />}
+      {toolName !== TOOL_NAMES.runAgent && <ToolFallbackDuration />}
       <ChevronDownIcon
         data-slot="tool-fallback-trigger-chevron"
         className={cn(
@@ -226,13 +225,15 @@ function ToolFallbackContent({
 function ToolFallbackArgs({
   toolName,
   argsText,
+  ui,
   className,
   ...props
 }: React.ComponentProps<'div'> & {
   toolName: string;
   argsText?: string;
+  ui?: ToolCallUi;
 }) {
-  const call = toolCall(toolName, argsText);
+  const call = toolCall(toolName, argsText, ui);
   const cards = getToolDisplay(call).cards(call);
   if (cards.length === 0) return null;
 
@@ -257,15 +258,17 @@ const formatUnknownValue = formatToolValue;
 
 function ToolFallbackResult({
   result,
+  display,
   format = 'markdown',
   className,
   ...props
 }: React.ComponentProps<'div'> & {
   result?: unknown;
+  display?: ToolCallUi['display'];
   format?: 'text' | 'markdown';
 }) {
   if (result === undefined) return null;
-  const output = readToolOutput(result);
+  const output = readToolOutput(result, display);
   if (!output.text && output.artifacts.length === 0) return null;
 
   return (
@@ -275,10 +278,10 @@ function ToolFallbackResult({
       {...props}
     >
       <ToolDetailCard title="Result">
-        {output.text && (typeof result === 'string' || output.isEnvelope) ? (
+        {output.text ? (
           format === 'text' ? (
             <pre className="aui-tool-fallback-result-content font-mono [overflow-wrap:anywhere] whitespace-pre-wrap">
-              <code>{!output.isEnvelope && typeof result === 'string' ? result : output.text}</code>
+              <code>{output.text}</code>
             </pre>
           ) : (
             <Streamdown
@@ -304,7 +307,7 @@ function ToolFallbackResult({
             {artifact.name}
           </a>
         ))}
-        {!output.isEnvelope && typeof result !== 'string' ? (
+        {typeof result !== 'string' ? (
           <pre className="aui-tool-fallback-result-content break-words whitespace-pre-wrap">
             {formatUnknownValue(result, 2)}
           </pre>
@@ -351,30 +354,30 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   toolCallId,
   toolName,
   argsText,
+  artifact,
   result,
-  isError,
   status,
 }) => {
   const isCancelled = status?.type === 'incomplete' && status.reason === 'cancelled';
-  const call = toolCall(toolName, argsText);
+  const ui = toolCallUi(artifact);
+  const call = toolCall(toolName, argsText, ui);
   const isRunning = status?.type === 'running';
-  const renderer = selectToolRenderer(call, result, isRunning, isError);
+  const renderer = selectToolRenderer(call, result, isRunning);
   const showCards = renderer.kind === 'generic';
   const [open, setOpen] = useState(false);
   const activity = useContext(ActivityContext);
-  if (['Agent', 'Task'].includes(toolName)) {
+  if (toolName === TOOL_NAMES.runAgent) {
     const run = activity?.tasks.find((task) => task.toolCallId === toolCallId);
     const args = call.args;
-    const target = run ??
-      activity?.tasks.find((task) => task.agentKey === 'agent:' + args.agent_id) ?? {
-        id: 'launch:' + toolCallId,
-        agentTitle: undefined,
-        toolCallId,
-        title: typeof args.description === 'string' ? args.description : 'Agent',
-        prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
-        kind: 'agent' as const,
-        status: 'running' as const,
-      };
+    const target = run ?? {
+      id: 'launch:' + toolCallId,
+      agentTitle: undefined,
+      toolCallId,
+      title: typeof args.description === 'string' ? args.description : 'Agent',
+      prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
+      kind: 'agent' as const,
+      status: 'running' as const,
+    };
     const label = toolCallLabel(call, target.agentTitle);
     const separator = label.indexOf(' - ');
     return (
@@ -409,7 +412,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
         toolCallId={toolCallId}
         toolName={toolName}
         argsText={argsText}
-        result={result}
+        ui={ui}
         status={status}
       />
       <ToolFallbackContent>
@@ -422,10 +425,17 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
           <ToolFallbackArgs
             toolName={toolName}
             argsText={argsText}
+            ui={ui}
             className={cn(isCancelled && 'opacity-60')}
           />
         )}
-        {showCards && <ToolFallbackResult result={result} format={toolResultFormat(call)} />}
+        {showCards && (
+          <ToolFallbackResult
+            result={result}
+            display={ui.display}
+            format={toolResultFormat(call)}
+          />
+        )}
       </ToolFallbackContent>
     </ToolFallbackRoot>
   );

@@ -1,0 +1,34 @@
+{
+  "name": "@artemis/agent-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent server: conversations, workers (main agent, subagent and command tasks), tools, MCP, memory and storage.",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false --include \"prompts/**/*.md\" src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "migrate": "tsx src/migrate.ts"
+  },
+  "dependencies": {
+    "@artemis/contracts": "workspace:*",
+    "@artemis/core": "workspace:*",
+    "@artemis/http": "workspace:*",
+    "@artemis/llm": "workspace:*",
+    "@artemis/workspace": "workspace:*",
+    "@artemis/storage": "workspace:*",
+    "@artemis/memory": "workspace:*",
+    "@artemis/tools": "workspace:*",
+    "@artemis/mcp": "workspace:*",
+    "@artemis/agent": "workspace:*",
+    "@hono/node-server": "^1.19.5",
+    "ajv": "^8.20.0",
+    "hono": "^4.10.1",
+    "tsx": "^4.20.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}

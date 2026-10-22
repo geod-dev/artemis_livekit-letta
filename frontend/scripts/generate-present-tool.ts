@@ -1,6 +1,6 @@
 /**
  * Writes the `present` tool's schema, generated from the app's generative UI
- * library, to the file the backend registers with Letta. Run it after
+ * library, to the file the agent-server registers the tool from. Run it after
  * changing the library or upgrading `@assistant-ui/react-generative-ui`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';

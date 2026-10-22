@@ -9,6 +9,7 @@ export interface ConversationTaskStatus {
   id: string;
   title: string;
   status: 'running';
+  kind?: 'agent' | 'command';
 }
 
 export type ConversationRequestStatus = 'idle' | 'loading' | 'ready' | 'error';

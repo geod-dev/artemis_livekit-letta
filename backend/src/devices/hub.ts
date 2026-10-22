@@ -7,7 +7,7 @@ import {
 import { randomBytes, randomUUID } from 'node:crypto';
 import { config } from '../assistant/config';
 import { equalSecret } from '../auth';
-import type { McpServer } from '../mcp/settings';
+import type { McpServer } from '../chat-types';
 
 interface Rpc {
   jsonrpc: '2.0';
@@ -103,8 +103,8 @@ export class DeviceHub {
       queue: [],
       streaming: false,
     });
-    // Registration is the device's handshake. Do not make it wait on Letta's
-    // MCP catalog refresh (which can be slow on startup); publish it separately.
+    // Registration is the device's handshake. Do not make it wait on the
+    // agent-server's MCP sync (which can be slow on startup); publish it separately.
     this.refreshRegistry(name, session);
     return session;
   }

@@ -4,6 +4,7 @@ import {
   type ToolCallMessagePartComponent,
   groupPartByType,
 } from '@assistant-ui/react';
+import { TOOL_NAMES } from '@/lib/tool-names';
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
@@ -55,6 +56,6 @@ export const defaultGroupBy = (
   part: Parameters<typeof messageGroupBy>[0],
   context?: Parameters<typeof messageGroupBy>[1]
 ): readonly ThreadGroupKey[] => {
-  if (part.type === 'tool-call' && ['Agent', 'Task'].includes(part.toolName)) return [];
+  if (part.type === 'tool-call' && part.toolName === TOOL_NAMES.runAgent) return [];
   return messageGroupBy(part, context);
 };

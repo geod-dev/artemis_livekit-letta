@@ -1,3 +1,5 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
@@ -6,11 +8,6 @@ import { test } from 'node:test';
 import { createDeviceMcpRoutes } from './mcp';
 import { DeviceHub } from './hub';
 import { createDeviceRoutes } from './api';
-import { McpCatalog } from '../mcp-bridge/catalog';
-import { mcpClient } from '../mcp-bridge/client';
-import { bridgeHandlers } from '../mcp-bridge/tools';
-import { McpRegistry } from '../mcp/registry';
-import type { McpIo } from '../mcp/service';
 
 const tools = [
   {
@@ -31,28 +28,8 @@ async function fixture() {
   const address = server.address();
   assert.ok(address && typeof address === 'object');
   baseUrl = `http://127.0.0.1:${address.port}`;
-  const files = new Map<string, string>();
-  const io: McpIo = {
-    read: async (path) => files.get(path) ?? null,
-    write: async (path, data) => {
-      files.set(path, data);
-    },
-    enableSkill: async () => {},
-    disableSkill: async () => {},
-  };
-  const catalog = new McpCatalog({ servers: () => registry.list(), client: mcpClient });
-  const registry = new McpRegistry(
-    io,
-    () => hub.servers(),
-    async () => {
-      await catalog.refresh();
-    }
-  );
-  hub.onChange(() => registry.reconcile());
   return {
     hub,
-    registry,
-    catalog,
     baseUrl,
     advance: (ms: number) => {
       now += ms;
@@ -65,46 +42,37 @@ async function fixture() {
   };
 }
 
-test('each device is persisted as a standard MCP server and uses the normal MCP client', async () => {
+test('each device is exposed as a standard MCP server that the agent-server can call', async () => {
   const f = await fixture();
+  let client: Client | undefined;
   try {
     const session = await f.hub.register('laptop', tools);
-    // Registration publishes the catalog asynchronously; wait before inspecting it.
-    await f.registry.reconcile();
-    const stored = await f.registry.list();
-    assert.equal(stored.length, 1);
-    assert.equal(stored[0].managed?.deviceName, 'laptop');
-    assert.match(stored[0].url!, /\/internal\/mcp\/devices\/laptop$/);
-    assert.equal((await mcpClient.listTools(stored[0]))[0].name, 'open_url');
-    const handlers = bridgeHandlers(f.catalog, mcpClient);
-    assert.match(
-      (await handlers.get('mcp_describe')!({ tool: 'mcp__device_laptop__open_url' })).text,
-      /Open a URL/
+    const [server] = f.hub.servers();
+    assert.equal(server.name, 'device_laptop');
+    assert.equal(server.managed?.deviceName, 'laptop');
+    assert.match(server.url!, /\/internal\/mcp\/devices\/laptop$/);
+
+    client = new Client({ name: 'agent-server-test', version: '1' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(server.url!), {
+        requestInit: { headers: server.headers },
+      })
     );
-    assert.equal(
-      (await handlers.get('mcp_call')!({ tool: 'mcp__device_laptop__open_url' })).isError,
-      true
-    );
-    const call = handlers.get('mcp_call_write')!({
-      tool: 'mcp__device_laptop__open_url',
-      arguments: { url: 'https://example.com' },
-    });
-    const requests = await f.hub.poll('laptop', session, new AbortController().signal);
-    assert.equal(requests.length, 1);
-    assert.deepEqual(requests[0].params.arguments, { url: 'https://example.com' });
-    assert.throws(() => f.hub.result('laptop', 'wrong', requests[0].id, {}), /expired/);
-    f.hub.result('laptop', session, requests[0].id, {
-      content: [{ type: 'text', text: 'Opened' }],
-    });
-    const result = await call;
-    assert.equal(result.isError, false);
-    assert.deepEqual(JSON.parse(result.text), {
-      content: [{ type: 'text', text: 'Opened' }],
-    });
+    assert.equal((await client.listTools()).tools[0].name, 'open_url');
+
+    const call = client.callTool({ name: 'open_url', arguments: { url: 'https://example.com' } });
+    const [request] = await f.hub.poll('laptop', session, new AbortController().signal);
+    assert.deepEqual(request.params.arguments, { url: 'https://example.com' });
+    assert.throws(() => f.hub.result('laptop', 'wrong', request.id, {}), /expired/);
+    f.hub.result('laptop', session, request.id, { content: [{ type: 'text', text: 'Opened' }] });
+    const result = (await call) as { isError?: boolean; content: Array<{ type: string; text?: string }> };
+    assert.notEqual(result.isError, true);
+    assert.equal(result.content[0].text, 'Opened');
+
     await f.hub.unregister('laptop', session);
-    assert.deepEqual(await f.registry.list(), []);
-    assert.deepEqual(await f.catalog.current(), []);
+    assert.deepEqual(f.hub.servers(), []);
   } finally {
+    await client?.close();
     await f.close();
   }
 });
@@ -120,9 +88,9 @@ test('closing the persistent external connection unregisters the device', async 
     const reader = response.body!.getReader();
     assert.match(new TextDecoder().decode((await reader.read()).value), /event: connected/);
     await reader.cancel();
-    for (let attempt = 0; attempt < 50 && (await f.registry.list()).length; attempt++)
+    for (let attempt = 0; attempt < 50 && f.hub.servers().length; attempt++)
       await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.deepEqual(await f.registry.list(), []);
+    assert.deepEqual(f.hub.servers(), []);
   } finally {
     await f.close();
   }
@@ -133,21 +101,12 @@ test('devices with the same tool name have independent MCP endpoints and lifetim
   try {
     const laptop = await f.hub.register('laptop', tools);
     await f.hub.register('desktop', tools);
-    await f.registry.reconcile();
-    const stored = await f.registry.list();
-    assert.equal(stored.length, 2);
+    const stored = f.hub.servers();
+    assert.deepEqual(stored.map((server) => server.name), ['device_laptop', 'device_desktop']);
     assert.notEqual(stored[0].url, stored[1].url);
     assert.notEqual(stored[0].headers?.Authorization, stored[1].headers?.Authorization);
-    assert.deepEqual(
-      (await f.catalog.current()).map((tool) => tool.qualified),
-      ['mcp__device_laptop__open_url', 'mcp__device_desktop__open_url']
-    );
     await f.hub.unregister('laptop', laptop);
-    assert.deepEqual(
-      (await f.registry.list()).map((server) => server.name),
-      ['device_desktop']
-    );
-    assert.equal((await mcpClient.listTools((await f.registry.list())[0]))[0].name, 'open_url');
+    assert.deepEqual(f.hub.servers().map((server) => server.name), ['device_desktop']);
   } finally {
     await f.close();
   }
@@ -164,16 +123,37 @@ test('replacement, missed heartbeat and internal endpoint authentication are sco
     const replacement = await f.hub.register('laptop', tools);
     assert.notEqual(replacement, session);
     assert.equal((await call).isError, true);
+    // The replaced session can no longer unregister the device, which stays connected.
     await f.hub.unregister('laptop', session);
-    assert.equal((await f.registry.list()).length, 1);
+    assert.equal(f.hub.servers().length, 1);
     assert.equal((await fetch(oldServer.url!, { headers: oldServer.headers })).status, 401);
     await assert.rejects(f.hub.poll('laptop', session, new AbortController().signal), /expired/);
+    const current = await f.hub.register('laptop', tools);
     f.advance(75_001);
     await f.hub.expire();
-    assert.deepEqual(await f.registry.list(), []);
+    assert.deepEqual(f.hub.servers(), []);
+    assert.throws(() => f.hub.tools('laptop', current), /expired/);
     await assert.rejects(f.hub.register('../bad', tools));
   } finally {
     await f.close();
+  }
+});
+
+test('device connections and disconnections are published to the gateway listener', async () => {
+  const hub = new DeviceHub({ baseUrl: () => 'http://gateway.test' });
+  const published: string[][] = [];
+  hub.onChange(async () => {
+    published.push(hub.servers().map((server) => server.name));
+  });
+  try {
+    const session = await hub.register('laptop', tools);
+    for (let attempt = 0; attempt < 50 && published.length === 0; attempt++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.deepEqual(published, [['device_laptop']]);
+    await hub.unregister('laptop', session);
+    assert.deepEqual(published.at(-1), []);
+  } finally {
+    hub.close();
   }
 });
 

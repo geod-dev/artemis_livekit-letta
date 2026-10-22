@@ -24,17 +24,6 @@ test('reads every result of a complete MCP result', () => {
   assert.equal(output?.results[1].snippet, 'A movement against austerity.');
 });
 
-test('reads the results that survive a truncated MCP result', () => {
-  const json = JSON.stringify({ content: [{ type: 'text', text: blocks }] }, null, 2);
-  const cut = json.slice(0, json.indexOf('Published: N/A'));
-  const output = parseWebSearchResult(
-    `${cut}\n\n[Output truncated: showing 2,000 of 30,241 characters.]\n[Full output written to: /x.txt]`
-  );
-  assert.equal(output?.truncated, true);
-  assert.equal(output?.results.length, 2);
-  assert.equal(output?.results[1].url, 'https://fr.wikipedia.org/wiki/Mouvement');
-});
-
 test('reads result blocks as the MCP bridge returns them (plain text)', () => {
   assert.equal(parseWebSearchResult(blocks)?.results.length, 2);
 });
