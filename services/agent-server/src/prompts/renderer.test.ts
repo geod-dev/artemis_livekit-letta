@@ -77,8 +77,11 @@ describe('shipped prompt templates', () => {
       for (const match of source.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)) {
         assert.ok(KNOWN_PLACEHOLDERS.has(match[1] ?? ''), `${file} uses unknown placeholder ${match[0]}`);
       }
-      // Pattern built from parts so this test file itself stays clean of the legacy name.
-      assert.doesNotMatch(source, new RegExp(['le', 'tta'].join(''), 'i'), `${file} still mentions the legacy framework`);
+      // Neutral markers of the retired framework's memory and tool API; the renderer never emits them.
+      const lower = source.toLowerCase();
+      for (const marker of ['memgpt', 'core_memory_', 'archival_memory']) {
+        assert.ok(!lower.includes(marker), `${file} still mentions legacy marker ${marker}`);
+      }
     }
   });
 });

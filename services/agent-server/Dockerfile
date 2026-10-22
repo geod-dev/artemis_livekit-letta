@@ -11,6 +11,6 @@ RUN groupadd --gid 1001 workspace && useradd --uid 1001 --gid 1001 --no-create-h
 FROM base AS runtime
 WORKDIR /app
 COPY . .
-RUN pnpm install --frozen-lockfile --filter ./services/agent-server...
+RUN pnpm install --frozen-lockfile --filter "@artemis/agent-server..."
 EXPOSE 4000
 CMD ["pnpm", "--filter", "./services/agent-server", "start"]
