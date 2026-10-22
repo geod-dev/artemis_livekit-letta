@@ -42,9 +42,13 @@ export class SubagentTaskWorker extends TaskWorker {
     return this.spec.conversationId;
   }
 
-  /** Freezes the prompt and loads the replayed history, then starts the loop in the background. */
+  /**
+   * Freezes the prompt and loads the replayed history, then starts the loop in the background.
+   * The worker stays `spawning` until these awaits finish. A stop requested meanwhile is
+   * checked after each await: the loop then never starts and `run` persists the task as cancelled.
+   */
   async start(): Promise<void> {
-    const { env, spec, taskId } = this;
+    const { env, spec, taskId, controller } = this;
     const definition = env.subagents.find((candidate) => candidate.name === spec.subagentType);
     if (!definition) throw new AppError('unknown_subagent', `Unknown subagent "${spec.subagentType}"`, 400);
     const rendered = await env.prompts.subagent({
@@ -55,17 +59,19 @@ export class SubagentTaskWorker extends TaskWorker {
       taskId,
       mcpTools: mcpToolsSection(await env.catalog.tools()),
     });
-    this.toolDefinitions = env.tools().definitions();
-    this.systemPrompt = rendered.systemPrompt;
-    await env.storage.promptSnapshots.create({
-      ownerKind: 'task',
-      ownerId: taskId,
-      systemPrompt: rendered.systemPrompt,
-      tools: this.toolDefinitions as unknown[],
-      templateId: rendered.templateId,
-      templateHash: rendered.templateHash,
-    });
-    this.history = await this.resumedHistory();
+    if (!controller.signal.aborted) {
+      this.toolDefinitions = env.tools().definitions();
+      this.systemPrompt = rendered.systemPrompt;
+      await env.storage.promptSnapshots.create({
+        ownerKind: 'task',
+        ownerId: taskId,
+        systemPrompt: rendered.systemPrompt,
+        tools: this.toolDefinitions as unknown[],
+        templateId: rendered.templateId,
+        templateHash: rendered.templateHash,
+      });
+    }
+    if (!controller.signal.aborted) this.history = await this.resumedHistory();
     this.currentState = 'busy';
     this.touch();
     void this.run().then((outcome) => this.settle(outcome));
@@ -76,16 +82,14 @@ export class SubagentTaskWorker extends TaskWorker {
     this.controller.abort();
   }
 
+  /** A worker still spawning settles by itself once its start resolves; dispose does not wait for that. */
   async dispose(reason: string): Promise<void> {
-    if (this.currentState === 'spawning' || this.currentState === 'stopped') {
-      this.currentState = 'stopped';
-      return;
-    }
+    if (this.currentState === 'stopped') return;
     await this.stop(reason);
-    await this.outcome;
+    if (this.currentState !== 'spawning') await this.outcome;
   }
 
-  /** Never rejects: failures are persisted as a failed task. */
+  /** Never rejects: failures are persisted as a failed task. An aborted signal never starts the loop. */
   private async run(): Promise<TaskOutcome> {
     const { env, spec, taskId, controller } = this;
     const route = env.router.route('worker');
@@ -93,38 +97,40 @@ export class SubagentTaskWorker extends TaskWorker {
     let outcome: LoopOutcome | undefined;
     let failure: string | null = null;
     try {
-      await env.storage.messages.append({
-        id: prefixedId('msg'),
-        conversationId: spec.conversationId,
-        taskId,
-        turnId: null,
-        role: 'user',
-        content: [{ type: 'text', text: spec.prompt }],
-        envelope: null,
-        provider: null,
-        model: null,
-        providerMessageId: null,
-        stopReason: null,
-        usage: null,
-        timings: null,
-      });
-      const persistence = new LoopPersistence({
-        scope: { conversationId: spec.conversationId, taskId, turnId: null, provider: route.provider.id },
-        storage: env.storage,
-        clock: env.clock,
-        signal,
-      });
-      const events = new AgentLoop().run({
-        route,
-        system: this.systemPrompt,
-        toolDefinitions: this.toolDefinitions,
-        toolset: env.tools(),
-        messages: [...this.history, { role: 'user', content: [{ type: 'text', text: spec.prompt }] }],
-        toolContext: (call: ToolUseBlock) => this.toolContext(call),
-        signal,
-        newMessageId: () => prefixedId('msg'),
-      });
-      outcome = await drainLoop(events, (event) => persistence.handle(event));
+      if (!signal.aborted) {
+        await env.storage.messages.append({
+          id: prefixedId('msg'),
+          conversationId: spec.conversationId,
+          taskId,
+          turnId: null,
+          role: 'user',
+          content: [{ type: 'text', text: spec.prompt }],
+          envelope: null,
+          provider: null,
+          model: null,
+          providerMessageId: null,
+          stopReason: null,
+          usage: null,
+          timings: null,
+        });
+        const persistence = new LoopPersistence({
+          scope: { conversationId: spec.conversationId, taskId, turnId: null, provider: route.provider.id },
+          storage: env.storage,
+          clock: env.clock,
+          signal,
+        });
+        const events = new AgentLoop().run({
+          route,
+          system: this.systemPrompt,
+          toolDefinitions: this.toolDefinitions,
+          toolset: env.tools(),
+          messages: [...this.history, { role: 'user', content: [{ type: 'text', text: spec.prompt }] }],
+          toolContext: (call: ToolUseBlock) => this.toolContext(call),
+          signal,
+          newMessageId: () => prefixedId('msg'),
+        });
+        outcome = await drainLoop(events, (event) => persistence.handle(event));
+      }
     } catch (error) {
       failure = messageOf(error);
       controller.abort();

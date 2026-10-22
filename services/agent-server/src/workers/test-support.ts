@@ -131,7 +131,7 @@ export class FixedRouter implements ModelRouter {
 }
 
 class FakePrompts extends PromptRenderer {
-  constructor() {
+  constructor(private readonly subagentGate: Promise<unknown> = Promise.resolve()) {
     super('');
   }
 
@@ -139,7 +139,9 @@ class FakePrompts extends PromptRenderer {
     return { templateId: 'system', templateHash: 'test', systemPrompt: 'MAIN-SYSTEM' };
   }
 
+  /** `subagentGate` holds a subagent start in its spawning phase until it resolves. */
   override async subagent() {
+    await this.subagentGate;
     return { templateId: 'agent:general-purpose', templateHash: 'test', systemPrompt: 'SUB-SYSTEM' };
   }
 }
@@ -216,7 +218,12 @@ export interface Harness {
 /** A runtime over in-memory storage, a scripted provider and a temp workspace. */
 export async function createHarness(
   respond: (request: LlmRequest) => Step,
-  options: { storage?: InMemoryStorage; workspaceRoot?: string; overrides?: Partial<AgentServerConfig['workers']> } = {}
+  options: {
+    storage?: InMemoryStorage;
+    workspaceRoot?: string;
+    overrides?: Partial<AgentServerConfig['workers']>;
+    subagentGate?: Promise<unknown>;
+  } = {}
 ): Promise<Harness> {
   const storage = options.storage ?? new InMemoryStorage();
   const workspaceRoot = options.workspaceRoot ?? mkdtempSync(join(tmpdir(), 'agent-workers-'));
@@ -229,7 +236,7 @@ export async function createHarness(
     config,
     storage,
     router: new FixedRouter(provider),
-    prompts: new FakePrompts(),
+    prompts: new FakePrompts(options.subagentGate),
     subagents: [{ name: 'general-purpose', description: 'General work', instructions: 'Do the task.' }],
     hub,
     memory: new NoMemory(),

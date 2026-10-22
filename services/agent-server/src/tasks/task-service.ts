@@ -3,8 +3,9 @@ import type { ConversationTask } from '@artemis/contracts/chat-types';
 import type { TaskRecord } from '@artemis/storage';
 import type { CommandHandoff } from '@artemis/tools/workspace-tools';
 import type { WorkerEnv } from '../workers/env.ts';
+import type { SubagentTaskWorker } from '../workers/subagent-task-worker.ts';
 import type { WorkerSupervisor } from '../workers/supervisor.ts';
-import type { SubagentSpec } from '../workers/types.ts';
+import type { SubagentSpec, SubagentStartMode } from '../workers/types.ts';
 import type { AgentToolContext } from '../tools/index.ts';
 import { isoAt } from '../workers/util.ts';
 
@@ -31,9 +32,6 @@ export abstract class TaskService implements CommandHandoff {
 const LIST_LIMIT = 200;
 
 export class WorkerTaskService extends TaskService {
-  /** Slots held by starts in progress (not yet registered with the supervisor). */
-  private reservedSubagents = 0;
-
   constructor(
     private readonly env: WorkerEnv,
     private readonly supervisor: WorkerSupervisor
@@ -79,18 +77,13 @@ export class WorkerTaskService extends TaskService {
   }
 
   async startSubagent(spec: SubagentSpec): Promise<{ taskId: string }> {
-    return this.withSubagentSlot(async () => {
-      const taskId = await this.createSubagentTask(spec);
-      await this.supervisor.startSubagent(taskId, spec, 'background');
-      return { taskId };
-    });
+    const worker = await this.spawnSubagent(spec, 'background');
+    return { taskId: worker.taskId };
   }
 
   async runSubagent(spec: SubagentSpec, signal: AbortSignal): Promise<{ taskId: string; report: string; status: ConversationTask['status'] }> {
-    const { taskId, worker } = await this.withSubagentSlot(async () => {
-      const taskId = await this.createSubagentTask(spec);
-      return { taskId, worker: await this.supervisor.startSubagent(taskId, spec, 'synchronous') };
-    });
+    const worker = await this.spawnSubagent(spec, 'synchronous');
+    const { taskId } = worker;
     const stop = () => void worker.stop('Cancelled by the user');
     if (signal.aborted) stop();
     else signal.addEventListener('abort', stop, { once: true });
@@ -121,25 +114,29 @@ export class WorkerTaskService extends TaskService {
   }
 
   /**
-   * Holds one of the `maxSubagents` slots while `run` starts a subagent. The check and
-   * the reservation happen synchronously, before any await, so concurrent starts cannot
-   * both pass; the slot is released once the worker is registered with the supervisor.
+   * Registers the worker before any await (the limit check and the registration run
+   * synchronously, so concurrent starts cannot both pass), then creates the task row and
+   * starts the worker. Archive and stop reach the worker from registration on, even while
+   * the row is being written or the loop is spawning.
    */
-  private async withSubagentSlot<T>(run: () => Promise<T>): Promise<T> {
+  private async spawnSubagent(spec: SubagentSpec, mode: SubagentStartMode): Promise<SubagentTaskWorker> {
     const { maxSubagents } = this.env.config.workers;
-    if (this.supervisor.runningSubagentCount() + this.reservedSubagents >= maxSubagents) {
+    if (this.supervisor.runningSubagentCount() >= maxSubagents) {
       throw new AppError('too_many_tasks', `At most ${maxSubagents} subagents can run at once`, 429);
     }
-    this.reservedSubagents += 1;
+    const taskId = prefixedId('task');
+    const worker = this.supervisor.registerSubagent(taskId, spec);
     try {
-      return await run();
-    } finally {
-      this.reservedSubagents -= 1;
+      await this.createSubagentTask(taskId, spec);
+    } catch (error) {
+      this.supervisor.forgetSubagent(taskId);
+      throw error;
     }
+    return this.supervisor.startSubagent(worker, mode);
   }
 
   /** Validates a subagent start and creates its running task row. */
-  private async createSubagentTask(spec: SubagentSpec): Promise<string> {
+  private async createSubagentTask(taskId: string, spec: SubagentSpec): Promise<void> {
     const { storage, subagents } = this.env;
     if (!subagents.some((definition) => definition.name === spec.subagentType)) {
       throw new AppError('unknown_subagent', `Unknown subagent type "${spec.subagentType}"`, 400);
@@ -150,7 +147,6 @@ export class WorkerTaskService extends TaskService {
         throw new NotFoundError(`Task ${spec.resumedFromTaskId}`);
       }
     }
-    const taskId = prefixedId('task');
     await storage.tasks.create({
       id: taskId,
       conversationId: spec.conversationId,
@@ -173,7 +169,6 @@ export class WorkerTaskService extends TaskService {
       startedAt: this.iso(),
     });
     this.publishRunning(spec.conversationId, taskId, spec.title, 'agent');
-    return taskId;
   }
 
   private publishRunning(conversationId: string, taskId: string, title: string, kind: 'agent' | 'command'): void {

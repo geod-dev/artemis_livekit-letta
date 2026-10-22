@@ -222,8 +222,13 @@ export class StoreMemoryCoordinator extends MemoryCoordinator {
     }
   }
 
+  /**
+   * Scans the outbox oldest first. A row in backoff is skipped, and the scan goes on. Every
+   * backed-off pending row is in `retryAt`, so widening the window by its size keeps at least
+   * `PUMP_BATCH` rows that are not in backoff reachable, even when an outage backs off the oldest ones.
+   */
   private async submitPending(): Promise<void> {
-    const rows = await this.options.storage.memoryRetentions.listPending(PUMP_BATCH);
+    const rows = await this.options.storage.memoryRetentions.listPending(PUMP_BATCH + this.retryAt.size);
     for (const row of rows) {
       if (this.stopped) return;
       if ((this.retryAt.get(row.id) ?? 0) > this.clock.now()) continue;

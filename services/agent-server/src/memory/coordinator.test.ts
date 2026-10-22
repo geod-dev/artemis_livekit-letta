@@ -216,3 +216,32 @@ test('disabled memory neither recalls nor retains', async () => {
   assert.equal(store.retains.length, 0);
   await coordinator.stop();
 });
+
+test('an outage that backs off the oldest pending rows does not starve the rows behind them', async () => {
+  const { clock, storage, store, coordinator } = setup();
+  await seedConversation(storage, 'c1');
+  // 25 pending retentions, one turn each. The first 10 attempts (the oldest batch) fail.
+  for (let i = 0; i < 25; i++) {
+    const id = `t${String(i).padStart(2, '0')}`;
+    await seedTurn(storage, { id, conversationId: 'c1', text: id, reply: 'r' });
+    await storage.memoryRetentions.createForTurns({
+      id: `r${String(i).padStart(2, '0')}`,
+      conversationId: 'c1',
+      turnIds: [id],
+      documentId: `conversation:c1:${i}`,
+      operationId: `op-${i}`,
+      reason: 'batch',
+    });
+  }
+  store.retainFailures = 10;
+  coordinator.start();
+  await settle();
+  assert.equal(store.retains.length, 0, 'the first batch failed and is in backoff');
+
+  // Still inside the 2 s backoff of the first batch: the rows behind it must go through.
+  clock.advance(1000);
+  await settle();
+  assert.equal(store.retains.length, 10, 'the 10 rows behind the backed-off batch were submitted');
+  assert.equal((await storage.memoryRetentions.listPending(100)).length, 15, 'the 10 backed-off rows and 5 unreached rows stay pending');
+  await coordinator.stop();
+});

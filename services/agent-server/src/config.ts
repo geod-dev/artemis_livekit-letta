@@ -62,6 +62,12 @@ export interface AgentServerConfig {
 }
 
 const DEV_AGENT_SERVER_TOKEN = 'dev-agent-server-token-change-me';
+/** Placeholder database passwords from `.env.example`; production refuses them. */
+const DEV_DB_PASSWORDS = [
+  'dev-postgres-password-change-me',
+  'dev-artemis-db-password-change-me',
+  'dev-hindsight-db-password-change-me',
+];
 const DEFAULT_ASSISTANT_MODEL = 'anthropic/claude-haiku-5-5';
 const DEFAULT_TASK_MODEL = 'openai-compatible/zai-org/GLM-5.3-Flash';
 
@@ -90,6 +96,16 @@ function integer(env: NodeJS.ProcessEnv, name: string, fallback: number, min: nu
   return parsed;
 }
 
+/** The password embedded in a postgres URL, or undefined when absent or unparseable. */
+function urlPassword(url: string): string | undefined {
+  try {
+    const { password } = new URL(url);
+    return password ? decodeURIComponent(password) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function modelHandle(env: NodeJS.ProcessEnv, name: string, fallback: string): string {
   const handle = text(env, name) ?? fallback;
   parseModelHandle(handle);
@@ -108,6 +124,17 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
   const token = text(env, 'AGENT_SERVER_TOKEN') ?? DEV_AGENT_SERVER_TOKEN;
   if (production && token === DEV_AGENT_SERVER_TOKEN) {
     throw new Error('AGENT_SERVER_TOKEN must be explicitly set to a non-development secret in production');
+  }
+  if (production) {
+    for (const [name, configured] of [
+      ['DATABASE_URL password', urlPassword(databaseUrl)],
+      ['ARTEMIS_DB_PASSWORD', text(env, 'ARTEMIS_DB_PASSWORD')],
+      ['HINDSIGHT_DB_PASSWORD', text(env, 'HINDSIGHT_DB_PASSWORD')],
+    ] as const) {
+      if (configured !== undefined && DEV_DB_PASSWORDS.includes(configured)) {
+        throw new Error(`${name} must be explicitly set to a non-development secret in production`);
+      }
+    }
   }
 
   const timezone = text(env, 'ASSISTANT_TIMEZONE') ?? 'UTC';

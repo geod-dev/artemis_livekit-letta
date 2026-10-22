@@ -40,6 +40,18 @@ describe('loadConfig', () => {
     assert.equal(config.production, true);
   });
 
+  it('refuses placeholder database passwords in production', () => {
+    const prod = { NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret' };
+    const placeholderUrl = 'postgresql://artemis:dev-artemis-db-password-change-me@localhost:5432/artemis';
+    assert.throws(() => loadConfig({ ...prod, DATABASE_URL: placeholderUrl }), /DATABASE_URL password/);
+    assert.throws(
+      () => loadConfig({ ...prod, ...base, HINDSIGHT_DB_PASSWORD: 'dev-hindsight-db-password-change-me' }),
+      /HINDSIGHT_DB_PASSWORD/
+    );
+    assert.equal(loadConfig({ ...prod, ...base }).production, true);
+    assert.equal(loadConfig({ ...base, HINDSIGHT_DB_PASSWORD: 'dev-hindsight-db-password-change-me' }).production, false);
+  });
+
   it('routes the title model to ASSISTANT_TITLE_MODEL when set', () => {
     const config = loadConfig({ ...base, ASSISTANT_MODEL: 'anthropic/claude-haiku-5-5', ASSISTANT_TITLE_MODEL: 'anthropic/other' });
     assert.equal(config.models.title, 'anthropic/other');

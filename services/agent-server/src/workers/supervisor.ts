@@ -11,6 +11,11 @@ import { isoAt, messageOf } from './util.ts';
 /** Reaper period of the main agent workers. */
 export const REAPER_PERIOD_MS = 15_000;
 
+/** Not yet terminal: spawning, busy or stopping. */
+function isLive(worker: TaskWorker): boolean {
+  return worker.state !== 'stopped' && worker.state !== 'failed';
+}
+
 /**
  * Owns every live worker. Main agent workers live in a `KeyedRegistry` (idle
  * `workers.idleTimeoutMs`, swept every 15 s); a main worker is active while it
@@ -59,15 +64,28 @@ export class WorkerSupervisor {
       });
   }
 
-  /** Starts a subagent worker for a task row already created by the task service. */
-  async startSubagent(taskId: string, spec: SubagentSpec, mode: SubagentStartMode): Promise<SubagentTaskWorker> {
+  /**
+   * Registers a subagent worker in the `spawning` state, before its task row exists, so that
+   * archive and stop reach it from this moment on. The worker is started by `startSubagent`.
+   */
+  registerSubagent(taskId: string, spec: SubagentSpec): SubagentTaskWorker {
     const worker = new SubagentTaskWorker(taskId, spec, this.env);
     this.tasks.set(taskId, worker);
     this.touchMainAgent(spec.conversationId);
+    return worker;
+  }
+
+  /** Drops a registered worker whose task row could not be created (it never started). */
+  forgetSubagent(taskId: string): void {
+    this.tasks.delete(taskId);
+  }
+
+  /** Starts a registered subagent worker; its task row must already exist. */
+  async startSubagent(worker: SubagentTaskWorker, mode: SubagentStartMode): Promise<SubagentTaskWorker> {
     try {
       await worker.start();
     } catch (error) {
-      await this.failTask(taskId, messageOf(error), mode === 'background');
+      await this.failTask(worker.taskId, messageOf(error), mode === 'background');
       if (mode === 'synchronous') throw error;
       return worker;
     }
@@ -93,20 +111,19 @@ export class WorkerSupervisor {
   /** Stops a running task worker; false when no such task is running in this process. */
   async stopTask(taskId: string, reason: string): Promise<boolean> {
     const worker = this.tasks.get(taskId);
-    if (!worker || worker.state !== 'busy') return false;
+    if (!worker || !isLive(worker)) return false;
     await worker.stop(reason);
     return true;
   }
 
   /**
-   * Archive: stops the conversation's running task workers and disposes its main
-   * worker (aborting any turn). Idempotent; a later message respawns the worker.
+   * Archive: stops every non-terminal task worker of the conversation (spawning, busy
+   * or stopping) and disposes its main worker (aborting any turn). Idempotent; a later
+   * message respawns the worker.
    */
   async stopConversation(conversationId: string, reason = 'conversation archived'): Promise<void> {
-    const running = [...this.tasks.values()].filter(
-      (worker) => worker.conversationId === conversationId && worker.state === 'busy'
-    );
-    await Promise.allSettled(running.map((worker) => worker.stop(reason)));
+    const live = [...this.tasks.values()].filter((worker) => worker.conversationId === conversationId && isLive(worker));
+    await Promise.allSettled(live.map((worker) => worker.stop(reason)));
     await this.mains.dispose(conversationId, reason);
   }
 

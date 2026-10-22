@@ -77,7 +77,7 @@ services:
     # only. A loopback signal port remains available for the standalone HTTPS host.
     command: --bind 0.0.0.0 --node-ip ${IP_ADDRESS:-127.0.0.1} --udp-port 7882
     environment:
-      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-secret}"
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
     ports:
       - "7881:7881"
       - "7882:7882/udp"

@@ -42,6 +42,10 @@ export interface FilesystemWorkspaceOptions {
   env?: Record<string, string>;
   /** `auto` uses `rg` when it is on the PATH; `off` always uses the JavaScript search. */
   ripgrep?: 'auto' | 'off';
+  /** Maximum wall-clock lifetime of a command without its own `timeoutMs` (background, interactive). Default 30 minutes. */
+  commandLifetimeMs?: number;
+  /** Retained output per command stream. Default 1 MiB; the oldest output is dropped. */
+  maxOutputBytes?: number;
 }
 
 const DEFAULT_GREP_LIMIT = 500;
@@ -183,6 +187,8 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
       cwd,
       env: this.commandEnv(options.env),
       timeoutMs: options.timeoutMs,
+      maxLifetimeMs: this.options.commandLifetimeMs,
+      maxOutputBytes: this.options.maxOutputBytes,
       runAs: this.options.runAs,
     });
   }

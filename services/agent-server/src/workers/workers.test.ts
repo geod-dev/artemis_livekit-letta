@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { LlmRequest } from '@artemis/llm';
 import { InMemoryStorage } from '@artemis/storage';
-import type { TurnSubmission } from './types.ts';
+import type { SubagentSpec, TurnSubmission } from './types.ts';
 import { createHarness, seedConversation, until, type Harness, type Step } from './test-support.ts';
 
 const textTurn = (text: string): TurnSubmission => ({ kind: 'user', modality: 'text', mode: 'text', effort: 'medium', text });
@@ -106,6 +106,42 @@ test('a task cancelled by archive creates no update and does not respawn the mai
   assert.deepEqual(await h.storage.updates.listByConversation('c1'), []);
   assert.equal(h.runtime.supervisor.peekMainAgent('c1'), undefined);
   assert.equal(h.provider.requests.length, requestsBefore);
+  await h.runtime.supervisor.shutdown();
+});
+
+test('archive during a pending subagent start stops the worker: its loop and tools never run', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const h = await createHarness(() => ({ content: [{ type: 'text', text: 'must not run' }] }), { subagentGate: gate });
+  await seedConversation(h, 'c1');
+  const spec: SubagentSpec = {
+    conversationId: 'c1',
+    subagentType: 'general-purpose',
+    title: 'Research',
+    prompt: 'look around',
+    originMode: 'text',
+    originTurnId: null,
+    originToolCallId: null,
+    parentTaskId: null,
+    resumedFromTaskId: null,
+    depth: 0,
+  };
+  const started = h.runtime.tasks.startSubagent(spec);
+  // The task row exists; the worker is still spawning (its prompt render is held by the gate).
+  await until(async () => (await h.storage.tasks.listByConversation('c1'))[0]?.status === 'running');
+  assert.equal(h.runtime.supervisor.runningSubagentCount(), 1);
+
+  // Archive as the conversations service does: the record first, then the supervisor's stop hook.
+  assert.equal(await h.storage.conversations.archive('c1'), true);
+  await h.runtime.supervisor.stopConversation('c1');
+  release();
+  const { taskId } = await started;
+
+  await until(async () => (await h.storage.tasks.get(taskId))?.status === 'cancelled');
+  await until(() => h.runtime.supervisor.runningSubagentCount() === 0);
+  assert.equal(h.provider.requests.length, 0, 'the loop never called the model, so no tool ran');
+  assert.equal((await h.storage.tasks.get(taskId))?.status, 'cancelled');
+  assert.deepEqual(await h.storage.updates.listByConversation('c1'), []);
   await h.runtime.supervisor.shutdown();
 });
 
