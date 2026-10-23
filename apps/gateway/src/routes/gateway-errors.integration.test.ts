@@ -1,20 +1,17 @@
 import { serve } from '@hono/node-server';
+import type { Hono } from 'hono';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
-import { Hono } from 'hono';
-import { AgentServerClient } from '../agent-server/client';
-import { AttachmentStore } from '../attachments/attachment-store';
+import { createGatewayApp } from '../app';
+import { composeGateway } from '../compose';
 import { type AppConfig, validateConfig } from '../config';
-import { createAuth } from '../auth';
-import { composeWorkspace } from '../compose';
-import { createConversationRoutes } from './conversations';
 
 const AGENT_TOKEN = 'gateway-errors-agent-token';
 const PASSWORD = 'gateway-errors-password';
@@ -82,12 +79,9 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
   };
 }
 
-/** The gateway's composition from server.ts: auth in front of the gateway routes. */
+/** The gateway exactly as server.ts builds it, in front of the fake agent-server. */
 function buildGateway(config: AppConfig): Hono {
-  const agent = new AgentServerClient(config.agentServer);
-  const app = createAuth(config.auth.password, config.auth.deviceToken, config.voiceGatewayToken);
-  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(config.workspace.dir), config.workspace.dataDir)));
-  return app;
+  return createGatewayApp(composeGateway(config));
 }
 
 interface Session {
@@ -97,7 +91,11 @@ interface Session {
 }
 
 /** Start a gateway pointed at `agentUrl` with `agentToken`, log in, run the test, then stop everything. */
-async function withGateway<T>(agentUrl: string, agentToken: string, run: (gw: Session) => Promise<T>): Promise<T> {
+async function withGateway<T>(
+  agentUrl: string,
+  agentToken: string,
+  run: (gw: Session) => Promise<T>
+): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), 'artemis-gateway-errors-'));
   try {
     const config = validateConfig({
@@ -107,7 +105,11 @@ async function withGateway<T>(agentUrl: string, agentToken: string, run: (gw: Se
       WORKSPACE_PATH: join(root, 'workspace'),
       ARTEMIS_DATA_DIR: join(root, 'data'),
     });
-    const server = serve({ fetch: buildGateway(config).fetch, hostname: '127.0.0.1', port: 0 }) as Server;
+    const server = serve({
+      fetch: buildGateway(config).fetch,
+      hostname: '127.0.0.1',
+      port: 0,
+    }) as Server;
     await once(server, 'listening');
     try {
       const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -180,21 +182,28 @@ test('an agent-server that refuses connections yields 503 with a masked, stable 
   });
 });
 
-test('a hung agent-server does not hang the browser: the gateway answers 502 or 503 within 10 seconds', { timeout: 25_000 }, async (t) => {
-  t.mock.method(console, 'error', () => {});
-  // Accepts the request and never answers, like a wedged agent-server process.
-  fake.respond = () => {};
-  await withGateway(fake.url, AGENT_TOKEN, async (gw) => {
-    const response = await gw.session('/api/conversations', {
-      ...json('POST', { title: 'Slow' }),
-      signal: AbortSignal.timeout(10_000),
+test(
+  'a hung agent-server does not hang the browser: the gateway answers 502 or 503 within 10 seconds',
+  { timeout: 25_000 },
+  async (t) => {
+    t.mock.method(console, 'error', () => {});
+    // Accepts the request and never answers, like a wedged agent-server process.
+    fake.respond = () => {};
+    await withGateway(fake.url, AGENT_TOKEN, async (gw) => {
+      const response = await gw.session('/api/conversations', {
+        ...json('POST', { title: 'Slow' }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      assert.ok(
+        [502, 503].includes(response.status),
+        `expected 502 or 503, got ${response.status}`
+      );
+      assert.equal(response.headers.get('Content-Type')?.startsWith('application/json'), true);
+      const body = (await response.json()) as { error: unknown };
+      assert.equal(typeof body.error, 'string');
     });
-    assert.ok([502, 503].includes(response.status), `expected 502 or 503, got ${response.status}`);
-    assert.equal(response.headers.get('Content-Type')?.startsWith('application/json'), true);
-    const body = (await response.json()) as { error: unknown };
-    assert.equal(typeof body.error, 'string');
-  });
-});
+  }
+);
 
 test('a message over the body limit is refused with 413 and never reaches the agent-server', async (t) => {
   t.mock.method(console, 'error', () => {});
@@ -238,7 +247,10 @@ test('an agent-server that rejects the gateway token is reported as a gateway fa
   t.mock.method(console, 'error', () => {});
   await withGateway(fake.url, 'a-stale-gateway-token', async (gw) => {
     const response = await gw.session('/api/conversations');
-    assert.ok(response.status >= 500 && response.status < 600, `expected a 5xx, got ${response.status}`);
+    assert.ok(
+      response.status >= 500 && response.status < 600,
+      `expected a 5xx, got ${response.status}`
+    );
     const body = (await response.json()) as { error: unknown };
     assert.equal(typeof body.error, 'string');
   });

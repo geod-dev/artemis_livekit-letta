@@ -1,7 +1,7 @@
-import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Context, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 
 /** Largest request body the gateway relays to the agent-server (uploads have their own route). */
 export const PROXY_BODY_LIMIT = 4 * 1024 * 1024;
@@ -9,7 +9,13 @@ export const PROXY_BODY_LIMIT = 4 * 1024 * 1024;
 export const JSON_BODY_LIMIT = 1_000_000;
 
 export class HttpError extends Error {
-  constructor(message: string, readonly status: number) { super(message); this.name = 'HttpError'; }
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = 'HttpError';
+  }
 }
 
 const GENERIC_MESSAGE = 'The request could not be completed';
@@ -28,11 +34,18 @@ export function errorResponse(error: unknown, status = 500): Response {
     else if (typed && error.message) message = error.message;
   }
   const requestId = resolvedStatus >= 500 ? randomUUID() : undefined;
-  if (requestId) console.error(`[api] request=${requestId} failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-  return Response.json({ error: message, ...(requestId ? { requestId } : {}) }, { status: resolvedStatus });
+  if (requestId)
+    console.error(
+      `[api] request=${requestId} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`
+    );
+  return Response.json(
+    { error: message, ...(requestId ? { requestId } : {}) },
+    { status: resolvedStatus }
+  );
 }
 
-export type BoundedBody = { ok: true; body: Uint8Array } | { ok: false; status: 400 | 413; error: string };
+export type BoundedBody =
+  { ok: true; body: Uint8Array } | { ok: false; status: 400 | 413; error: string };
 
 /** Reads a request body into memory, stopping as soon as it passes `maxBytes`. */
 export async function readBoundedBody(request: Request, maxBytes: number): Promise<BoundedBody> {
@@ -56,7 +69,11 @@ export async function readBoundedBody(request: Request, maxBytes: number): Promi
       chunks.push(value);
     }
   } catch (error) {
-    return { ok: false, status: 400, error: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false,
+      status: 400,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
   return { ok: true, body: Buffer.concat(chunks, size) };
 }
@@ -66,17 +83,27 @@ export async function readBoundedBody(request: Request, maxBytes: number): Promi
  * request over `maxBytes` is refused (413) before anything parses it.
  */
 export function requestLimit(maxBytes: number): MiddlewareHandler {
-  return bodyLimit({ maxSize: maxBytes, onError: () => errorResponse('Request body is too large', 413) });
+  return bodyLimit({
+    maxSize: maxBytes,
+    onError: () => errorResponse('Request body is too large', 413),
+  });
 }
 
 /** Parse a complete JSON object before callers inspect any of its fields. */
-export async function jsonObject(req: Request, maxBytes = JSON_BODY_LIMIT): Promise<Record<string, unknown> | null> {
+export async function jsonObject(
+  req: Request,
+  maxBytes = JSON_BODY_LIMIT
+): Promise<Record<string, unknown> | null> {
   const bounded = await readBoundedBody(req, maxBytes);
   if (!bounded.ok) return null;
   let value: unknown;
-  try { value = JSON.parse(Buffer.from(bounded.body).toString('utf8')); } catch { return null; }
+  try {
+    value = JSON.parse(Buffer.from(bounded.body).toString('utf8'));
+  } catch {
+    return null;
+  }
   return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 

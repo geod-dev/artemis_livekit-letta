@@ -1,13 +1,14 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { WorkspaceTransport } from '@artemis/workspace';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { createDeviceMcpRoutes } from './mcp';
-import { DeviceHub } from './hub';
+import type { McpServer } from '../chat-types';
 import { createDeviceRoutes } from './api';
+import { DeviceHub } from './hub';
+import { createDeviceMcpRoutes } from './mcp-endpoint';
 
 const tools = [
   {
@@ -20,9 +21,11 @@ async function fixture() {
   let baseUrl = '',
     now = Date.now();
   const hub = new DeviceHub({ baseUrl: () => baseUrl, now: () => now });
+  // The file routes are not reached by these tests, so the workspace is not used.
+  const workspace = {} as unknown as WorkspaceTransport;
   const app = new Hono();
   app.route('/internal/mcp/devices', createDeviceMcpRoutes(hub));
-  app.route('/api/devices', createDeviceRoutes(hub));
+  app.route('/api/devices', createDeviceRoutes(hub, workspace));
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
   await once(server, 'listening');
   const address = server.address();
@@ -42,37 +45,65 @@ async function fixture() {
   };
 }
 
+/** The reply to one JSON-RPC request (the parts this test reads). */
+interface RpcReply {
+  result?: {
+    serverInfo?: { name: string };
+    tools?: Array<{ name: string }>;
+    content?: Array<{ type: string; text?: string }>;
+    isError?: boolean;
+  };
+}
+
+/** One JSON-RPC request to a device's MCP endpoint, sent as any MCP client sends it. */
+async function mcpRequest(server: McpServer, method: string, params: unknown): Promise<RpcReply> {
+  const response = await fetch(server.url!, {
+    method: 'POST',
+    headers: {
+      ...server.headers,
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: randomUUID(), method, params }),
+  });
+  assert.equal(response.status, 200);
+  return (await response.json()) as RpcReply;
+}
+
 test('each device is exposed as a standard MCP server that the agent-server can call', async () => {
   const f = await fixture();
-  let client: Client | undefined;
   try {
     const session = await f.hub.register('laptop', tools);
-    const [server] = f.hub.servers();
+    const server = f.hub.servers()[0];
+    assert.ok(server);
     assert.equal(server.name, 'device_laptop');
     assert.equal(server.managed?.deviceName, 'laptop');
     assert.match(server.url!, /\/internal\/mcp\/devices\/laptop$/);
 
-    client = new Client({ name: 'agent-server-test', version: '1' });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(server.url!), {
-        requestInit: { headers: server.headers },
-      })
-    );
-    assert.equal((await client.listTools()).tools[0].name, 'open_url');
+    const init = await mcpRequest(server, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'agent-server-test', version: '1' },
+    });
+    assert.equal(init.result?.serverInfo?.name, 'device_laptop');
+    const listed = await mcpRequest(server, 'tools/list', {});
+    assert.equal(listed.result?.tools?.[0]?.name, 'open_url');
 
-    const call = client.callTool({ name: 'open_url', arguments: { url: 'https://example.com' } });
+    const call = mcpRequest(server, 'tools/call', {
+      name: 'open_url',
+      arguments: { url: 'https://example.com' },
+    });
     const [request] = await f.hub.poll('laptop', session, new AbortController().signal);
-    assert.deepEqual(request.params.arguments, { url: 'https://example.com' });
-    assert.throws(() => f.hub.result('laptop', 'wrong', request.id, {}), /expired/);
-    f.hub.result('laptop', session, request.id, { content: [{ type: 'text', text: 'Opened' }] });
-    const result = (await call) as { isError?: boolean; content: Array<{ type: string; text?: string }> };
-    assert.notEqual(result.isError, true);
-    assert.equal(result.content[0].text, 'Opened');
+    assert.deepEqual(request?.params.arguments, { url: 'https://example.com' });
+    assert.throws(() => f.hub.result('laptop', 'wrong', request!.id, {}), /expired/);
+    f.hub.result('laptop', session, request!.id, { content: [{ type: 'text', text: 'Opened' }] });
+    const reply = await call;
+    assert.notEqual(reply.result?.isError, true);
+    assert.equal(reply.result?.content?.[0]?.text, 'Opened');
 
     await f.hub.unregister('laptop', session);
     assert.deepEqual(f.hub.servers(), []);
   } finally {
-    await client?.close();
     await f.close();
   }
 });
@@ -102,11 +133,18 @@ test('devices with the same tool name have independent MCP endpoints and lifetim
     const laptop = await f.hub.register('laptop', tools);
     await f.hub.register('desktop', tools);
     const stored = f.hub.servers();
-    assert.deepEqual(stored.map((server) => server.name), ['device_laptop', 'device_desktop']);
-    assert.notEqual(stored[0].url, stored[1].url);
-    assert.notEqual(stored[0].headers?.Authorization, stored[1].headers?.Authorization);
+    assert.deepEqual(
+      stored.map((server) => server.name),
+      ['device_laptop', 'device_desktop']
+    );
+    const [laptopServer, desktopServer] = stored;
+    assert.notEqual(laptopServer?.url, desktopServer?.url);
+    assert.notEqual(laptopServer?.headers?.Authorization, desktopServer?.headers?.Authorization);
     await f.hub.unregister('laptop', laptop);
-    assert.deepEqual(f.hub.servers().map((server) => server.name), ['device_desktop']);
+    assert.deepEqual(
+      f.hub.servers().map((server) => server.name),
+      ['device_desktop']
+    );
   } finally {
     await f.close();
   }
@@ -116,7 +154,7 @@ test('replacement, missed heartbeat and internal endpoint authentication are sco
   const f = await fixture();
   try {
     const session = await f.hub.register('laptop', tools);
-    const oldServer = f.hub.servers()[0];
+    const oldServer = f.hub.servers()[0]!;
     assert.equal((await fetch(oldServer.url!)).status, 401);
     const call = f.hub.call('laptop', session, 'open_url', {});
     await f.hub.poll('laptop', session, new AbortController().signal);
@@ -158,7 +196,7 @@ test('device connections and disconnections are published to the gateway listene
 });
 
 test('per-device request queues reject excess work and stay bounded', async () => {
-  const hub = new DeviceHub();
+  const hub = new DeviceHub({ baseUrl: () => 'http://gateway.test' });
   try {
     const session = await hub.register('laptop', tools);
     const calls = Array.from({ length: 32 }, () => hub.call('laptop', session, 'open_url', {}));

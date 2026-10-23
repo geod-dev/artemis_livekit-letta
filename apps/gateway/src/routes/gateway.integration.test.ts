@@ -1,27 +1,30 @@
 import { serve } from '@hono/node-server';
+import type { Hono } from 'hono';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer, type IncomingHttpHeaders, type Server, type ServerResponse } from 'node:http';
+import {
+  type IncomingHttpHeaders,
+  type Server,
+  type ServerResponse,
+  createServer,
+} from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { Hono } from 'hono';
-import { AgentServerClient } from '../agent-server/client';
-import { AttachmentStore } from '../attachments/attachment-store';
+import { createGatewayApp } from '../app';
+import { composeGateway } from '../compose';
 import { type AppConfig, validateConfig } from '../config';
-import { createAuth } from '../auth';
-import { composeWorkspace } from '../compose';
-import { createConversationRoutes } from './conversations';
 
 const AGENT_TOKEN = 'gateway-integration-agent-token';
 const PASSWORD = 'gateway-integration-password';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const READY = { status: 'ok', storage: true, mcp: true, memory: true };
 const SSE_EVENTS = [1, 2, 3, 4, 5].map(
-  (seq) => `id: ${seq}\nevent: message\ndata: ${JSON.stringify({ seq, text: `évènement ${seq} 🚀 — fin` })}\n\n`
+  (seq) =>
+    `id: ${seq}\nevent: message\ndata: ${JSON.stringify({ seq, text: `évènement ${seq} 🚀 — fin` })}\n\n`
 );
 
 interface Received {
@@ -79,7 +82,10 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
     const turn = /^\/v1\/conversations\/([^/]+)\/turns$/.exec(path);
     if (method === 'POST' && turn) {
       if (turn[1] === 'gone')
-        return sendJson(res, 404, { error: 'Conversation not found', code: 'conversation_not_found' });
+        return sendJson(res, 404, {
+          error: 'Conversation not found',
+          code: 'conversation_not_found',
+        });
       return sendJson(res, 202, { accepted: true, turnId: randomUUID() });
     }
 
@@ -96,9 +102,15 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
     if (method === 'GET' && conversation) {
       const id = decodeURIComponent(conversation[1] ?? '');
       if (id === 'boom')
-        return sendJson(res, 500, { error: 'The request could not be completed', requestId: 'upstream-500' });
+        return sendJson(res, 500, {
+          error: 'The request could not be completed',
+          requestId: 'upstream-500',
+        });
       if (id === 'unavailable')
-        return sendJson(res, 503, { error: 'The request could not be completed', requestId: 'upstream-503' });
+        return sendJson(res, 503, {
+          error: 'The request could not be completed',
+          requestId: 'upstream-503',
+        });
       return sendJson(res, 200, { id, title: 'Chat', updatedAt: null });
     }
 
@@ -123,14 +135,9 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
   };
 }
 
-/** The gateway's composition from server.ts: auth in front of the gateway routes, public health and readiness. */
+/** The gateway exactly as server.ts builds it, in front of the fake agent-server. */
 function buildGateway(config: AppConfig): Hono {
-  const agent = new AgentServerClient(config.agentServer);
-  const app = createAuth(config.auth.password, config.auth.deviceToken, config.voiceGatewayToken);
-  app.get('/health', (c) => c.json({ status: 'ok' }));
-  app.get('/ready', (c) => agent.relay(c.req.raw, '/ready'));
-  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(config.workspace.dir), config.workspace.dataDir)));
-  return app;
+  return createGatewayApp(composeGateway(config));
 }
 
 let root: string;
@@ -188,7 +195,11 @@ test('creating a conversation reaches the agent-server with the bearer token and
   assert.equal(sent.url, '/v1/conversations');
   assert.equal(sent.headers.authorization, `Bearer ${AGENT_TOKEN}`);
   assert.match(sent.headers['content-type'] ?? '', /application\/json/);
-  assert.equal(sent.headers.cookie, undefined, 'the browser session cookie must stay at the gateway');
+  assert.equal(
+    sent.headers.cookie,
+    undefined,
+    'the browser session cookie must stay at the gateway'
+  );
   assert.deepEqual(JSON.parse(sent.body), { title: 'Résumé 🚀' });
 });
 
@@ -252,9 +263,15 @@ test('agent-server errors keep their status and body, and the gateway keeps serv
     requestId: 'upstream-503',
   });
 
-  const missing = await browser('/api/conversations/gone/messages', json('POST', { text: 'hello' }));
+  const missing = await browser(
+    '/api/conversations/gone/messages',
+    json('POST', { text: 'hello' })
+  );
   assert.equal(missing.status, 404);
-  assert.deepEqual(await missing.json(), { error: 'Conversation not found', code: 'conversation_not_found' });
+  assert.deepEqual(await missing.json(), {
+    error: 'Conversation not found',
+    code: 'conversation_not_found',
+  });
 
   const after = await browser('/api/conversations/c1');
   assert.equal(after.status, 200);
@@ -278,7 +295,11 @@ test('server-sent events reach the browser byte for byte, before the agent-serve
       assert.equal(done, false, 'the stream ended before its first event arrived');
       text += decoder.decode(value, { stream: true });
     }
-    assert.equal(text, SSE_EVENTS[0], 'the first event must arrive while the agent-server still holds the stream');
+    assert.equal(
+      text,
+      SSE_EVENTS[0],
+      'the first event must arrive while the agent-server still holds the stream'
+    );
 
     release();
     for (;;) {
@@ -311,7 +332,9 @@ test('browser requests without a valid session get 401 and never reach the agent
   );
   assert.equal(anonymousMessage.status, 401);
 
-  const forged = await fetch(`${origin}/api/conversations/c1/events`, { headers: { Cookie: `${cookie}x` } });
+  const forged = await fetch(`${origin}/api/conversations/c1/events`, {
+    headers: { Cookie: `${cookie}x` },
+  });
   assert.equal(forged.status, 401);
 
   const agentTokenAsBrowser = await fetch(`${origin}/api/conversations`, {
@@ -319,7 +342,11 @@ test('browser requests without a valid session get 401 and never reach the agent
   });
   assert.equal(agentTokenAsBrowser.status, 401);
 
-  assert.equal(fake.received.length, forwardedBefore, 'no unauthenticated request may be forwarded');
+  assert.equal(
+    fake.received.length,
+    forwardedBefore,
+    'no unauthenticated request may be forwarded'
+  );
 });
 
 test('a cross-site POST with a valid session is refused before it is forwarded', async () => {

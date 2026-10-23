@@ -1,8 +1,8 @@
 import {
   type DeviceTool,
   type DeviceToolResult,
-  parseDeviceTools,
   parseDeviceToolResult,
+  parseDeviceTools,
 } from '@artemis/mcp/device-server';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { equalSecret } from '../auth';

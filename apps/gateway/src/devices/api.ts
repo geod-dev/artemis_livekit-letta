@@ -1,7 +1,7 @@
+import type { WorkspaceTransport } from '@artemis/workspace';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import type { WorkspaceTransport } from '@artemis/workspace';
 import { errorResponse } from '../http';
 import { saveDeviceFile } from './files';
 import type { DeviceHub } from './hub';

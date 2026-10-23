@@ -1,10 +1,10 @@
-import type { ChatMessage, ConversationSummary, McpServer, Modality } from '../chat-types';
-import { HttpError } from '../http';
 import type {
   AgentServerError,
   ManagedMcpServersRequest,
   WarmRequest,
 } from '@artemis/contracts/agent-server';
+import type { ChatMessage, ConversationSummary, McpServer, Modality } from '../chat-types';
+import { HttpError } from '../http';
 
 interface AgentServerOptions {
   /** Base URL of the agent-server, e.g. `http://agent-server:4000`. */
@@ -19,7 +19,13 @@ interface MessagePage {
 }
 
 /** Browser request headers the API relies on; cookies and the session stay at the gateway. */
-const FORWARDED_REQUEST_HEADERS = ['accept', 'content-type', 'if-match', 'last-event-id', 'x-voice-call-id'];
+const FORWARDED_REQUEST_HEADERS = [
+  'accept',
+  'content-type',
+  'if-match',
+  'last-event-id',
+  'x-voice-call-id',
+];
 /** Response headers the API relies on: conditional requests, pagination and caching. */
 const FORWARDED_RESPONSE_HEADERS = ['cache-control', 'content-type', 'etag', 'x-next-cursor'];
 const INTERNAL_TIMEOUT_MS = 10_000;
@@ -55,11 +61,19 @@ export class AgentServerClient {
       await upstream.body?.cancel();
       throw new HttpError('Agent server rejected the gateway credentials', 502);
     }
-    return new Response(upstream.body, { status: upstream.status, headers: pick(upstream.headers, FORWARDED_RESPONSE_HEADERS) });
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: pick(upstream.headers, FORWARDED_RESPONSE_HEADERS),
+    });
   }
 
   /** A request whose non-2xx answer becomes an HttpError with the agent-server's message. */
-  async request(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<Response> {
+  async request(
+    method: string,
+    path: string,
+    body?: unknown,
+    timeoutMs?: number
+  ): Promise<Response> {
     const response = await this.send(method, path, {
       body: body === undefined ? undefined : JSON.stringify(body),
       timeoutMs,
@@ -77,11 +91,21 @@ export class AgentServerClient {
   }
 
   conversation(id: string): Promise<ConversationSummary> {
-    return this.json<ConversationSummary>('GET', conversationPath(id), undefined, INTERNAL_TIMEOUT_MS);
+    return this.json<ConversationSummary>(
+      'GET',
+      conversationPath(id),
+      undefined,
+      INTERNAL_TIMEOUT_MS
+    );
   }
 
   async warm(id: string, modality: Modality): Promise<void> {
-    await this.request('POST', `${conversationPath(id)}/warm`, { modality } satisfies WarmRequest, INTERNAL_TIMEOUT_MS);
+    await this.request(
+      'POST',
+      `${conversationPath(id)}/warm`,
+      { modality } satisfies WarmRequest,
+      INTERNAL_TIMEOUT_MS
+    );
   }
 
   async messagesPage(id: string, query: { before?: string; limit: number }): Promise<MessagePage> {
@@ -96,21 +120,34 @@ export class AgentServerClient {
 
   /** Replace the device-managed servers the agent-server merges into its MCP list. */
   async setManagedMcp(servers: McpServer[]): Promise<void> {
-    await this.request('PUT', '/v1/mcp/managed', { servers } satisfies ManagedMcpServersRequest, INTERNAL_TIMEOUT_MS);
+    await this.request(
+      'PUT',
+      '/v1/mcp/managed',
+      { servers } satisfies ManagedMcpServersRequest,
+      INTERNAL_TIMEOUT_MS
+    );
   }
 
   /** One authenticated request to the agent-server. Unreachable or aborted upstreams surface as 503. */
   async send(
     method: string,
     path: string,
-    init: { body?: string; headers?: Headers; signal?: AbortSignal; timeoutMs?: number; headersTimeoutMs?: number } = {}
+    init: {
+      body?: string;
+      headers?: Headers;
+      signal?: AbortSignal;
+      timeoutMs?: number;
+      headersTimeoutMs?: number;
+    } = {}
   ): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${this.options.token}`);
-    if (init.body !== undefined && !headers.has('content-type')) headers.set('Content-Type', 'application/json');
-    const signals = [init.signal, init.timeoutMs ? AbortSignal.timeout(init.timeoutMs) : undefined].filter(
-      (signal): signal is AbortSignal => signal !== undefined
-    );
+    if (init.body !== undefined && !headers.has('content-type'))
+      headers.set('Content-Type', 'application/json');
+    const signals = [
+      init.signal,
+      init.timeoutMs ? AbortSignal.timeout(init.timeoutMs) : undefined,
+    ].filter((signal): signal is AbortSignal => signal !== undefined);
     // Bounds only the wait for response headers: the timer is cleared once they arrive, so streamed bodies are not cut off.
     const headersAbort = new AbortController();
     const headersTimer = init.headersTimeoutMs

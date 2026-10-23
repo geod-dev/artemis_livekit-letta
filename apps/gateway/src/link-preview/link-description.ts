@@ -25,7 +25,10 @@ export type LinkMetadata = { title?: string; description?: string };
 /** Social titles are written for previews; fall back to the document title. */
 export function linkMetadata(html: string): LinkMetadata {
   const descriptions = new Map<string, string>();
-  const head = (html.split(/<\/head\s*>/i)[0] ?? '').replace(/<!--[^]*?-->|<script\b[^]*?<\/script\s*>/gi, '');
+  const head = (html.split(/<\/head\s*>/i)[0] ?? '').replace(
+    /<!--[^]*?-->|<script\b[^]*?<\/script\s*>/gi,
+    ''
+  );
   for (const tag of head.matchAll(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const attrs = new Map<string, string>();
     for (const [, key = '', quoted, single, bare] of tag[0].matchAll(

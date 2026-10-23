@@ -111,7 +111,10 @@ export function validateConfig(env: NodeJS.ProcessEnv): AppConfig {
   return {
     port,
     host: env.GATEWAY_HOST?.trim() || '127.0.0.1',
-    deviceBaseUrl: (env.MCP_DEVICE_BASE_URL?.trim() || `http://127.0.0.1:${port}`).replace(/\/$/, ''),
+    deviceBaseUrl: (env.MCP_DEVICE_BASE_URL?.trim() || `http://127.0.0.1:${port}`).replace(
+      /\/$/,
+      ''
+    ),
     agentServer: {
       url: value(env, 'AGENT_SERVER_URL', `http://${ip}:${agentServerPort}`),
       token: value(env, 'AGENT_SERVER_TOKEN', DEV_AGENT_SERVER_TOKEN),

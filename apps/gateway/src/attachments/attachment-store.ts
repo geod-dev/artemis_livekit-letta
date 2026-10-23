@@ -1,5 +1,5 @@
-import { type WorkspaceTransport, imageType, inspectedMimeType } from '@artemis/workspace';
 import type { ChatAttachment } from '@artemis/contracts/chat-types';
+import { type WorkspaceTransport, imageType, inspectedMimeType } from '@artemis/workspace';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { describeWorkspaceFile } from '../workspace/files';

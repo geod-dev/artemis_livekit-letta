@@ -130,12 +130,14 @@ export class AttachmentRegistry {
    * persists it. A failed change is not persisted.
    */
   private update<T>(change: (state: RetentionState) => T | Promise<T>): Promise<T> {
-    const run = this.queue.catch(() => {}).then(async () => {
-      const state = await this.load();
-      const result = await change(state);
-      await this.save(state);
-      return result;
-    });
+    const run = this.queue
+      .catch(() => {})
+      .then(async () => {
+        const state = await this.load();
+        const result = await change(state);
+        await this.save(state);
+        return result;
+      });
     this.queue = run;
     return run;
   }
@@ -146,10 +148,12 @@ export class AttachmentRegistry {
    */
   private async load(): Promise<RetentionState> {
     if (this.state) return this.state;
-    const text = await readFile(this.retentionFile, 'utf8').catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return null;
-      throw error;
-    });
+    const text = await readFile(this.retentionFile, 'utf8').catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      }
+    );
     this.state = text === null ? { files: {} } : parseState(text);
     return this.state;
   }

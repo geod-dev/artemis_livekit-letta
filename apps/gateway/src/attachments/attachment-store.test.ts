@@ -41,7 +41,10 @@ test('an upload over the limit is refused before any byte is written', async () 
     const store = new AttachmentStore(composeWorkspace(root), state);
     const oversized = new File([new Uint8Array(MAX_UPLOAD_BYTES + 1)], 'big.bin');
     await assert.rejects(store.save(oversized), PayloadTooLargeError);
-    assert.deepEqual(await readFile(join(state, 'attachment-retention.json')).catch(() => null), null);
+    assert.deepEqual(
+      await readFile(join(state, 'attachment-retention.json')).catch(() => null),
+      null
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(state, { recursive: true, force: true });

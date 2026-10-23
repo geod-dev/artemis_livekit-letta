@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { validateConfig } from './config.ts';
+import { validateConfig } from './config';
 
 const repoRoot = join(import.meta.dirname, '..', '..', '..');
 const appsDir = join(import.meta.dirname, '..', '..');
@@ -30,7 +30,10 @@ test('the gateway reaches the agent-server at AGENT_SERVER_URL with its shared t
     AGENT_SERVER_TOKEN: 'shared-token',
   });
   assert.deepEqual(config.agentServer, { url: 'http://agent-server:4000', token: 'shared-token' });
-  assert.equal(validateConfig({ AGENT_SERVER_PORT: '4100' }).agentServer.url, 'http://127.0.0.1:4100');
+  assert.equal(
+    validateConfig({ AGENT_SERVER_PORT: '4100' }).agentServer.url,
+    'http://127.0.0.1:4100'
+  );
 });
 
 test('production requires explicit roots and explicitly configured secrets', () => {

@@ -24,20 +24,27 @@ export async function startGateway(): Promise<GatewayApplication> {
   // always carries the current list. Device changes retry through the hub.
   let deviceSync: Promise<void> = Promise.resolve();
   const syncDevices = () => {
-    deviceSync = deviceSync.catch(() => {}).then(() => agentServer.setManagedMcp(deviceHub.servers()));
+    deviceSync = deviceSync
+      .catch(() => {})
+      .then(() => agentServer.setManagedMcp(deviceHub.servers()));
     return deviceSync;
   };
   deviceHub.onChange(syncDevices);
   const reportDevices = () =>
-    syncDevices().catch((error) => console.error('[devices] could not sync devices to the agent-server', error));
+    syncDevices().catch((error) =>
+      console.error('[devices] could not sync devices to the agent-server', error)
+    );
   void reportDevices();
   const deviceSyncTimer = setInterval(() => void reportDevices(), DEVICE_SYNC_EVERY_MS);
   deviceSyncTimer.unref();
 
   deviceHub.start();
-  const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, ({ port }) => {
-    console.info(`[gateway] listening on port ${port}`);
-  }) as Server;
+  const server = serve(
+    { fetch: app.fetch, hostname: config.host, port: config.port },
+    ({ port }) => {
+      console.info(`[gateway] listening on port ${port}`);
+    }
+  ) as Server;
   let closing: Promise<void> | undefined;
   const close = () => {
     if (closing) return closing;

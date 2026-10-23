@@ -1,8 +1,18 @@
+import { voicePath } from '@artemis/contracts/agent-server';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { voicePath } from '@artemis/contracts/agent-server';
 import type { AgentServerClient } from '../agent-server/client';
-import { bearerToken, errorResponse, jsonObject, PROXY_BODY_LIMIT, requestLimit, routeError, sameSecret, withQuery } from '../http';
+import {
+  PROXY_BODY_LIMIT,
+  bearerToken,
+  errorResponse,
+  jsonObject,
+  requestLimit,
+  routeError,
+  sameSecret,
+  withQuery,
+} from '../http';
+
 /** The LiveKit token port of the voice routes; the vendor is chosen in compose. */
 export interface VoiceTokenPort {
   forCall(conversationId: string, callMode: 'short' | 'long'): Promise<LiveKitConnection>;
@@ -33,7 +43,11 @@ export interface VoiceRouteDeps {
  * voice agent's endpoints (authenticated by its shared bearer token) to the
  * agent-server, which owns the call state, the voice turns and their delivery.
  */
-export function createVoiceRoutes({ agentServer, voiceTokens, voiceGatewayToken }: VoiceRouteDeps): Hono {
+export function createVoiceRoutes({
+  agentServer,
+  voiceTokens,
+  voiceGatewayToken,
+}: VoiceRouteDeps): Hono {
   const voice = new Hono();
   voice.onError(routeError);
 
@@ -55,9 +69,12 @@ export function createVoiceRoutes({ agentServer, voiceTokens, voiceGatewayToken 
       if (!body) return errorResponse('Body must be a JSON object', 400);
       const conversationId = body.conversationId;
       const mode = body.mode;
-      if (mode !== undefined && mode !== 'short' && mode !== 'long') return errorResponse('mode must be short or long', 400);
-      if (conversationId === undefined) return Response.json({ ...(await voiceTokens.warmup()), conversation: null }, NO_STORE);
-      if (typeof conversationId !== 'string' || conversationId.length > 200) return errorResponse('conversationId is invalid', 400);
+      if (mode !== undefined && mode !== 'short' && mode !== 'long')
+        return errorResponse('mode must be short or long', 400);
+      if (conversationId === undefined)
+        return Response.json({ ...(await voiceTokens.warmup()), conversation: null }, NO_STORE);
+      if (typeof conversationId !== 'string' || conversationId.length > 200)
+        return errorResponse('conversationId is invalid', 400);
       const conversation = await agentServer.conversation(conversationId);
       // Open the session and configure voice effort and thinking before the user speaks.
       void agentServer.warm(conversation.id, 'voice').catch((error) => {
@@ -72,7 +89,8 @@ export function createVoiceRoutes({ agentServer, voiceTokens, voiceGatewayToken 
 
   // The voice agent's endpoints.
   voice.use('/conversations/*', async (c, next) => {
-    if (!sameSecret(bearerToken(c.req.raw), voiceGatewayToken)) return errorResponse('Unauthorized', 401);
+    if (!sameSecret(bearerToken(c.req.raw), voiceGatewayToken))
+      return errorResponse('Unauthorized', 401);
     await next();
   });
   voice.use('/conversations/*', bodyLimit({ maxSize: PROXY_BODY_LIMIT }));
@@ -88,7 +106,9 @@ export function createVoiceRoutes({ agentServer, voiceTokens, voiceGatewayToken 
   );
 
   /** The voice agent's control channel for one call; `?mode=long` opens a new call in long mode. */
-  voice.get('/conversations/:id/call', (c) => agentServer.relay(c.req.raw, withQuery(c, `${voicePath(c.req.param('id'))}/call`)));
+  voice.get('/conversations/:id/call', (c) =>
+    agentServer.relay(c.req.raw, withQuery(c, `${voicePath(c.req.param('id'))}/call`))
+  );
 
   voice.get('/conversations/:id/call/state', (c) =>
     agentServer.relay(c.req.raw, `${voicePath(c.req.param('id'))}/call/state`)
@@ -96,7 +116,10 @@ export function createVoiceRoutes({ agentServer, voiceTokens, voiceGatewayToken 
 
   /** Speaks a queued background update: the agent-server runs its voice turn and streams the text. */
   voice.post('/conversations/:id/call/updates/:updateId', (c) =>
-    agentServer.relay(c.req.raw, `${voicePath(c.req.param('id'))}/call/updates/${encodeURIComponent(c.req.param('updateId'))}`)
+    agentServer.relay(
+      c.req.raw,
+      `${voicePath(c.req.param('id'))}/call/updates/${encodeURIComponent(c.req.param('updateId'))}`
+    )
   );
 
   voice.post('/conversations/:id/call/updates/:updateId/ack', (c) =>
@@ -107,7 +130,9 @@ export function createVoiceRoutes({ agentServer, voiceTokens, voiceGatewayToken 
   );
 
   /** The call ended: unspoken updates go to the chat. */
-  voice.post('/conversations/:id/ended', (c) => agentServer.relay(c.req.raw, `${voicePath(c.req.param('id'))}/ended`));
+  voice.post('/conversations/:id/ended', (c) =>
+    agentServer.relay(c.req.raw, `${voicePath(c.req.param('id'))}/ended`)
+  );
 
   return voice;
 }

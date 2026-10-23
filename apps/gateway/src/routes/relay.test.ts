@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AgentServerClient } from '../agent-server/client';
-import type { McpServer } from '../chat-types';
 import { AttachmentStore } from '../attachments/attachment-store';
+import type { McpServer } from '../chat-types';
 import { composeWorkspace } from '../compose';
 import { createConversationRoutes } from './conversations';
 import { createMcpRoutes } from './mcp-settings';
@@ -52,10 +52,12 @@ async function fakeAgentServer() {
   app.get('/v1/conversations/missing', (c) =>
     c.json({ error: 'Conversation not found', code: 'conversation_not_found' }, 404)
   );
-  app.get('/v1/conversations/:id/events', () =>
-    new Response('data: {"type":"snapshot"}\n\n', {
-      headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
-    })
+  app.get(
+    '/v1/conversations/:id/events',
+    () =>
+      new Response('data: {"type":"snapshot"}\n\n', {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+      })
   );
   app.get('/v1/conversations/:id/messages', (c) => c.json(state.messages));
   app.post('/v1/conversations/:id/turns', async (c) =>
@@ -70,7 +72,12 @@ async function fakeAgentServer() {
   app.delete('/v1/conversations/:id', () => new Response(null, { status: 204 }));
   app.get('/v1/mcp', (c) =>
     c.json(
-      { revision: 'r1', servers: [], diagnostics: [], bridge: { servers: [], tools: 0, failures: {} } },
+      {
+        revision: 'r1',
+        servers: [],
+        diagnostics: [],
+        bridge: { servers: [], tools: 0, failures: {} },
+      },
       200,
       { ETag: '"r1"' }
     )
@@ -78,17 +85,27 @@ async function fakeAgentServer() {
   app.put('/v1/mcp', (c) =>
     c.req.header('if-match') === '"stale"'
       ? c.json({ error: 'The MCP settings changed', code: 'revision_conflict' }, 412)
-      : c.json({ revision: 'r2', servers: [], diagnostics: [], bridge: { servers: [], tools: 0, failures: {} } }, 200)
+      : c.json(
+          {
+            revision: 'r2',
+            servers: [],
+            diagnostics: [],
+            bridge: { servers: [], tools: 0, failures: {} },
+          },
+          200
+        )
   );
   app.put('/v1/mcp/managed', async (c) => {
     state.managed = (await c.req.json<{ servers: unknown[] }>()).servers;
     return new Response(null, { status: 204 });
   });
-  app.post('/v1/voice/conversations/:id/chat/completions', (c) =>
-    new Response(
-      `data: ${JSON.stringify({ call: c.req.header('x-voice-call-id') })}\n\ndata: [DONE]\n\n`,
-      { headers: { 'Content-Type': 'text/event-stream' } }
-    )
+  app.post(
+    '/v1/voice/conversations/:id/chat/completions',
+    (c) =>
+      new Response(
+        `data: ${JSON.stringify({ call: c.req.header('x-voice-call-id') })}\n\ndata: [DONE]\n\n`,
+        { headers: { 'Content-Type': 'text/event-stream' } }
+      )
   );
   app.get('/v1/voice/conversations/:id/call/state', (c) => c.json({ mode: 'short', next: 'end' }));
 
@@ -116,7 +133,10 @@ const unusedVoiceTokens = {
   },
 };
 
-/** The gateway's API routers, as startBackend mounts them, in front of a fake agent-server. */
+/**
+ * The relay routers without the session middleware (the relay is what is under test), in
+ * front of a fake agent-server. The full composition is covered by the integration tests.
+ */
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'artemis-gateway-proxy-'));
   const attachments = new AttachmentStore(composeWorkspace(root), join(root, 'state'));
@@ -125,7 +145,14 @@ async function fixture() {
   const app = new Hono();
   app.route('/api/conversations', createConversationRoutes(agent, attachments));
   app.route('/api/mcp', createMcpRoutes(agent));
-  app.route('/api/voice', createVoiceRoutes({ agentServer: agent, voiceTokens: unusedVoiceTokens, voiceGatewayToken: VOICE_TOKEN }));
+  app.route(
+    '/api/voice',
+    createVoiceRoutes({
+      agentServer: agent,
+      voiceTokens: unusedVoiceTokens,
+      voiceGatewayToken: VOICE_TOKEN,
+    })
+  );
   return {
     app,
     agent,
@@ -158,7 +185,10 @@ test('reads keep their query string, status and error bodies, and send the agent
 
     const missing = await f.app.request('https://gateway.test/api/conversations/missing');
     assert.equal(missing.status, 404);
-    assert.deepEqual(await missing.json(), { error: 'Conversation not found', code: 'conversation_not_found' });
+    assert.deepEqual(await missing.json(), {
+      error: 'Conversation not found',
+      code: 'conversation_not_found',
+    });
   } finally {
     await f.close();
   }
@@ -199,7 +229,13 @@ test('a message references its uploads and goes to the agent-server as a turn', 
     assert.equal(body.effort, 'xhigh');
     assert.equal(body.clientMessageId, 'client-1');
     assert.deepEqual(body.attachments, [
-      { path: upload.path, name: 'photo.png', kind: 'image', mimeType: 'image/png', size: PNG.length },
+      {
+        path: upload.path,
+        name: 'photo.png',
+        kind: 'image',
+        mimeType: 'image/png',
+        size: PNG.length,
+      },
     ]);
     assert.equal(await f.attachments.registry.removeUnused(upload.path), false);
 
@@ -218,10 +254,13 @@ test('a refused turn does not keep its uploads', async () => {
   const f = await fixture();
   try {
     const upload = await f.attachments.save(new File([PNG], 'photo.png', { type: 'image/png' }));
-    const refused = await f.app.request('https://gateway.test/api/conversations/c1/messages', json('POST', {
-      text: 'busy',
-      attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
-    }));
+    const refused = await f.app.request(
+      'https://gateway.test/api/conversations/c1/messages',
+      json('POST', {
+        text: 'busy',
+        attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
+      })
+    );
     assert.equal(refused.status, 429);
     assert.equal(await f.attachments.registry.removeUnused(upload.path), true);
   } finally {
@@ -233,16 +272,23 @@ test('rewinding a conversation releases the uploads its remaining messages no lo
   const f = await fixture();
   try {
     const upload = await f.attachments.save(new File([PNG], 'photo.png', { type: 'image/png' }));
-    await f.app.request('https://gateway.test/api/conversations/c1/messages', json('POST', {
-      text: 'look',
-      attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
-    }));
+    await f.app.request(
+      'https://gateway.test/api/conversations/c1/messages',
+      json('POST', {
+        text: 'look',
+        attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
+      })
+    );
     assert.equal(await f.attachments.registry.removeUnused(upload.path), false);
 
-    f.agentServer.state.messages = [{ id: 'm1', role: 'user', text: 'look', attachments: [upload] }];
-    const rewind = await f.app.request('https://gateway.test/api/conversations/c1/messages/m1', { method: 'DELETE' });
+    f.agentServer.state.messages = [
+      { id: 'm1', role: 'user', text: 'look', attachments: [upload] },
+    ];
+    const rewind = await f.app.request('https://gateway.test/api/conversations/c1/messages/m1', {
+      method: 'DELETE',
+    });
     assert.equal(rewind.status, 200);
-    assert.deepEqual((await rewind.json() as { attachments: string[] }).attachments, []);
+    assert.deepEqual(((await rewind.json()) as { attachments: string[] }).attachments, []);
     assert.equal(await f.attachments.registry.removeUnused(upload.path), true);
   } finally {
     await f.close();
@@ -253,11 +299,16 @@ test('deleting a conversation releases its uploads', async () => {
   const f = await fixture();
   try {
     const upload = await f.attachments.save(new File([PNG], 'photo.png', { type: 'image/png' }));
-    await f.app.request('https://gateway.test/api/conversations/c1/messages', json('POST', {
-      text: 'look',
-      attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
-    }));
-    const deleted = await f.app.request('https://gateway.test/api/conversations/c1', { method: 'DELETE' });
+    await f.app.request(
+      'https://gateway.test/api/conversations/c1/messages',
+      json('POST', {
+        text: 'look',
+        attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
+      })
+    );
+    const deleted = await f.app.request('https://gateway.test/api/conversations/c1', {
+      method: 'DELETE',
+    });
     assert.equal(deleted.status, 204);
     assert.equal(await f.attachments.registry.removeUnused(upload.path), true);
   } finally {
@@ -298,7 +349,12 @@ test('the full device list is sent to the agent-server as managed MCP servers', 
       name: 'device_laptop',
       transport: 'http',
       url: 'http://gateway.test/internal/mcp/devices/laptop',
-      managed: { type: 'device', deviceName: 'laptop', connectedAt: '2026-10-22T10:00:00.000Z', tools: 1 },
+      managed: {
+        type: 'device',
+        deviceName: 'laptop',
+        connectedAt: '2026-10-22T10:00:00.000Z',
+        tools: 1,
+      },
     };
     await f.agent.setManagedMcp([server]);
     assert.deepEqual(f.agentServer.state.managed, [server]);
@@ -313,22 +369,28 @@ test('voice agent calls need the voice token and reach the agent-server voice en
   const f = await fixture();
   try {
     const body = JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] });
-    const anonymous = await f.app.request('https://gateway.test/api/voice/conversations/c1/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    });
+    const anonymous = await f.app.request(
+      'https://gateway.test/api/voice/conversations/c1/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }
+    );
     assert.equal(anonymous.status, 401);
 
-    const completion = await f.app.request('https://gateway.test/api/voice/conversations/c1/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${VOICE_TOKEN}`,
-        'X-Voice-Call-Id': 'call-9',
-      },
-      body,
-    });
+    const completion = await f.app.request(
+      'https://gateway.test/api/voice/conversations/c1/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${VOICE_TOKEN}`,
+          'X-Voice-Call-Id': 'call-9',
+        },
+        body,
+      }
+    );
     assert.equal(completion.status, 200);
     assert.match(completion.headers.get('Content-Type') ?? '', /text\/event-stream/);
     assert.match(await completion.text(), /"call":"call-9"/);
@@ -336,9 +398,12 @@ test('voice agent calls need the voice token and reach the agent-server voice en
     assert.equal(forwarded.path, '/v1/voice/conversations/c1/chat/completions');
     assert.equal(forwarded.body, body);
 
-    const state = await f.app.request('https://gateway.test/api/voice/conversations/c1/call/state', {
-      headers: { Authorization: `Bearer ${VOICE_TOKEN}` },
-    });
+    const state = await f.app.request(
+      'https://gateway.test/api/voice/conversations/c1/call/state',
+      {
+        headers: { Authorization: `Bearer ${VOICE_TOKEN}` },
+      }
+    );
     assert.deepEqual(await state.json(), { mode: 'short', next: 'end' });
   } finally {
     await f.close();
@@ -349,7 +414,13 @@ test('an unreachable agent-server is reported as unavailable', async () => {
   const app = new Hono();
   const agent = new AgentServerClient({ url: 'http://127.0.0.1:9', token: AGENT_TOKEN });
   const root = await mkdtemp(join(tmpdir(), 'artemis-gateway-unreachable-'));
-  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(root), join(root, 'state'))));
+  app.route(
+    '/api/conversations',
+    createConversationRoutes(
+      agent,
+      new AttachmentStore(composeWorkspace(root), join(root, 'state'))
+    )
+  );
   try {
     const response = await app.request('https://gateway.test/api/conversations');
     assert.equal(response.status, 503);

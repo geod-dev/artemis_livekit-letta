@@ -1,9 +1,9 @@
+import type { WorkspaceTransport } from '@artemis/workspace';
+import { Hono } from 'hono';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { Hono } from 'hono';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { WorkspaceTransport } from '@artemis/workspace';
 import { composeWorkspace } from '../compose';
 import { describeWorkspaceFile } from '../workspace/files';
 import { createWorkspaceFileRoutes, planWorkspaceResponse } from './workspace-files';
@@ -18,15 +18,19 @@ test('workspace file GET and HEAD use inspected MIME and bounded byte ranges', a
   const app = routesFor(root);
   try {
     await writeFile(join(root, 'note.txt'), 'abcdef');
-    const ranged = await app.fetch(new Request('http://localhost/api/workspace/note.txt', {
-      headers: { Range: 'bytes=2-4' },
-    }));
+    const ranged = await app.fetch(
+      new Request('http://localhost/api/workspace/note.txt', {
+        headers: { Range: 'bytes=2-4' },
+      })
+    );
     assert.equal(ranged.status, 206);
     assert.equal(ranged.headers.get('content-type'), 'text/plain; charset=utf-8');
     assert.equal(ranged.headers.get('content-range'), 'bytes 2-4/6');
     assert.equal(await ranged.text(), 'cde');
 
-    const head = await app.fetch(new Request('http://localhost/api/workspace/note.txt', { method: 'HEAD' }));
+    const head = await app.fetch(
+      new Request('http://localhost/api/workspace/note.txt', { method: 'HEAD' })
+    );
     assert.equal(head.status, 200);
     assert.equal(head.headers.get('content-length'), '6');
     assert.equal(await head.text(), '');
@@ -50,9 +54,14 @@ test('a symlink to a workspace file is served under the target name', async (ctx
     assert.equal(inline.headers.get('content-disposition'), "inline; filename*=UTF-8''report.txt");
     assert.equal(await inline.text(), 'linked body');
 
-    const download = await app.fetch(new Request('http://localhost/api/workspace/shared.txt?download'));
+    const download = await app.fetch(
+      new Request('http://localhost/api/workspace/shared.txt?download')
+    );
     assert.equal(download.status, 200);
-    assert.equal(download.headers.get('content-disposition'), "attachment; filename*=UTF-8''report.txt");
+    assert.equal(
+      download.headers.get('content-disposition'),
+      "attachment; filename*=UTF-8''report.txt"
+    );
     await download.text();
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -93,7 +102,12 @@ test('workspace response planning bounds ranges and preserves HEAD semantics', (
 });
 
 test('a PDF is never shown inline and is sandboxed like every other file', () => {
-  const pdf = { path: 'files/report.pdf', size: 8, contentType: 'application/pdf', viewable: false };
+  const pdf = {
+    path: 'files/report.pdf',
+    size: 8,
+    contentType: 'application/pdf',
+    viewable: false,
+  };
   const plan = planWorkspaceResponse(pdf, 'GET', false, null);
   assert.match(plan.headers['Content-Disposition'] ?? '', /^attachment;/);
   assert.equal(plan.headers['Content-Security-Policy'], 'sandbox');

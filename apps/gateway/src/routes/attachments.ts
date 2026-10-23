@@ -15,18 +15,22 @@ export function createAttachmentRoutes(attachments: AttachmentStore): Hono {
   const routes = new Hono();
 
   /** Upload one file (multipart field `file`) as an attachment. */
-  routes.post('/attachments', requestLimit(MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES), async (c) => {
-    const form = await c.req.raw.formData().catch(() => null);
-    const file = form?.get('file');
-    if (!file || typeof file === 'string') return errorResponse('file is required', 400);
-    try {
-      return Response.json(await attachments.save(file), { status: 201 });
-    } catch (error) {
-      if (error instanceof PayloadTooLargeError) return errorResponse(error.message, 413);
-      if (error instanceof InvalidAttachmentError) return errorResponse(error.message, 400);
-      return errorResponse(error, 500);
+  routes.post(
+    '/attachments',
+    requestLimit(MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES),
+    async (c) => {
+      const form = await c.req.raw.formData().catch(() => null);
+      const file = form?.get('file');
+      if (!file || typeof file === 'string') return errorResponse('file is required', 400);
+      try {
+        return Response.json(await attachments.save(file), { status: 201 });
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) return errorResponse(error.message, 413);
+        if (error instanceof InvalidAttachmentError) return errorResponse(error.message, 400);
+        return errorResponse(error, 500);
+      }
     }
-  });
+  );
 
   /** Discard an uploaded composer file if no conversation has used it. */
   routes.delete('/attachments', async (c) => {

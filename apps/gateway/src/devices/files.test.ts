@@ -4,11 +4,11 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { composeWorkspace } from '../compose';
 import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
+import { composeWorkspace } from '../compose';
+import { createDeviceRoutes } from './api';
 import { saveDeviceFile } from './files';
 import { DeviceHub } from './hub';
-import { createDeviceRoutes } from './api';
 
 test('binary export is bound to its pending device call and returns only metadata', async () => {
   const root = await mkdtemp(join(tmpdir(), 'device-export-'));
@@ -62,7 +62,8 @@ test('oversized and incomplete uploads leave no workspace file', async () => {
   const root = await mkdtemp(join(tmpdir(), 'device-export-'));
   try {
     await assert.rejects(
-      saveDeviceFile(composeWorkspace(root),
+      saveDeviceFile(
+        composeWorkspace(root),
         new Request('http://localhost', {
           method: 'POST',
           headers: { 'Content-Length': String(MAX_UPLOAD_BYTES + 1) },
@@ -75,7 +76,8 @@ test('oversized and incomplete uploads leave no workspace file', async () => {
     );
     assert.deepEqual(await readdir(root), []);
     await assert.rejects(
-      saveDeviceFile(composeWorkspace(root),
+      saveDeviceFile(
+        composeWorkspace(root),
         new Request('http://localhost', {
           method: 'POST',
           headers: { 'Content-Length': '20' },

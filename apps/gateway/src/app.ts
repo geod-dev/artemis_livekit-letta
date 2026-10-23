@@ -17,7 +17,16 @@ import { createWorkspaceFileRoutes } from './routes/workspace-files';
  * readiness endpoints sit outside the /api authentication middleware.
  */
 export function createGatewayApp(deps: GatewayDependencies): Hono {
-  const { config, agentServer, attachments, workspace, deviceHub, voiceTokens, transcriber, linkPreview } = deps;
+  const {
+    config,
+    agentServer,
+    attachments,
+    workspace,
+    deviceHub,
+    voiceTokens,
+    transcriber,
+    linkPreview,
+  } = deps;
   const app = createAuth(config.auth.password, config.auth.deviceToken, config.voiceGatewayToken);
   app.get('/health', (c) => c.json({ status: 'ok' }));
   app.get('/ready', async (c) => {

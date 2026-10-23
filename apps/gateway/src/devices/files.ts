@@ -1,6 +1,6 @@
+import type { WorkspaceTransport } from '@artemis/workspace';
 import { createHash, randomUUID } from 'node:crypto';
 import { posix, win32 } from 'node:path';
-import type { WorkspaceTransport } from '@artemis/workspace';
 import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
 
 /** The metadata a device file upload returns; only this enters the device's MCP result. */
@@ -36,7 +36,9 @@ export async function saveDeviceFile(
     length < 0 ||
     length > MAX_UPLOAD_BYTES
   )
-    throw new Error(`Upload requires a Content-Length of at most ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`);
+    throw new Error(
+      `Upload requires a Content-Length of at most ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`
+    );
   const path = `data/device-files/${randomUUID()}/${name}`;
   const directory = posix.dirname(path);
   const upload = await workspace.openWrite(path);

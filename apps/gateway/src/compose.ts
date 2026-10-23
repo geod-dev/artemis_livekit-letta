@@ -15,8 +15,8 @@ import type { AppConfig } from './config';
 import { DeviceHub } from './devices/hub';
 import type { LinkMetadata } from './link-preview/link-description';
 import { linkPreview } from './link-preview/link-preview';
-import { createGroqTranscriber, type Transcriber } from './vendor/groq/transcription';
-import { createVoiceTokenIssuer, type VoiceTokenIssuer } from './vendor/livekit/tokens';
+import { type Transcriber, createGroqTranscriber } from './vendor/groq/transcription';
+import { type VoiceTokenIssuer, createVoiceTokenIssuer } from './vendor/livekit/tokens';
 
 export interface GatewayDependencies {
   config: AppConfig;

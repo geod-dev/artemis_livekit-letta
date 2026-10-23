@@ -1,6 +1,6 @@
+import type { WorkspaceTransport } from '@artemis/workspace';
 import { Hono } from 'hono';
 import { basename } from 'node:path';
-import type { WorkspaceTransport } from '@artemis/workspace';
 import { errorResponse } from '../http';
 import { describeWorkspaceFile } from '../workspace/files';
 
@@ -20,7 +20,12 @@ export function createWorkspaceFileRoutes(workspace: WorkspaceTransport): Hono {
     const encoded = marker >= 0 ? path.slice(marker + '/workspace/'.length) : '';
     const file = await describeWorkspaceFile(workspace, safeDecode(encoded));
     if (!file) return errorResponse('File not found', 404);
-    const plan = planWorkspaceResponse(file, c.req.method, c.req.query('download') !== undefined, c.req.raw.headers.get('range'));
+    const plan = planWorkspaceResponse(
+      file,
+      c.req.method,
+      c.req.query('download') !== undefined,
+      c.req.raw.headers.get('range')
+    );
     if (plan.range === false) return new Response(null, { status: 416, headers: plan.headers });
     if (plan.noBody) return new Response(null, { status: plan.status, headers: plan.headers });
     const stream = await workspace.readStream(file.path, plan.range ?? undefined);
@@ -68,7 +73,10 @@ export function planWorkspaceResponse(
   };
 }
 
-function parseByteRange(value: string | null, size: number): { start: number; end: number } | null | false {
+function parseByteRange(
+  value: string | null,
+  size: number
+): { start: number; end: number } | null | false {
   if (!value) return null;
   const match = value.match(/^bytes=(\d*)-(\d*)$/);
   if (!match || size === 0 || (!match[1] && !match[2])) return false;
@@ -82,7 +90,8 @@ function parseByteRange(value: string | null, size: number): { start: number; en
   } else {
     start = Number(match[1]);
     end = match[2] ? Number(match[2]) : size - 1;
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= size || end < start) return false;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= size || end < start)
+      return false;
     end = Math.min(end, size - 1);
   }
   return { start, end };

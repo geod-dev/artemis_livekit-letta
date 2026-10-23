@@ -1,5 +1,3 @@
-import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { type MessageDeleteResponse, conversationPath } from '@artemis/contracts/agent-server';
 import {
   type ChatAttachment,
@@ -8,10 +6,12 @@ import {
   TEXT_EFFORTS,
   type TextEffort,
 } from '@artemis/contracts/chat-types';
+import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { AgentServerClient } from '../agent-server/client';
 import { InvalidAttachmentError } from '../attachments/attachment-policy';
 import type { AttachmentStore } from '../attachments/attachment-store';
-import { errorResponse, jsonObject, PROXY_BODY_LIMIT, routeError, withQuery } from '../http';
+import { PROXY_BODY_LIMIT, errorResponse, jsonObject, routeError, withQuery } from '../http';
 
 /**
  * The chat API. Conversations, messages, tasks and live events belong to the
@@ -42,16 +42,24 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
     return response;
   });
 
-  conversations.get('/:id/events', (c) => agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/events`));
+  conversations.get('/:id/events', (c) =>
+    agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/events`)
+  );
   conversations.get('/:id/messages', (c) =>
     agent.relay(c.req.raw, withQuery(c, `${conversationPath(c.req.param('id'))}/messages`))
   );
   conversations.get('/:id/context-usage', (c) =>
     agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/context-usage`)
   );
-  conversations.post('/:id/cancel', (c) => agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/cancel`));
-  conversations.post('/:id/read', (c) => agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/read`));
-  conversations.get('/:id/tasks', (c) => agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/tasks`));
+  conversations.post('/:id/cancel', (c) =>
+    agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/cancel`)
+  );
+  conversations.post('/:id/read', (c) =>
+    agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/read`)
+  );
+  conversations.get('/:id/tasks', (c) =>
+    agent.relay(c.req.raw, `${conversationPath(c.req.param('id'))}/tasks`)
+  );
   conversations.get('/:id/tasks/:taskId', (c) =>
     agent.relay(c.req.raw, taskPath(c.req.param('id'), c.req.param('taskId')))
   );
@@ -74,7 +82,10 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
     const attachments = body.attachments === undefined ? [] : body.attachments;
     const clientMessageId = body.clientMessageId;
     if (typeof text !== 'string' || text.length > MAX_TURN_TEXT_LENGTH)
-      return errorResponse(`text must be a string of at most ${MAX_TURN_TEXT_LENGTH} characters`, 400);
+      return errorResponse(
+        `text must be a string of at most ${MAX_TURN_TEXT_LENGTH} characters`,
+        400
+      );
     if (effort !== undefined && !(TEXT_EFFORTS as readonly string[]).includes(String(effort))) {
       return errorResponse(`effort must be one of ${TEXT_EFFORTS.join(', ')}`, 400);
     }
@@ -115,7 +126,9 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
     try {
       resolved = await store.resolve(attachments as ChatAttachment[]);
     } catch (error) {
-      return error instanceof InvalidAttachmentError ? errorResponse(error.message, 400) : errorResponse(error);
+      return error instanceof InvalidAttachmentError
+        ? errorResponse(error.message, 400)
+        : errorResponse(error);
     }
     const response = await agent.relay(
       c.req.raw,
@@ -130,7 +143,10 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
     // Only an accepted turn keeps its uploads; a refused or unknown conversation must not pin them.
     if (response.status === 202) {
       try {
-        await store.registry.addReferences(id, resolved.map((a) => a.path));
+        await store.registry.addReferences(
+          id,
+          resolved.map((a) => a.path)
+        );
       } catch (error) {
         return errorResponse(error);
       }
@@ -147,7 +163,10 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
     const id = c.req.param('id');
     const messageId = c.req.param('messageId');
     if (messageId.length > 200) return errorResponse('Invalid message id', 400);
-    const response = await agent.relay(c.req.raw, `${conversationPath(id)}/messages/${encodeURIComponent(messageId)}`);
+    const response = await agent.relay(
+      c.req.raw,
+      `${conversationPath(id)}/messages/${encodeURIComponent(messageId)}`
+    );
     if (!response.ok) return response;
     const payload = await response.text();
     try {
