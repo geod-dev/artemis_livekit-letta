@@ -1,3 +1,5 @@
+import { postNativeMessage } from '@/lib/native-bridge';
+
 export type Theme = 'light' | 'dark';
 
 const THEME_KEY = 'theme';
@@ -21,9 +23,7 @@ export function applyTheme(theme: Theme) {
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
     ?.setAttribute('content', color);
-  (
-    window as Window & { ArtemisNative?: { setSystemBarColor: (color: string) => void } }
-  ).ArtemisNative?.setSystemBarColor(color);
+  postNativeMessage({ systemBarColor: color });
   try {
     window.localStorage.setItem(THEME_KEY, theme);
   } catch {

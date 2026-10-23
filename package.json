@@ -20,7 +20,7 @@
     "check:boundaries": "node scripts/check.mjs boundaries",
     "typecheck:packages": "pnpm --filter \"./packages/*\" -r run typecheck",
     "test:packages": "pnpm --filter \"./packages/*\" -r run test",
-    "generate:present-tool": "node --experimental-strip-types --no-warnings packages/contracts/scripts/generate-present-tool.ts",
+    "generate:present-tool": "node --experimental-strip-types --no-warnings apps/web/scripts/generate-present-tool.ts",
     "smoke:agent-server": "node scripts/smoke-agent-server.mjs"
   },
   "devDependencies": {

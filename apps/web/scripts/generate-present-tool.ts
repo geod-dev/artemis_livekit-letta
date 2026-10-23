@@ -1,22 +1,37 @@
 /**
  * Writes the `present` tool's schema, generated from the generative UI library
- * in `src/present-library.ts`, to the files the agent-server registers the tool
- * from. Run it after changing the library or upgrading
- * `@assistant-ui/react-generative-ui`.
+ * in `src/lib/present-library.ts`, to the files the agent-server registers the tool
+ * from (`packages/contracts/generated/`). Run it after changing the library or
+ * upgrading `@assistant-ui/react-generative-ui`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { toJSONSchema } from 'zod';
-import { presentLibrary, presentToolSchema } from '../src/present-library.ts';
+import { presentLibrary, presentToolSchema } from '../src/lib/present-library.ts';
 
-const generatedDirectory = new URL('../generated/', import.meta.url);
-// Without the schema's shared-prop warnings (see `presentToolSchema`).
-process.env.NODE_ENV = 'production';
-const schema = presentToolSchema(presentLibrary(() => null));
-const library = presentLibrary(() => null);
-const componentSchemas = Object.fromEntries(
-  Object.entries(library).map(([name, component]) => [name, toJSONSchema(component.properties)])
-);
+const generatedDirectory = new URL('../../../packages/contracts/generated/', import.meta.url);
+
+/** The schema builder warns about props several components share, outside production; the generated files do not need the warnings. */
+function withoutSharedPropWarnings<T>(run: () => T): T {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    return run();
+  } finally {
+    if (previous === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous;
+  }
+}
+
+const { schema, componentSchemas } = withoutSharedPropWarnings(() => {
+  const library = presentLibrary(() => null);
+  return {
+    schema: presentToolSchema(library),
+    componentSchemas: Object.fromEntries(
+      Object.entries(library).map(([name, component]) => [name, toJSONSchema(component.properties)])
+    ),
+  };
+});
 const targets = [
   {
     label: 'schema',

@@ -34,7 +34,7 @@ const commands = {
     ['mocked deployment tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'deploy/coolify', '-p', 'test_*.py'], '.'],
   ],
   schema: [
-    ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'packages/contracts/scripts/generate-present-tool.ts', '--check'], '.'],
+    ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'apps/web/scripts/generate-present-tool.ts', '--check'], '.'],
   ],
   boundaries: [
     ['dependency rules', process.execPath, ['scripts/check-boundaries.mjs'], '.'],

@@ -2,17 +2,24 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import presentComponentsJson from '@artemis/contracts/present-components.json' with { type: 'json' };
 import presentToolJson from '@artemis/contracts/present-tool.json' with { type: 'json' };
-import { presentLibrary, presentToolSchema } from '@artemis/contracts/present-library';
+import { presentLibrary, presentToolSchema } from './present-library.ts';
 import { presentTree, replyMessage, validatePresent } from './generative-ui.ts';
 
-// Without the schema's shared-prop warnings (see `presentToolSchema`).
-process.env.NODE_ENV = 'production';
+/** The schema builder warns about props several components share, outside production; these tests do not need the warnings. */
+function presentToolSchemaQuietly() {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    return presentToolSchema(presentLibrary(() => null));
+  } finally {
+    if (previous === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous;
+  }
+}
 
 test('the shared present tool schema is generated from the library', () => {
   const registered: unknown = presentToolJson;
-  const generated: unknown = JSON.parse(
-    JSON.stringify(presentToolSchema(presentLibrary(() => null)))
-  );
+  const generated: unknown = JSON.parse(JSON.stringify(presentToolSchemaQuietly()));
   assert.deepEqual(registered, generated, 'run `pnpm generate:present-tool` at the repo root');
   const registeredComponents: unknown = presentComponentsJson;
   const generatedComponents = Object.fromEntries(

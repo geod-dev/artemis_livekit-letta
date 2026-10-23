@@ -1,23 +1,23 @@
 {
-  "name": "@artemis/frontend",
+  "name": "@artemis/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.19"
+    "node": ">=24.19.0"
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "node --test --experimental-strip-types --no-warnings \"src/**/*.test.ts\"",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@artemis/contracts": "link:../../packages/contracts",
+    "@artemis/contracts": "workspace:*",
     "@assistant-ui/react": "^0.15.25",
     "@assistant-ui/react-generative-ui": "^0.0.24",
     "@assistant-ui/react-streamdown": "^0.3.19",
@@ -43,7 +43,6 @@
     "streamdown": "^2.7.0",
     "tailwind-merge": "^3.3.1",
     "tw-shimmer": "^0.4.13",
-    "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -60,9 +59,9 @@
     "prettier-plugin-tailwindcss": "^0.6.11",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.0",
-    "typescript": "^5",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8",
-    "vite": "^7"
-  },
-  "packageManager": "pnpm@10.18.0"
+    "vite": "^7",
+    "zod": "^4.6.5"
+  }
 }

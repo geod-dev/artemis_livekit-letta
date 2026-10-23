@@ -4,14 +4,15 @@ import {
   JSONGenerativeUI,
   defaultGenerativeUILibrary,
 } from '@assistant-ui/react-generative-ui';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 
 /**
  * The generative UI library the assistant's `present` tool is built from. The
- * agent-server registers the tool from `generated/present-tool.json`, generated
- * from this module by `pnpm generate:present-tool`; the frontend's test fails
+ * agent-server registers the tool from `packages/contracts/generated/present-tool.json`,
+ * generated from this module by `pnpm generate:present-tool`; the web app's test fails
  * when the two differ.
  */
-export const PRESENT_TOOL = 'present';
+export const PRESENT_TOOL = TOOL_NAMES.present;
 
 type ReactNode = ReturnType<GenerativeUIComponent['render']>;
 

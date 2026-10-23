@@ -20,7 +20,6 @@
   },
   "registries": {
     "@agents-ui": "https://livekit.io/ui/r/{name}.json",
-    "@ai-elements": "https://registry.ai-sdk.dev/{name}.json",
     "@assistant-ui": "https://r.assistant-ui.com/styles/{style}/{name}.json"
   }
 }
