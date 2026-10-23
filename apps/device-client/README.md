@@ -3,9 +3,9 @@
 Python 3.10+; no packages to install. Run on the desktop whose browser, files, audio, terminal, or screen you want to expose.
 
 ```sh
-python devices/artemis-device.py laptop
+python apps/device-client/artemis-device.py laptop
 # Or choose scopes explicitly without the menu:
-python devices/artemis-device.py laptop --scopes browser
+python apps/device-client/artemis-device.py laptop --scopes browser
 ```
 
 The script reads **ARTEMIS_DEVICE_TOKEN** from the environment, then from the project `.env`; it asks you to paste the token only if neither contains it. Use `--env-file .env` to explicitly select a token file and override a stale environment variable. Use the VPS device token; the website password is a different credential. The script prints the credential source, its length and a short SHA-256 fingerprint, never the token itself. Surrounding whitespace, quotes, a copied `ARTEMIS_DEVICE_TOKEN=` prefix and terminal paste markers are handled automatically. Use `--server https://your-server` and `--firefox /path/to/firefox` if needed. On Windows, `py` can replace `python`.
@@ -15,12 +15,12 @@ The script reads **ARTEMIS_DEVICE_TOKEN** from the environment, then from the pr
 Pass one or more scope names after `--scopes`. Only those scopes are registered with Artemis. If `--scopes` is omitted, an interactive keyboard menu opens before the client starts: use Up/Down to move, Space to toggle a scope, and Enter to confirm. Browser is selected by default; the other scopes start unchecked. Ctrl+C cancels the menu or cleanly disconnects a running client. A non-interactive launch must provide `--scopes` explicitly.
 
 ```sh
-python devices/artemis-device.py laptop --scopes browser media filesystem screenshot
-python devices/artemis-device.py laptop --scopes filesystem --active-folder ~/Documents
-python devices/artemis-device.py laptop --scopes terminal --active-folder ~/Projects
+python apps/device-client/artemis-device.py laptop --scopes browser media filesystem screenshot
+python apps/device-client/artemis-device.py laptop --scopes filesystem --active-folder ~/Documents
+python apps/device-client/artemis-device.py laptop --scopes terminal --active-folder ~/Projects
 ```
 
-The client is also an importable `artemis_device` package. From the `devices` directory, run `python -m artemis_device laptop --scopes browser`. Run its tests from the repository root with `python -m unittest discover -s devices/tests -p test_device.py`.
+The client is also an importable `artemis_device` package. From the `apps/device-client` directory, run `python -m artemis_device laptop --scopes browser`. Run its tests from the repository root with `python -m unittest discover -s apps/device-client/tests -p test_device.py`.
 
 - `browser` exposes `open_url`, which accepts only HTTP and HTTPS URLs. It opens Firefox when available (or the configured `--firefox`), otherwise the system's default URL handler.
 - `media` exposes `media_control` for play, pause, current track/status, and volume. Linux uses `playerctl`; macOS uses the Music app via `osascript`; Windows uses system media controls and Windows Core Audio for volume. Linux requires `playerctl` on PATH.
@@ -40,7 +40,7 @@ Each device needs a unique name. A new connection with the same name replaces th
 To expose a local MCP stdio server instead of built-in scopes:
 
 ```sh
-python devices/artemis-device.py laptop --mcp-command python my_mcp_server.py
+python apps/device-client/artemis-device.py laptop --mcp-command python my_mcp_server.py
 ```
 
 The command option must come last and cannot be combined with `--scopes`. The relay initializes the MCP server, lists its tools (including pagination), and forwards `tools/call` and results. It supports tools only, not resources, prompts, sampling or elicitation. Restart the script when the tool list changes.

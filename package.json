@@ -14,7 +14,7 @@
     "check:agent-server": "node scripts/check.mjs agent-server",
     "check:web": "node scripts/check.mjs web",
     "check:voice": "node scripts/check.mjs voice",
-    "check:devices": "node scripts/check.mjs devices",
+    "check:device": "node scripts/check.mjs device",
     "check:operations": "node scripts/check.mjs operations",
     "check:schema": "node scripts/check.mjs schema",
     "check:packages": "node scripts/check.mjs packages",

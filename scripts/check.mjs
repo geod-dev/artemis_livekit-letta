@@ -23,8 +23,8 @@ const commands = {
     ['lint', 'uv', ['run', '--locked', '--group', 'dev', 'ruff', 'check', 'src', 'tests'], 'apps/voice-agent'],
     ['typecheck', 'uv', ['run', '--locked', '--group', 'dev', 'pyright'], 'apps/voice-agent'],
   ],
-  devices: [
-    ['tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_device.py'], 'devices'],
+  device: [
+    ['tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_device.py'], 'apps/device-client'],
   ],
   boundaries: [
     ['dependency rules', process.execPath, ['scripts/check-boundaries.mjs'], '.'],
@@ -43,7 +43,7 @@ const commands = {
 };
 
 const selected = process.argv[2];
-const defaultGroups = ['gateway', 'agent-server', 'web', 'voice', 'devices', 'boundaries', 'packages', 'operations', 'schema'];
+const defaultGroups = ['gateway', 'agent-server', 'web', 'voice', 'device', 'boundaries', 'packages', 'operations', 'schema'];
 const groups = selected === 'all' || selected === undefined ? defaultGroups : [selected];
 
 if (groups.some((group) => !(group in commands))) {
