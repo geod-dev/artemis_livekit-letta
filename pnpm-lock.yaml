@@ -59,13 +59,13 @@ importers:
       hono:
         specifier: ^4.10.1
         version: 4.13.13
-      tsx:
-        specifier: ^4.20.6
-        version: 4.23.15
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
+      tsx:
+        specifier: ^4.20.6
+        version: 4.23.15
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -75,24 +75,21 @@ importers:
       '@artemis/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@artemis/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@artemis/workspace':
         specifier: workspace:*
         version: link:../../packages/workspace
       '@hono/node-server':
         specifier: ^1.19.5
         version: 1.19.17(hono@4.13.13)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.30.0
-        version: 1.30.0(zod@4.6.7)
       hono:
         specifier: ^4.10.1
         version: 4.13.13
       livekit-server-sdk:
         specifier: ^2.19.1
         version: 2.19.2
-      tsx:
-        specifier: ^4.20.6
-        version: 4.23.15
     devDependencies:
       '@trivago/prettier-plugin-sort-imports':
         specifier: ^5.2.2
@@ -109,15 +106,15 @@ importers:
       prettier:
         specifier: ^3.4.2
         version: 3.9.10
+      tsx:
+        specifier: ^4.20.6
+        version: 4.23.15
       typescript:
-        specifier: ^5
+        specifier: ^5.9.3
         version: 5.9.3
       typescript-eslint:
         specifier: ^8
         version: 8.72.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
-      undici-types:
-        specifier: 7.24.6
-        version: 7.24.6
 
   apps/web:
     dependencies:
@@ -257,9 +254,6 @@ importers:
 
   packages/agent-loop:
     dependencies:
-      '@artemis/core':
-        specifier: workspace:*
-        version: link:../core
       '@artemis/llm':
         specifier: workspace:*
         version: link:../llm
@@ -267,6 +261,9 @@ importers:
         specifier: workspace:*
         version: link:../tools
     devDependencies:
+      '@artemis/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
