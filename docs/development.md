@@ -53,16 +53,16 @@ deployment and token-rotation tests). `pnpm smoke:agent-server` runs a live smok
 Build the current debug APK with:
 
 ```powershell
-.\mobile\gradlew.bat -p mobile -PartemisUrl=https://your-host assembleDebug
+.\apps\mobile\gradlew.bat -p apps\mobile -PartemisUrl=https://your-host assembleDebug
 ```
 
-The output is `mobile/app/build/outputs/apk/debug/app-debug.apk`. The installer,
-`scripts/install-android.ps1`, defaults to that current build. Pass `-ApkPath` to install a different artifact.
+The output is `apps/mobile/app/build/outputs/apk/debug/app-debug.apk`. The installer,
+`apps/mobile/scripts/install-android.ps1`, defaults to that current build. Pass `-ApkPath` to install a different artifact.
 Every build requires an HTTPS origin through `-PartemisUrl` or the
 `ARTEMIS_URL` environment variable. The matching origin is
 used for microphone permissions, authenticated downloads, and same-site previews.
 
-Keep a personal debug signing key under `mobile/.signing/` between builds if
+Keep a personal debug signing key under `apps/mobile/.signing/` between builds if
 you need to install updates without uninstalling the app. Build outputs, APKs,
 local Gradle state, signing files, and local SDK paths are ignored by Git and
 excluded from Docker build contexts.

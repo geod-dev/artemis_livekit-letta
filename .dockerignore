@@ -25,7 +25,5 @@ apps/*/.workspace
 
 # Build outputs that the image rebuilds itself.
 apps/web/dist
-mobile/build
-mobile/app/build
 apps/mobile/build
 apps/mobile/app/build

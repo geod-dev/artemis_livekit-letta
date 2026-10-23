@@ -15,7 +15,7 @@ The services and how they fit together are described in [Architecture](docs/arch
 - [Deployment](docs/deployment.md) covers Compose, persistent data, HTTPS, and Coolify operations.
 - [Providers](docs/providers.md) documents model and voice provider configuration.
 - [Connected devices](apps/device-client/README.md) describes the optional device bridge.
-- [Android app](mobile/README.md) explains installation and wrapper behavior.
+- [Android app](apps/mobile/README.md) explains installation and wrapper behavior.
 
 Copy `.env.example` to `.env` and set local credentials before starting services.
 Production needs separate persistent workspace and backend-data roots and unique

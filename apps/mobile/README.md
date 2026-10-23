@@ -7,9 +7,9 @@ Website updates appear automatically. An internet connection is required.
 ## Install
 
 Build the app first, then install the current debug build. From the repository
-root, run `./mobile/gradlew -p mobile -PartemisUrl=https://your-host assembleDebug`
+root, run `./apps/mobile/gradlew -p apps/mobile -PartemisUrl=https://your-host assembleDebug`
 or set `ARTEMIS_URL` in the environment before running
-`./mobile/gradlew -p mobile assembleDebug`. Then run `./scripts/install-android.ps1`.
+`./apps/mobile/gradlew -p apps/mobile assembleDebug`. Then run `./apps/mobile/scripts/install-android.ps1`.
 To install a release artifact explicitly, pass its path as
 `-ApkPath path\to\Artemis.apk`. The installer does not use a checked-in APK.
 
