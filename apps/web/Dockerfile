@@ -16,7 +16,7 @@ COPY apps/web apps/web
 
 ARG IP_ADDRESS=127.0.0.1
 ARG ASSISTANT_NAME=Artemis
-ENV IP_ADDRESS=${IP_ADDRESS} ASSISTANT_NAME=${ASSISTANT_NAME} BACKEND_URL=http://backend:3000
+ENV IP_ADDRESS=${IP_ADDRESS} ASSISTANT_NAME=${ASSISTANT_NAME} GATEWAY_URL=http://gateway:3000
 RUN pnpm --filter @artemis/frontend build
 
 FROM nginx:1.27-alpine

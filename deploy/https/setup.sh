@@ -98,7 +98,7 @@ awk '!/^FRONTEND_BIND=/ && !/^FRONTEND_PORT=/ && !/^LIVEKIT_PUBLIC_URL=/' .env >
 printf '\nFRONTEND_BIND=127.0.0.1\nFRONTEND_PORT=5180\nLIVEKIT_PUBLIC_URL=wss://%s/livekit\n' "$ip" >> "$env_new"
 chmod --reference=.env "$env_new"
 mv "$env_new" .env
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build backend frontend voice-agent
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build gateway frontend voice-agent
 
 nginx_new=$(mktemp "${site}.XXXXXX")
 sed "s/@IP@/$ip/g" deploy/https/nginx.conf.template > "$nginx_new"
@@ -133,7 +133,7 @@ systemctl enable --now assistant-certbot.timer
 # Backend liveness is unauthenticated. Check it inside the service, then verify
 # that the public TLS route serves the application without an authenticated API.
 attempt=0
-until docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T backend node -e \
+until docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T gateway node -e \
   "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; do
   attempt=$((attempt + 1))
   if [ "$attempt" -ge 15 ]; then echo 'Backend health check failed' >&2; exit 1; fi

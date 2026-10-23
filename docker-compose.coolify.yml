@@ -54,7 +54,7 @@ services:
       AGENT_SERVER_PORT: 4000
       DATABASE_URL: postgresql://artemis:${ARTEMIS_DB_PASSWORD:?set ARTEMIS_DB_PASSWORD in .env}@postgres:5432/artemis
       HINDSIGHT_URL: http://hindsight:8888
-      MCP_DEVICE_BASE_URL: http://backend:3000
+      MCP_DEVICE_BASE_URL: http://gateway:3000
       WORKSPACE_PATH: /workspace
       WORKSPACE_RUN_AS: "1001:1001"
     depends_on:
@@ -85,15 +85,15 @@ services:
       - "7882:7882/udp"
     restart: unless-stopped
 
-  backend:
+  gateway:
     build:
       context: .
       dockerfile: apps/gateway/Dockerfile
     env_file: .env
     environment:
       NODE_ENV: production
-      BACKEND_PORT: 3000
-      MCP_DEVICE_BASE_URL: http://backend:3000
+      GATEWAY_PORT: 3000
+      MCP_DEVICE_BASE_URL: http://gateway:3000
       AGENT_SERVER_URL: http://agent-server:4000
       LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:-127.0.0.1}:7880}
       WORKSPACE_PATH: /workspace
@@ -123,7 +123,7 @@ services:
         IP_ADDRESS: ${IP_ADDRESS:-127.0.0.1}
         ASSISTANT_NAME: ${ASSISTANT_NAME:-Artemis}
     depends_on:
-      backend:
+      gateway:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
@@ -139,9 +139,9 @@ services:
     env_file: .env
     environment:
       LIVEKIT_URL: ws://livekit:7880
-      GATEWAY_URL: http://backend:3000
+      GATEWAY_URL: http://gateway:3000
     depends_on:
-      backend:
+      gateway:
         condition: service_healthy
       livekit:
         condition: service_started

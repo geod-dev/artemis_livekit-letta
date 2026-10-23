@@ -9,7 +9,6 @@
     "<THIRD_PARTY_MODULES>",
     "^@[^/](.*)$",
     "^@/(.*)$",
-    "^@backend/(.*)$",
     "^[./]"
   ],
   "importOrderSeparation": false,

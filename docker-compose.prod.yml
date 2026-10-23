@@ -5,7 +5,7 @@ services:
       - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}:/workspace
       - ${ARTEMIS_DATA_DIR:?set ARTEMIS_DATA_DIR in the production environment}:/workspace/data
 
-  backend:
+  gateway:
     environment:
       NODE_ENV: production
     volumes:
