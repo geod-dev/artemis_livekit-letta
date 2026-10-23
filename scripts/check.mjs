@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 
+const pnpmExecutable = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+
 const commands = {
   backend: [
     ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'], 'backend'],
@@ -21,8 +23,8 @@ const commands = {
     ['tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_device.py'], 'devices'],
   ],
   packages: [
-    ['typecheck', process.execPath, [process.env.npm_execpath ?? 'pnpm', 'run', 'typecheck:packages'], '.'],
-    ['tests', process.execPath, [process.env.npm_execpath ?? 'pnpm', 'run', 'test:packages'], '.'],
+    ['typecheck', pnpmExecutable, ['run', 'typecheck:packages'], '.'],
+    ['tests', pnpmExecutable, ['run', 'test:packages'], '.'],
   ],
   operations: [
     ['mocked deployment tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'infrastructure/coolify', '-p', 'test_*.py'], '.'],
@@ -45,6 +47,10 @@ if (groups.some((group) => !(group in commands))) {
   process.exit(2);
 }
 
+if (!process.env.TEST_DATABASE_URL) {
+  console.warn('WARNING: TEST_DATABASE_URL is not set, so the Postgres integration tests are being skipped. Set TEST_DATABASE_URL to a Postgres database the tests may create tables in to run them.');
+}
+
 let failed = false;
 for (const group of groups) {
   for (const [label, executable, args, directory] of commands[group]) {
@@ -52,7 +58,8 @@ for (const group of groups) {
     const result = spawnSync(executable, args, {
       cwd: new URL(`../${directory}/`, import.meta.url),
       stdio: 'inherit',
-      shell: false,
+      // Windows needs a shell to launch pnpm.cmd.
+      shell: executable.endsWith('.cmd'),
       env: process.env,
     });
     if (result.error) {

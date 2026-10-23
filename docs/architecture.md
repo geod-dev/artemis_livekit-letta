@@ -10,8 +10,6 @@
 - `agent/` joins LiveKit rooms and handles speech recognition, turn detection, speech generation, and call lifecycle. It sends each completed user utterance to the backend's OpenAI-compatible voice route.
 - `livekit` provides WebRTC signaling and media transport. Browser signaling goes through `/livekit/` on nginx; the agent uses the internal Compose address.
 
-The detailed design is in [migration-hindsight/architecture.md](migration-hindsight/architecture.md).
-
 ## Conversation and files
 
 Application components built with assistant-ui are grouped by responsibility

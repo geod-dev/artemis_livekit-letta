@@ -53,6 +53,9 @@ interface ResponseLike {
  * subagents have no turn, so nothing is published for them.
  */
 export class LoopPersistence {
+  /** Content block of the latest voice text delta (see `assistantMessage`). */
+  private spokenBlock = 0;
+
   constructor(private readonly options: LoopPersistenceOptions) {}
 
   async handle(event: LoopEvent): Promise<void> {
@@ -85,13 +88,15 @@ export class LoopPersistence {
       this.publish({ type: 'assistant_delta', turnId: this.turnId(), messageId: `${messageId}:${blockIndex}`, text });
       return;
     }
+    this.spokenBlock = blockIndex;
     this.emitSpoken(messageId, blockIndex, voice.filter.push(text));
   }
 
   private async assistantMessage(messageId: string, message: AssistantLike, response: ResponseLike): Promise<void> {
     const { scope, storage, clock } = this.options;
+    // Held-back text belongs to the most recent text delta, which is the block it was streamed in.
     const rest = this.options.voice?.filter.flush() ?? '';
-    this.emitSpoken(messageId, 0, rest);
+    this.emitSpoken(messageId, this.spokenBlock, rest);
     await storage.messages.append({
       id: messageId,
       conversationId: scope.conversationId,

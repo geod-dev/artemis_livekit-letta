@@ -1,8 +1,7 @@
 /**
  * Agent-server HTTP/SSE API DTOs (service-to-service, behind the gateway).
  * Types only. Routes live under `/v1` and require
- * `Authorization: Bearer <AGENT_SERVER_TOKEN>`; see
- * docs/migration-hindsight/architecture.md#agent-server-api for the route table.
+ * `Authorization: Bearer <AGENT_SERVER_TOKEN>`.
  *
  * Most conversation routes return the same shapes the frontend already uses
  * (`chat-types.ts`), so the gateway proxies them byte-for-byte.
