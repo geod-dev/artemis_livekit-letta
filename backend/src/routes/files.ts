@@ -90,7 +90,7 @@ export function planWorkspaceResponse(
   };
 }
 
-export function parseByteRange(value: string | null, size: number): { start: number; end: number } | null | false {
+function parseByteRange(value: string | null, size: number): { start: number; end: number } | null | false {
   if (!value) return null;
   const match = value.match(/^bytes=(\d*)-(\d*)$/);
   if (!match || size === 0 || (!match[1] && !match[2])) return false;

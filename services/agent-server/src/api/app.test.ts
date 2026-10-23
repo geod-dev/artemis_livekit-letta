@@ -18,6 +18,10 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 
 const TOKEN = 'dev-agent-server-token-change-me';
 const AUTH = { authorization: `Bearer ${TOKEN}` };
+const CONV = '00000000-0000-4000-8000-0000000000c1';
+const UPD = '00000000-0000-4000-8000-0000000000a1';
+const UPD_OTHER = '00000000-0000-4000-8000-0000000000a5';
+const UPD_MISSING = '00000000-0000-4000-8000-0000000000a9';
 
 function harness(options: { memory?: boolean } = {}) {
   const clock = new FakeClock();
@@ -55,8 +59,8 @@ function harness(options: { memory?: boolean } = {}) {
     tasks: {} as TaskService,
     delivery: {
       async claimQueued(_conversationId: string, updateId: string) {
-        return updateId === 'u1'
-          ? { token: 'tok', update: { id: 'u1', title: 'Build', report: 'done' } }
+        return updateId === UPD
+          ? { token: 'tok', update: { id: UPD, title: 'Build', report: 'done' } }
           : null;
       },
       async complete(_conversationId: string, _token: string, turnId: string) {
@@ -102,7 +106,7 @@ test('the v1 API requires the bearer token', async () => {
 
 test('a text turn is accepted with 202 and submitted as a text turn', async () => {
   const { app, submitted } = harness();
-  const response = await app.request('/v1/conversations/c1/turns', {
+  const response = await app.request(`/v1/conversations/${CONV}/turns`, {
     method: 'POST',
     headers: { ...AUTH, 'content-type': 'application/json' },
     body: JSON.stringify({ text: 'hi', effort: 'high', clientMessageId: 'cm1' }),
@@ -129,21 +133,21 @@ test('errors map to their status and code', async () => {
   assert.equal((await json(missing)).code, 'not_found');
 
   state.submitError = new BusyError();
-  const busy = await post('/v1/conversations/c1/turns', { text: 'hi' });
+  const busy = await post(`/v1/conversations/${CONV}/turns`, { text: 'hi' });
   assert.equal(busy.status, 429);
   assert.equal((await json(busy)).code, 'busy');
   state.submitError = null;
 
-  const empty = await post('/v1/conversations/c1/turns', { text: '   ' });
+  const empty = await post(`/v1/conversations/${CONV}/turns`, { text: '   ' });
   assert.equal(empty.status, 400);
-  const badEffort = await post('/v1/conversations/c1/turns', { text: 'hi', effort: 'extreme' });
+  const badEffort = await post(`/v1/conversations/${CONV}/turns`, { text: 'hi', effort: 'extreme' });
   assert.equal(badEffort.status, 400);
 });
 
 test('a voice completion streams the reply and closes the voice response on the call', async () => {
   const { app, calls, submitted } = harness();
-  calls.openChannel('c1', () => undefined, 'short');
-  const response = await app.request('/v1/voice/conversations/c1/chat/completions', {
+  calls.openChannel(CONV, () => undefined, 'short');
+  const response = await app.request(`/v1/voice/conversations/${CONV}/chat/completions`, {
     method: 'POST',
     headers: { ...AUTH, 'content-type': 'application/json', 'x-voice-call-id': 'call-x' },
     body: JSON.stringify({ messages: [{ role: 'user', content: 'hey there', id: 'lk-1' }] }),
@@ -161,13 +165,13 @@ test('a voice completion streams the reply and closes the voice response on the 
   assert.equal(submitted[0]!.mode, 'voice-short');
   assert.equal(submitted[0]!.text, 'hey there');
   assert.equal(submitted[0]!.clientMessageId, 'lk-1');
-  assert.equal(calls.active('c1')!.next, 'end', 'a short call ends after a reply declared done');
+  assert.equal(calls.active(CONV)!.next, 'end', 'a short call ends after a reply declared done');
 });
 
 test('a voice completion re-sent by LiveKit is not submitted again', async () => {
   const { app, submitted } = harness();
   const request = () =>
-    app.request('/v1/voice/conversations/c1/chat/completions', {
+    app.request(`/v1/voice/conversations/${CONV}/chat/completions`, {
       method: 'POST',
       headers: { ...AUTH, 'content-type': 'application/json', 'x-voice-call-id': 'call-dedup' },
       body: JSON.stringify({ messages: [{ role: 'user', content: 'once', id: 'lk-2' }] }),
@@ -180,7 +184,7 @@ test('a voice completion re-sent by LiveKit is not submitted again', async () =>
 
 test('a voice completion validates its messages', async () => {
   const { app } = harness();
-  const response = await app.request('/v1/voice/conversations/c1/chat/completions', {
+  const response = await app.request(`/v1/voice/conversations/${CONV}/chat/completions`, {
     method: 'POST',
     headers: { ...AUTH, 'content-type': 'application/json' },
     body: JSON.stringify({ messages: 'nope' }),
@@ -193,9 +197,9 @@ test('an update is claimed, spoken and completed; a call ends through its listen
   const { app, calls, state } = harness();
   const ended: string[][] = [];
   calls.onEnded((_id, pending) => ended.push(pending));
-  calls.openChannel('c1', () => undefined, 'long');
+  calls.openChannel(CONV, () => undefined, 'long');
 
-  const spoken = await app.request('/v1/voice/conversations/c1/call/updates/u1', {
+  const spoken = await app.request(`/v1/voice/conversations/${CONV}/call/updates/${UPD}`, {
     method: 'POST',
     headers: AUTH,
   });
@@ -203,30 +207,30 @@ test('an update is claimed, spoken and completed; a call ends through its listen
   assert.equal(await spoken.text(), 'Hello there');
   assert.deepEqual(state.updatesCompleted, ['turn_1']);
 
-  const missing = await app.request('/v1/voice/conversations/c1/call/updates/u9', { method: 'POST', headers: AUTH });
+  const missing = await app.request(`/v1/voice/conversations/${CONV}/call/updates/${UPD_MISSING}`, { method: 'POST', headers: AUTH });
   assert.equal(missing.status, 404);
 
-  calls.announceUpdate('c1', 'u5');
-  const ended204 = await app.request('/v1/voice/conversations/c1/ended', { method: 'POST', headers: AUTH });
+  calls.announceUpdate(CONV, UPD_OTHER);
+  const ended204 = await app.request(`/v1/voice/conversations/${CONV}/ended`, { method: 'POST', headers: AUTH });
   assert.equal(ended204.status, 204);
-  assert.deepEqual(ended, [['u5']]);
+  assert.deepEqual(ended, [[UPD_OTHER]]);
 });
 
 test('the call state defaults to short and listen without a call', async () => {
   const { app } = harness();
-  const response = await app.request('/v1/voice/conversations/c1/call/state', { headers: AUTH });
+  const response = await app.request(`/v1/voice/conversations/${CONV}/call/state`, { headers: AUTH });
   assert.deepEqual(await json(response), { mode: 'short', next: 'listen' });
 });
 
 test('updates are acknowledged with heard true only', async () => {
   const { app } = harness();
-  const bad = await app.request('/v1/voice/conversations/c1/call/updates/u1/ack', {
+  const bad = await app.request(`/v1/voice/conversations/${CONV}/call/updates/${UPD}/ack`, {
     method: 'POST',
     headers: { ...AUTH, 'content-type': 'application/json' },
     body: JSON.stringify({ heard: 'yes' }),
   });
   assert.equal(bad.status, 400);
-  const ok = await app.request('/v1/voice/conversations/c1/call/updates/u1/ack', {
+  const ok = await app.request(`/v1/voice/conversations/${CONV}/call/updates/${UPD}/ack`, {
     method: 'POST',
     headers: { ...AUTH, 'content-type': 'application/json' },
     body: JSON.stringify({ heard: true }),

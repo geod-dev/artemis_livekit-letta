@@ -41,9 +41,9 @@ export type ToolCall = {
 };
 
 /** A titled card in a call's details. */
-export type ToolCard = { title: string; content: unknown };
+type ToolCard = { title: string; content: unknown };
 
-export type ToolPresentation = {
+type ToolPresentation = {
   /** Whether this presentation presents the call. */
   match: (call: ToolCall) => boolean;
   icon: LucideIcon;

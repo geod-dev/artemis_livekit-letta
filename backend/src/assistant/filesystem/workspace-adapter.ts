@@ -90,7 +90,7 @@ export async function workspaceFile(path: string): Promise<{
 const TEXT = 'text/plain; charset=utf-8';
 
 /** How a workspace file is served: its type, and whether a browser may show it. */
-export function fileType(path: string, bytes: Uint8Array): { contentType: string; viewable: boolean } {
+function fileType(path: string, bytes: Uint8Array): { contentType: string; viewable: boolean } {
   const contentType = inspectedMimeType(bytes, path);
   const viewable = /^(image|audio|video)\//.test(contentType) || contentType === 'application/pdf' || contentType === 'application/json' || contentType.startsWith('text/');
   return { contentType, viewable };

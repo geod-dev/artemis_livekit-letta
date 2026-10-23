@@ -1,14 +1,13 @@
 import { type ComponentProps, useId, useState } from 'react';
 import { CheckIcon, CopyIcon, Loader2Icon, XIcon } from 'lucide-react';
+import { ghostButton, mono, paper } from '@/components/assistant-ui/shared/surfaces';
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard';
 import { cn } from '@/lib/shadcn/utils';
 import { clamp, take } from '../utils/range';
-import { ghostButton, mono, paper } from '@/components/assistant-ui/shared/surfaces';
 
-export type AnsiColor =
-  30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 90 | 91 | 92 | 93 | 94 | 95 | 96 | 97;
+type AnsiColor = 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 90 | 91 | 92 | 93 | 94 | 95 | 96 | 97;
 
-export type AnsiSegment = {
+type AnsiSegment = {
   text: string;
   color?: AnsiColor | undefined;
   bold: boolean;
@@ -63,7 +62,7 @@ const applySgr = (value: string, state: Omit<AnsiSegment, 'text'>) => {
   }
 };
 
-export function parseAnsi(line: string): AnsiSegment[] {
+function parseAnsi(line: string): AnsiSegment[] {
   const state: Omit<AnsiSegment, 'text'> = {
     color: undefined,
     bold: false,

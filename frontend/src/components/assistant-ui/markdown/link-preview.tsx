@@ -1,9 +1,9 @@
 import { type ComponentProps, useState } from 'react';
+import { field, mono, paper } from '@/components/assistant-ui/shared/surfaces';
 import { cn } from '@/lib/shadcn/utils';
 import { hostOf, safeHref } from '../utils/href';
-import { field, mono, paper } from '@/components/assistant-ui/shared/surfaces';
 
-export interface LinkPreviewProps extends Omit<ComponentProps<'article'>, 'children' | 'title'> {
+interface LinkPreviewProps extends Omit<ComponentProps<'article'>, 'children' | 'title'> {
   href: string;
   title?: string | undefined;
   description?: string | undefined;

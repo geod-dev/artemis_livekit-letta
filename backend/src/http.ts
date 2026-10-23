@@ -1,5 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { config } from './assistant/config';
 
 /** Largest request body the gateway relays to the agent-server (uploads have their own route). */
@@ -10,7 +11,8 @@ export class HttpError extends Error {
 }
 
 export function errorResponse(error: unknown, status = 500): Response {
-  const resolvedStatus = error instanceof HttpError ? error.status : status;
+  // Hono middleware (e.g. bodyLimit) throws HTTPException; keep its status (413, ...) instead of a generic 500.
+  const resolvedStatus = error instanceof HttpError || error instanceof HTTPException ? error.status : status;
   const message = resolvedStatus >= 500 ? 'The request could not be completed' :
     error instanceof Error ? error.message : String(error);
   const requestId = resolvedStatus >= 500 ? randomUUID() : undefined;

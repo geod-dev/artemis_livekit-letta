@@ -8,7 +8,7 @@ export type AgentRun = ConversationTask & {
   prompt?: string;
   startedAt?: string;
 };
-export type AgentHistory = AgentRun & { runs: AgentRun[] };
+type AgentHistory = AgentRun & { runs: AgentRun[] };
 
 /** Remove one leading emoji from a rerun label when the agent name already carries it. */
 export function stripLeadingEmoji(value: string): string {

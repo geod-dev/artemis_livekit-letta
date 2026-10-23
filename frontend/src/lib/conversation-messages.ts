@@ -16,9 +16,17 @@ export function historyCoversMessage(
 /** Keep history's order and metadata while retaining more complete live text. */
 export function mergeConversationMessages(
   history: ChatMessage[],
-  live: LiveConversationItem[],
+  streamed: LiveConversationItem[],
   pending: Extract<ChatMessage, { role: 'user' }> | null
 ): ChatMessage[] {
+  // A replayed live message (e.g. after a reconnect) must show once: keep its first copy.
+  const seen = new Set<string>();
+  const live = streamed.filter(({ message }) => {
+    const key = `${message.role}:${message.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   const liveById = new Map(live.map(({ message }) => [message.id, message]));
   const persisted = history.map((row) => {
     const streamed = liveById.get(row.id);

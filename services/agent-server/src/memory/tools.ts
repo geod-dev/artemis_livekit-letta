@@ -19,7 +19,7 @@ import { runWithTimeout } from './abort.ts';
 /** Tool context plus the effort of the turn, when the caller knows it. */
 export type MemoryToolContext = AgentToolContext & { effort?: TextEffort | null };
 
-export interface MemoryToolsOptions {
+interface MemoryToolsOptions {
   store: MemoryStore;
   config: Pick<AgentServerConfig, 'assistant' | 'memory'>;
   clock?: Clock;

@@ -51,7 +51,7 @@ export function fallbackTitle(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_LENGTH) || DEFAULT_TITLE;
 }
 
-export interface TitleServiceDeps {
+interface TitleServiceDeps {
   storage: Storage;
   router: ModelRouter;
   prompts: PromptRenderer;

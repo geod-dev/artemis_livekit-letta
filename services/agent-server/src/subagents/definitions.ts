@@ -13,7 +13,7 @@ export interface SubagentDefinition {
   instructions: string;
 }
 
-export const NEEDS_USER_INPUT_PREFIX = 'NEEDS USER INPUT:';
+const NEEDS_USER_INPUT_PREFIX = 'NEEDS USER INPUT:';
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;

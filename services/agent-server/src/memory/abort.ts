@@ -1,6 +1,6 @@
 import type { Clock } from '@artemis/core';
 
-export interface TimeoutOptions {
+interface TimeoutOptions {
   clock: Clock;
   timeoutMs: number;
   /** Aborting the parent aborts the work too. */

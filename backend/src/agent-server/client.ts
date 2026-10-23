@@ -6,14 +6,14 @@ import type {
   WarmRequest,
 } from '../../../shared/contracts/agent-server.ts';
 
-export interface AgentServerOptions {
+interface AgentServerOptions {
   /** Base URL of the agent-server, e.g. `http://agent-server:4000`. */
   url: string;
   /** Bearer token the agent-server requires on its `/v1` routes (`AGENT_SERVER_TOKEN`). */
   token: string;
 }
 
-export interface MessagePage {
+interface MessagePage {
   messages: ChatMessage[];
   nextCursor: string | null;
 }
@@ -23,6 +23,11 @@ const FORWARDED_REQUEST_HEADERS = ['accept', 'content-type', 'if-match', 'last-e
 /** Response headers the API relies on: conditional requests, pagination and caching. */
 const FORWARDED_RESPONSE_HEADERS = ['cache-control', 'content-type', 'etag', 'x-next-cursor'];
 const INTERNAL_TIMEOUT_MS = 10_000;
+/**
+ * How long a relayed request may wait for the agent-server's response headers. Streamed bodies are not limited.
+ * Shorter than the browser's own patience so the gateway's 502/503 arrives before the browser gives up.
+ */
+const RELAY_HEADERS_TIMEOUT_MS = 8_000;
 
 /**
  * The gateway's only connection to the agent-server. Browser and voice-agent
@@ -43,7 +48,13 @@ export class AgentServerClient {
       body: body ?? (await requestBody(request)),
       headers,
       signal: request.signal,
+      headersTimeoutMs: RELAY_HEADERS_TIMEOUT_MS,
     });
+    // The browser's session is already valid at the gateway, so an upstream 401 means the gateway's own token is stale.
+    if (upstream.status === 401) {
+      await upstream.body?.cancel();
+      throw new HttpError('Agent server rejected the gateway credentials', 502);
+    }
     return new Response(upstream.body, { status: upstream.status, headers: pick(upstream.headers, FORWARDED_RESPONSE_HEADERS) });
   }
 
@@ -92,7 +103,7 @@ export class AgentServerClient {
   async send(
     method: string,
     path: string,
-    init: { body?: string; headers?: Headers; signal?: AbortSignal; timeoutMs?: number } = {}
+    init: { body?: string; headers?: Headers; signal?: AbortSignal; timeoutMs?: number; headersTimeoutMs?: number } = {}
   ): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${this.options.token}`);
@@ -100,16 +111,23 @@ export class AgentServerClient {
     const signals = [init.signal, init.timeoutMs ? AbortSignal.timeout(init.timeoutMs) : undefined].filter(
       (signal): signal is AbortSignal => signal !== undefined
     );
+    // Bounds only the wait for response headers: the timer is cleared once they arrive, so streamed bodies are not cut off.
+    const headersAbort = new AbortController();
+    const headersTimer = init.headersTimeoutMs
+      ? setTimeout(() => headersAbort.abort(), init.headersTimeoutMs)
+      : undefined;
     try {
       return await fetch(`${this.options.url.replace(/\/$/, '')}${path}`, {
         method,
         headers,
         body: init.body,
-        signal: signals.length > 0 ? AbortSignal.any(signals) : undefined,
+        signal: AbortSignal.any([...signals, headersAbort.signal]),
       });
     } catch (error) {
       if (init.signal?.aborted) throw error;
       throw new HttpError('Agent server is unavailable', 503);
+    } finally {
+      clearTimeout(headersTimer);
     }
   }
 }

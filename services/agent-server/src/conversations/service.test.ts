@@ -71,7 +71,7 @@ describe('ConversationService', () => {
   it('renders and freezes the system prompt and tools at creation', async () => {
     const { conversations } = service();
     const created = await conversations.create({});
-    assert.match(created.id, /^conv_/);
+    assert.match(created.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     assert.equal(created.title, 'New chat');
 
     const snapshot = await storage.promptSnapshots.getForOwner('conversation', created.id);

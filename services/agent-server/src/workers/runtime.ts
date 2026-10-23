@@ -17,7 +17,7 @@ import { createAgentToolset, type AgentToolContext } from '../tools/index.ts';
 import { WorkerSupervisor } from './supervisor.ts';
 import type { WorkerEnv } from './env.ts';
 
-export interface AgentRuntimeDeps {
+interface AgentRuntimeDeps {
   config: AgentServerConfig;
   storage: Storage;
   router: ModelRouter;

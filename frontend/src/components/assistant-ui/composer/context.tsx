@@ -11,14 +11,14 @@ const pct = (value: number, total: number) =>
   total > 0 ? clamp((value / total) * 100, 0, 100) : 0;
 
 /** All values are in thousands of tokens, as in the upstream element. */
-export interface ComposerUsage {
+interface ComposerUsage {
   system: number;
   tools: number;
   messages: number;
   total: number;
 }
 
-export interface ComposerAggregateUsage {
+interface ComposerAggregateUsage {
   used: number;
   total: number;
 }

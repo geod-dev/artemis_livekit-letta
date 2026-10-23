@@ -1,5 +1,5 @@
 /** Small fetch helpers with consistent status and JSON handling. */
-export class ApiError extends Error {
+class ApiError extends Error {
   readonly status: number | null;
 
   constructor(message: string, status: number | null) {

@@ -1,5 +1,5 @@
 import { AgentLoop, type LoopOutcome } from '@artemis/agent';
-import { AppError, prefixedId } from '@artemis/core';
+import { AppError, uuid } from '@artemis/core';
 import type { LlmMessage, ToolDefinition, ToolUseBlock } from '@artemis/llm';
 import { mcpToolsSection } from '@artemis/mcp';
 import type { TurnUsage } from '@artemis/storage';
@@ -99,7 +99,7 @@ export class SubagentTaskWorker extends TaskWorker {
     try {
       if (!signal.aborted) {
         await env.storage.messages.append({
-          id: prefixedId('msg'),
+          id: uuid(),
           conversationId: spec.conversationId,
           taskId,
           turnId: null,
@@ -127,7 +127,7 @@ export class SubagentTaskWorker extends TaskWorker {
           messages: [...this.history, { role: 'user', content: [{ type: 'text', text: spec.prompt }] }],
           toolContext: (call: ToolUseBlock) => this.toolContext(call),
           signal,
-          newMessageId: () => prefixedId('msg'),
+          newMessageId: () => uuid(),
         });
         outcome = await drainLoop(events, (event) => persistence.handle(event));
       }

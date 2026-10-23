@@ -41,7 +41,7 @@ function ToolDetailCard({ title, children }: { title: string; children: React.Re
   );
 }
 
-export type ToolFallbackRootProps = Omit<
+type ToolFallbackRootProps = Omit<
   React.ComponentProps<typeof Collapsible>,
   'open' | 'onOpenChange'
 > & {
@@ -458,12 +458,4 @@ ToolFallback.Args = ToolFallbackArgs;
 ToolFallback.Result = ToolFallbackResult;
 ToolFallback.Error = ToolFallbackError;
 
-export {
-  ToolFallback,
-  ToolFallbackRoot,
-  ToolFallbackTrigger,
-  ToolFallbackContent,
-  ToolFallbackArgs,
-  ToolFallbackResult,
-  ToolFallbackError,
-};
+export { ToolFallback };

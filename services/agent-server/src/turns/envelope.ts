@@ -41,11 +41,11 @@ export function renderUserTurn(envelope: UserTurnEnvelope, images: readonly Imag
 }
 
 /** Voice turns repeat the call-state rule: the voice model follows a per-turn reminder far more reliably. */
-export const VOICE_REMINDER =
+const VOICE_REMINDER =
   '<system-reminder>End your spoken response with [listen] if it asks the user anything or waits for their answer, otherwise with [done].</system-reminder>';
 
 /** Encoded `<background-update>` block (the report is data, its closing tag escaped). */
-export function encodeBackgroundUpdate(update: Pick<DeliveredUpdate, 'id' | 'taskId' | 'title' | 'status' | 'needsInput' | 'report'>): string {
+function encodeBackgroundUpdate(update: Pick<DeliveredUpdate, 'id' | 'taskId' | 'title' | 'status' | 'needsInput' | 'report'>): string {
   const attrs = [
     `id="${escapeAttr(update.id)}"`,
     `task="${escapeAttr(update.title)}"`,
@@ -56,7 +56,7 @@ export function encodeBackgroundUpdate(update: Pick<DeliveredUpdate, 'id' | 'tas
   return `<background-update ${attrs}>\n${body}\n</background-update>`;
 }
 
-export function encodeAttachment(attachment: ChatAttachment): string {
+function encodeAttachment(attachment: ChatAttachment): string {
   const attrs = [
     `kind="${attachment.kind}"`,
     `path="${escapeAttr(attachment.path)}"`,
@@ -96,7 +96,7 @@ export function toMemoryFact(memory: RecalledMemory): MemoryFact {
   return { id: memory.id, text: memory.text, type: memory.type, ...(memory.date ? { occurredAt: memory.date } : {}) };
 }
 
-export type ResponseState = 'listen' | 'done';
+type ResponseState = 'listen' | 'done';
 
 const TRAILING_STATE_MARKER = /\s*\[(listen|done)\]\s*$/i;
 

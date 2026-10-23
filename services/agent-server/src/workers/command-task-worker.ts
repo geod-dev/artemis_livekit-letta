@@ -11,7 +11,7 @@ const TAIL_BYTES = 8_192;
 const DRAIN_GRACE_MS = 2_000;
 const REPORT_TAIL_CHARS = 4_000;
 /** Cap on the full log written to `outputPath`; the oldest output is dropped and the tail kept. */
-export const COMMAND_LOG_MAX_BYTES = 1024 * 1024;
+const COMMAND_LOG_MAX_BYTES = 1024 * 1024;
 
 export interface CommandTaskInput {
   taskId: string;
@@ -23,7 +23,7 @@ export interface CommandTaskInput {
   command: string;
 }
 
-export interface CommandTaskDeps {
+interface CommandTaskDeps {
   storage: Storage;
   workspace: WorkspaceTransport;
   clock: Clock;

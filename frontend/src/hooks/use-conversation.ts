@@ -356,7 +356,14 @@ export function useConversation(
             pendingClientId.current = null;
             setPending(null);
           }
-          setLive((items) => [...items, { turnId: event.turnId, message }]);
+          // A reconnect can replay a message the live list already holds; keep one copy.
+          setLive((items) =>
+            items.some(
+              (item) => item.message.id === message.id && item.message.role === message.role
+            )
+              ? items
+              : [...items, { turnId: event.turnId, message }]
+          );
           break;
         }
         case 'assistant_delta':

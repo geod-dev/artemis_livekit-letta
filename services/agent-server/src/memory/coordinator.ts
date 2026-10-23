@@ -32,7 +32,7 @@ export abstract class MemoryCoordinator {
   abstract stop(): Promise<void>;
 }
 
-export interface RecallInput {
+interface RecallInput {
   conversationId: string;
   turnId: string;
   modality: 'text' | 'voice';
@@ -42,12 +42,12 @@ export interface RecallInput {
   signal?: AbortSignal;
 }
 
-export type MemoryCoordinatorStorage = Pick<
+type MemoryCoordinatorStorage = Pick<
   Repositories,
   'turns' | 'messages' | 'appState' | 'memoryRetentions' | 'recallLedger'
 >;
 
-export interface MemoryCoordinatorOptions {
+interface MemoryCoordinatorOptions {
   store: MemoryStore;
   storage: MemoryCoordinatorStorage;
   config: Pick<AgentServerConfig, 'assistant' | 'memory'>;
@@ -65,7 +65,7 @@ const LAST_ACTIVE_KEY = 'last_active_conversation_id';
 const PUMP_BATCH = 10;
 const MAX_BACKOFF_MS = 5 * 60_000;
 
-export class StoreMemoryCoordinator extends MemoryCoordinator {
+class StoreMemoryCoordinator extends MemoryCoordinator {
   private readonly clock: Clock;
   private readonly logger: Logger;
   private readonly pumpIntervalMs: number;
@@ -329,7 +329,7 @@ export function createMemoryCoordinator(options: MemoryCoordinatorOptions): Memo
 }
 
 /** Exponential backoff: 2 s, 4 s, 8 s ... capped at 5 minutes. */
-export function retryDelayMs(attempts: number): number {
+function retryDelayMs(attempts: number): number {
   return Math.min(1_000 * 2 ** attempts, MAX_BACKOFF_MS);
 }
 

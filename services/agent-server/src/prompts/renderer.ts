@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ToolDefinition } from '@artemis/llm';
 
 /**
  * Renders prompt templates from `services/agent-server/prompts/` with
@@ -9,7 +8,7 @@ import type { ToolDefinition } from '@artemis/llm';
  * `{{task_id}}`, `{{mcp_tools}}` (subagents only). Templates are read on each
  * render (dev edits apply to NEW conversations only: rendered prompts are frozen).
  */
-export interface RenderedPrompt {
+interface RenderedPrompt {
   templateId: string;
   templateHash: string;
   systemPrompt: string;
@@ -64,11 +63,6 @@ export class PromptRenderer {
   private read(file: string): Promise<string> {
     return readFile(join(this.promptsDir, file), 'utf8');
   }
-}
-
-/** What gets frozen per conversation / task. */
-export interface PromptSnapshot extends RenderedPrompt {
-  tools: ToolDefinition[];
 }
 
 /** Replaces `{{key}}` for known keys; unknown placeholders are kept verbatim. Trailing whitespace is dropped. */

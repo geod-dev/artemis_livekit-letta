@@ -1,17 +1,14 @@
 import { useEffect, useState } from 'react';
-import { DownloadIcon, FileXIcon, XIcon } from 'lucide-react';
+import { FileXIcon } from 'lucide-react';
 import {
   type FileInfo,
   fileName,
   useFileInfo,
 } from '@/components/assistant-ui/files/workspace-file';
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
-import { IconButton } from '@/components/assistant-ui/shared/icon-button';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { workspaceUrl } from '@/lib/attachments';
 import { getMimeTypeIcon } from '@/lib/file-icons';
 import { fileKind, isTextKind } from '@/lib/file-kinds';
-import { formatFileSize } from '@/lib/media-format';
 
 /**
  * The side panel that shows a workspace file opened from a file card: media
@@ -127,77 +124,4 @@ function Preview({ path, name, info }: { path: string; name: string; info: FileI
 export function WorkspaceFilePreview({ path }: { path: string }) {
   const info = useFileInfo(path);
   return <Preview key={path} path={path} name={fileName(path)} info={info} />;
-}
-
-/** A workspace file opened beside the conversation. */
-export function WorkspaceFilePanel({ path, onClose }: { path: string; onClose: () => void }) {
-  const info = useFileInfo(path);
-  const name = fileName(path);
-  const Icon = getMimeTypeIcon(info?.status === 'ready' ? info.type : '', name);
-  const [mobile, setMobile] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 1279px)');
-    const update = () => setMobile(query.matches);
-    update();
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
-
-  useEffect(() => {
-    if (mobile) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !event.defaultPrevented) onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [mobile, onClose]);
-
-  const panel = (
-    <aside
-      aria-label={name}
-      className={
-        mobile
-          ? 'surface-panel mobile-file-panel flex h-full w-full flex-col'
-          : 'surface-panel mobile-file-panel animate-in fade-in-0 slide-in-from-right-8 fixed inset-0 z-40 flex flex-col duration-200 ease-out motion-reduce:animate-none xl:static xl:inset-auto xl:z-auto xl:w-[min(42rem,45vw)] xl:shrink-0 xl:border-s'
-      }
-    >
-      {mobile && <DialogTitle className="sr-only">{name}</DialogTitle>}
-      <header className="flex h-16 shrink-0 items-center gap-2.5 border-b px-4">
-        <Icon aria-hidden className="text-muted-foreground size-4 shrink-0" />
-        <span className="min-w-0 truncate text-sm font-medium">{name}</span>
-        {info?.status === 'ready' && (
-          <span className="text-muted-foreground shrink-0 text-xs">
-            {formatFileSize(info.size)}
-          </span>
-        )}
-        <div className="ms-auto flex shrink-0 items-center gap-1">
-          <IconButton label="Download" asChild className="size-8 p-1.5">
-            <a href={workspaceUrl(path, { download: true })} download={name}>
-              <DownloadIcon className="size-4" />
-            </a>
-          </IconButton>
-          <IconButton label="Close" type="button" onClick={onClose} className="size-8 p-1.5">
-            <XIcon className="size-4" />
-          </IconButton>
-        </div>
-      </header>
-      <div className="min-h-0 flex-1 overflow-auto">
-        <Preview key={path} path={path} name={name} info={info} />
-      </div>
-    </aside>
-  );
-
-  if (!mobile) return panel;
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent
-        asChild
-        showCloseButton={false}
-        className="!fixed !inset-0 !z-50 !h-[var(--app-height,100dvh)] !w-full !max-w-none !translate-x-0 !translate-y-0 !gap-0 !overflow-hidden !rounded-none !border-0 !p-0"
-      >
-        {panel}
-      </DialogContent>
-    </Dialog>
-  );
 }

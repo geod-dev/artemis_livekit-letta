@@ -5,6 +5,7 @@ import type { TurnMode } from '@artemis/contracts/chat-types';
 import type { CallSessions } from '../calls/call-sessions.ts';
 import type { TurnHandle } from '../workers/types.ts';
 import type { ApiDependencies } from './app.ts';
+import { requireUuidParam } from './ids.ts';
 import { noContent, requireBody } from './http.ts';
 
 /**
@@ -21,6 +22,12 @@ const log = consoleLogger('voice');
 
 export function voiceRoutes(deps: ApiDependencies): Hono {
   const voice = new Hono();
+
+  const requireConversationId = requireUuidParam('id', 'Conversation');
+  const requireUpdateId = requireUuidParam('updateId', 'Update');
+  voice.use('/conversations/:id/*', requireConversationId);
+  voice.use('/conversations/:id/call/updates/:updateId', requireUpdateId);
+  voice.use('/conversations/:id/call/updates/:updateId/ack', requireUpdateId);
 
   voice.post('/conversations/:id/chat/completions', async (c) => {
     const id = c.req.param('id');

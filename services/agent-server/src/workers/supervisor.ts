@@ -1,4 +1,4 @@
-import { KeyedRegistry, prefixedId } from '@artemis/core';
+import { KeyedRegistry, uuid } from '@artemis/core';
 import type { TaskRecord } from '@artemis/storage';
 import type { WorkerEnv } from './env.ts';
 import { CommandTaskWorker, type CommandTaskInput } from './command-task-worker.ts';
@@ -9,7 +9,7 @@ import type { SubagentSpec, SubagentStartMode } from './types.ts';
 import { isoAt, messageOf } from './util.ts';
 
 /** Reaper period of the main agent workers. */
-export const REAPER_PERIOD_MS = 15_000;
+const REAPER_PERIOD_MS = 15_000;
 
 /** Not yet terminal: spawning, busy or stopping. */
 function isLive(worker: TaskWorker): boolean {
@@ -230,7 +230,7 @@ export class WorkerSupervisor {
     );
     if (toolUseIds.length === 0) return;
     await storage.messages.append({
-      id: prefixedId('msg'),
+      id: uuid(),
       conversationId,
       taskId: null,
       turnId: last.turnId,

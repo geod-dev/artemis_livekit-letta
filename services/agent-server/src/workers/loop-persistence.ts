@@ -14,7 +14,7 @@ export async function drainLoop(events: AsyncIterable<LoopEvent>, handle: (event
   throw new Error('The agent loop ended without an outcome');
 }
 
-export interface LoopScope {
+interface LoopScope {
   conversationId: string;
   /** Null for the conversation transcript (main agent). */
   taskId: string | null;
@@ -23,7 +23,7 @@ export interface LoopScope {
   provider: string;
 }
 
-export interface LoopPersistenceOptions {
+interface LoopPersistenceOptions {
   scope: LoopScope;
   storage: Storage;
   clock: Clock;

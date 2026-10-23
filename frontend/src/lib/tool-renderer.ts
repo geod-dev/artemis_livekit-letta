@@ -12,7 +12,7 @@ export interface TerminalOutput {
   truncated: boolean;
 }
 
-export type ToolRenderer =
+type ToolRenderer =
   | { kind: 'web-search'; query: string; output: WebSearchOutput | null }
   | { kind: 'terminal'; command: string; output: TerminalOutput | null }
   | { kind: 'generic' };

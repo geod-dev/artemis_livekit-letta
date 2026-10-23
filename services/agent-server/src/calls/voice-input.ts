@@ -9,7 +9,7 @@ import type { Clock } from '@artemis/core';
  * ones already admitted per call so retries do not run twice.
  */
 
-export interface VoiceEntry {
+interface VoiceEntry {
   text: string;
   identity: string | null;
 }

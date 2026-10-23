@@ -1,5 +1,5 @@
 import type { Clock, Logger } from '@artemis/core';
-import { prefixedId } from '@artemis/core';
+import { prefixedId, uuid } from '@artemis/core';
 import type { ChatMessage } from '@artemis/contracts/chat-types';
 import type { BackgroundUpdateRecord, Storage, TaskRecord } from '@artemis/storage';
 import type { ConversationEventHub } from '../events/hub.ts';
@@ -37,7 +37,7 @@ export abstract class BackgroundDeliveryService {
   abstract eventRows(conversationId: string): Promise<ChatMessage[]>;
 }
 
-export interface BackgroundDeliveryDeps {
+interface BackgroundDeliveryDeps {
   storage: Storage;
   hub: ConversationEventHub;
   calls: CallSessions;
@@ -59,7 +59,7 @@ export class StorageBackgroundDeliveryService extends BackgroundDeliveryService 
     const status = task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled' ? task.status : 'failed';
     const durationMs = task.endedAt ? Math.max(0, Date.parse(task.endedAt) - Date.parse(task.startedAt)) : null;
     const update = await storage.updates.create({
-      id: prefixedId('upd'),
+      id: uuid(),
       conversationId: task.conversationId,
       taskId: task.id,
       title: task.title,

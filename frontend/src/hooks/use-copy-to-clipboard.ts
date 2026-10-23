@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export type UseCopyToClipboardOptions = {
+type UseCopyToClipboardOptions = {
   copiedDuration?: number;
 };
 

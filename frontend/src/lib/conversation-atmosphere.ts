@@ -1,4 +1,4 @@
-export type ConversationAtmosphereState = 'idle' | 'thinking' | 'tools' | 'speaking';
+type ConversationAtmosphereState = 'idle' | 'thinking' | 'tools' | 'speaking';
 
 type Part = {
   type: string;

@@ -12,11 +12,11 @@ export interface ConversationTaskStatus {
   kind?: 'agent' | 'command';
 }
 
-export type ConversationRequestStatus = 'idle' | 'loading' | 'ready' | 'error';
-export type ConversationField =
+type ConversationRequestStatus = 'idle' | 'loading' | 'ready' | 'error';
+type ConversationField =
   'history' | 'live' | 'pending' | 'activeTurns' | 'tasks' | 'settledTurns' | 'stopped' | 'error';
 
-export interface ConversationStoreState {
+interface ConversationStoreState {
   conversationId: string | null | undefined;
   historyRequest: { revision: number; status: ConversationRequestStatus };
   history: ChatMessage[];
@@ -35,7 +35,7 @@ export type ConversationStatePatch = {
     | ((previous: ConversationStoreState[K]) => ConversationStoreState[K]);
 };
 
-export type ConversationStateAction =
+type ConversationStateAction =
   | { type: 'activate'; conversationId: string | null; history: ChatMessage[] }
   | { type: 'history-requested'; conversationId: string; revision: number }
   | { type: 'history-loaded'; conversationId: string; revision: number; history: ChatMessage[] }

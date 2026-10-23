@@ -22,7 +22,7 @@ import { cn } from '@/lib/shadcn/utils';
  * Excess values are trimmed from the end; if there are too few, the last
  * value is duplicated to fill the remainder. An empty array is padded with 0s.
  */
-export function normalizeVolumeBands(bands: number[], count: number): number[] {
+function normalizeVolumeBands(bands: number[], count: number): number[] {
   if (bands.length === count) return bands;
   if (bands.length > count) return bands.slice(0, count);
   const lastValue = bands[bands.length - 1] ?? 0;
@@ -53,7 +53,7 @@ function cloneSingleChild(
   });
 }
 
-export const AgentAudioVisualizerBarElementVariants = cva(
+const AgentAudioVisualizerBarElementVariants = cva(
   [
     'rounded-full transition-colors duration-250 ease-linear',
     'bg-current/10 data-[lk-highlighted=true]:bg-current',
@@ -74,7 +74,7 @@ export const AgentAudioVisualizerBarElementVariants = cva(
   }
 );
 
-export const AgentAudioVisualizerBarVariants = cva('relative flex items-center justify-center', {
+const AgentAudioVisualizerBarVariants = cva('relative flex items-center justify-center', {
   variants: {
     size: {
       icon: 'h-[24px] gap-[2px]',
@@ -92,7 +92,7 @@ export const AgentAudioVisualizerBarVariants = cva('relative flex items-center j
 /**
  * Props for the AgentAudioVisualizerBar component.
  */
-export interface AgentAudioVisualizerBarProps {
+interface AgentAudioVisualizerBarProps {
   /**
    * The size of the visualizer.
    * @defaultValue 'md'

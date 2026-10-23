@@ -20,7 +20,7 @@ export interface AgentToolContext extends ToolContext {
   calls: CallSessions;
 }
 
-export interface AgentToolsetDeps {
+interface AgentToolsetDeps {
   tasks: TaskService;
   catalog: McpCatalog;
   mcp: McpClient;

@@ -1,5 +1,5 @@
 import { AgentLoop, type LoopOutcome } from '@artemis/agent';
-import { AppError, BusyError, NotFoundError, prefixedId, SerialScheduler } from '@artemis/core';
+import { AppError, BusyError, NotFoundError, SerialScheduler, uuid } from '@artemis/core';
 import type { ChatAttachment, ChatMessage } from '@artemis/contracts/chat-types';
 import type { ImageBlock, ToolDefinition, ToolUseBlock, UserContent } from '@artemis/llm';
 import { mcpToolsReminder } from '@artemis/mcp';
@@ -88,7 +88,7 @@ export class MainAgentWorker extends Worker {
       throw new AppError('worker_stopped', 'The conversation is shutting down its agent; retry', 409);
     }
     if (this.scheduler.pending >= this.env.config.workers.maxPendingTurns) throw new BusyError();
-    const turnId = prefixedId('turn');
+    const turnId = uuid();
     this.touch();
     const done = this.scheduler.run(() => this.runTurn(turnId, submission));
     return { turnId, done };
@@ -200,7 +200,7 @@ export class MainAgentWorker extends Worker {
     };
     const content: UserContent[] = renderUserTurn(envelope, images);
     const userMessage = await env.storage.messages.append({
-      id: prefixedId('msg'),
+      id: uuid(),
       conversationId,
       taskId: null,
       turnId,
@@ -239,7 +239,7 @@ export class MainAgentWorker extends Worker {
       messages: [...history, { role: 'user', content }],
       toolContext: (call: ToolUseBlock) => this.toolContext(state, depth, call),
       signal,
-      newMessageId: () => prefixedId('msg'),
+      newMessageId: () => uuid(),
     });
     let outcome: LoopOutcome;
     try {

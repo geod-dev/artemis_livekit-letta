@@ -14,7 +14,7 @@ import { type VoiceUtterance, VoiceInputLedger, trailingUserEntries } from './vo
  * `beginResponse` when the response is submitted, `finishResponse` with the
  * marker of a successful reply (`null` otherwise).
  */
-export type CallEndListener = (conversationId: string, pendingUpdateIds: string[]) => void;
+type CallEndListener = (conversationId: string, pendingUpdateIds: string[]) => void;
 
 export abstract class CallSessions {
   abstract openChannel(conversationId: string, send: (event: CallControlEvent) => void, mode?: CallMode): () => void;

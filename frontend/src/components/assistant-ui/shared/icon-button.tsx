@@ -3,7 +3,7 @@ import { Slot } from 'radix-ui';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/shadcn/utils';
 
-export type IconButtonProps = ComponentPropsWithRef<typeof Button> & { label: string };
+type IconButtonProps = ComponentPropsWithRef<typeof Button> & { label: string };
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ children, label, 'aria-label': ariaLabel = label, className, ...rest }, ref) => (

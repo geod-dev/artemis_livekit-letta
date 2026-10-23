@@ -106,7 +106,7 @@ function DocumentSourceIcon({ className, ...props }: ComponentProps<'span'>) {
   );
 }
 
-export type SourceProps = ComponentProps<'a'> & VariantProps<typeof sourceVariants>;
+type SourceProps = ComponentProps<'a'> & VariantProps<typeof sourceVariants>;
 
 function Source({
   className,
@@ -180,4 +180,4 @@ Sources.Root = Source;
 Sources.Icon = SourceIcon;
 Sources.Title = SourceTitle;
 
-export { Sources, Source, SourceIcon, SourceTitle, sourceVariants };
+export { Sources, Source, SourceIcon, SourceTitle };

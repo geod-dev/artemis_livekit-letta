@@ -7,7 +7,7 @@ import { startAttachmentCleanup, stopAttachmentCleanup } from './assistant/files
 import { createAuth } from './auth';
 import { errorResponse } from './http';
 
-export interface BackendApplication {
+interface BackendApplication {
   close(): Promise<void>;
 }
 

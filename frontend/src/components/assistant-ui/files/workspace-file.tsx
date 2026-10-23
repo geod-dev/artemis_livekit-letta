@@ -28,7 +28,7 @@ const fileInfoCache = new TtlLruCache<string, FileInfo & { status: 'ready' }>(
 const infoRequests = new Map<string, Promise<FileInfo>>();
 
 /** Invalidate metadata after opening or changing a workspace file. */
-export function invalidateWorkspaceFileInfo(path?: string): void {
+function invalidateWorkspaceFileInfo(path?: string): void {
   if (path) {
     fileInfoCache.delete(path);
     infoRequests.delete(path);
@@ -118,9 +118,7 @@ export function WorkspaceFileCard({ path }: { path: string }) {
 
   if (info?.status === 'missing') {
     return (
-      <span
-        className="surface-panel text-muted-foreground my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg border-dashed px-4.5 py-3 text-sm"
-      >
+      <span className="surface-panel text-muted-foreground my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg border-dashed px-4.5 py-3 text-sm">
         <FileXIcon aria-hidden className="size-7.5 shrink-0" />
         <span className="min-w-0 truncate">{name}</span>
         <span className="shrink-0 text-xs">not found</span>
@@ -131,9 +129,7 @@ export function WorkspaceFileCard({ path }: { path: string }) {
   const type = info?.type ?? '';
   const Icon = getMimeTypeIcon(type, name);
   return (
-    <span
-      className="surface-panel has-[button:focus-visible]:ring-ring/50 relative my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg px-4.5 py-3 text-sm no-underline transition-colors has-[button:focus-visible]:ring-[3px]"
-    >
+    <span className="surface-panel has-[button:focus-visible]:ring-ring/50 relative my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg px-4.5 py-3 text-sm no-underline transition-colors has-[button:focus-visible]:ring-[3px]">
       <Icon aria-hidden className="text-muted-foreground size-7.5 shrink-0" />
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate font-medium">{name}</span>

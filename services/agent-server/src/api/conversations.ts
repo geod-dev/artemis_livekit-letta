@@ -3,6 +3,7 @@ import { eventStream } from '@artemis/http';
 import { Hono } from 'hono';
 import type { ChatAttachment, TextEffort } from '@artemis/contracts/chat-types';
 import type { ApiDependencies } from './app.ts';
+import { isUuid, requireUuidParam } from './ids.ts';
 import {
   noContent,
   optionalBody,
@@ -19,6 +20,11 @@ const MAX_ATTACHMENTS = 20;
 /** Conversation, turn, task, message and read routes (architecture.md#13). */
 export function conversationRoutes(deps: ApiDependencies): Hono {
   const api = new Hono();
+
+  // `events` is the reserved list-stream route; every other conversation id must be a uuid.
+  const requireConversationId = requireUuidParam('id', 'Conversation', ['events']);
+  api.use('/conversations/:id', requireConversationId);
+  api.use('/conversations/:id/*', requireConversationId);
 
   api.get('/conversations', async (c) => {
     const page = await deps.conversations.list({
@@ -138,8 +144,8 @@ export function conversationRoutes(deps: ApiDependencies): Hono {
     const id = c.req.param('id');
     const body = await requireBody(c.req.raw);
     const updateIds = optionalArray<string>(body, 'updateIds', 500);
-    if (updateIds.some((item) => typeof item !== 'string' || item.length > 200)) {
-      throw new AppError('invalid_field', 'updateIds must be strings', 400);
+    if (updateIds.some((item) => typeof item !== 'string' || !isUuid(item))) {
+      throw new AppError('invalid_field', 'updateIds must be uuids', 400);
     }
     return Response.json({ read: await deps.delivery.markRead(id, updateIds) });
   });

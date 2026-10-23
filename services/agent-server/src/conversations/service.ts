@@ -1,6 +1,6 @@
 import type { ToolDefinition } from '@artemis/llm';
 import type { ChatMessage, ConversationContextUsage, ConversationSummary } from '@artemis/contracts/chat-types';
-import { AppError, NotFoundError, prefixedId } from '@artemis/core';
+import { AppError, NotFoundError, uuid } from '@artemis/core';
 import type { ConversationRecord, Storage } from '@artemis/storage';
 import type { AgentServerConfig } from '../config.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
@@ -28,7 +28,7 @@ export abstract class ConversationService {
 
 export const DEFAULT_TITLE = 'New chat';
 
-export interface ConversationServiceDeps {
+interface ConversationServiceDeps {
   storage: Storage;
   prompts: PromptRenderer;
   router: ModelRouter;
@@ -55,7 +55,7 @@ class StorageConversationService extends ConversationService {
   }
 
   async create(input: { title?: string }): Promise<ConversationSummary> {
-    const id = prefixedId('conv');
+    const id = uuid();
     const title = input.title?.trim() || null;
     const { config, prompts, storage } = this.deps;
     const prompt = await prompts.system({

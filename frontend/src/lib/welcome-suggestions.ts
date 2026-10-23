@@ -1,5 +1,5 @@
 /** One suggestion from each area keeps the starting points varied. */
-export type WelcomeSuggestion = {
+type WelcomeSuggestion = {
   label: string;
   icon: 'idea' | 'write' | 'explore' | 'compare' | 'file' | 'plan' | 'code';
   prompt: string;

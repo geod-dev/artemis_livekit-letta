@@ -44,8 +44,21 @@ export class PgSession {
 /** Unique and foreign-key violations surface as the core error types the callers already handle. */
 export function mapDatabaseError(error: unknown): unknown {
   if (typeof error !== 'object' || error === null || !('code' in error)) return error;
-  const { code, detail, message } = error as { code: unknown; detail?: unknown; message?: unknown };
+  const { code, detail, message, constraint, table } = error as {
+    code: unknown;
+    detail?: unknown;
+    message?: unknown;
+    constraint?: unknown;
+    table?: unknown;
+  };
   if (code === '23505') return new ConflictError('duplicate_key', String(detail ?? message));
-  if (code === '23503') return new NotFoundError('referenced row');
+  if (code === '23503') {
+    // Name the failing relation: a bare "referenced row not found" hides which foreign key was violated.
+    const where = [
+      `table ${typeof table === 'string' ? table : 'unknown'}`,
+      `constraint ${typeof constraint === 'string' ? constraint : 'unknown'}`,
+    ].join(', ');
+    return new NotFoundError(`referenced row (${where})`);
+  }
   return error;
 }
