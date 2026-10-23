@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { imageType, inspectedMimeType } from "./media-type.ts";
+
+const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+
+test("file types come from inspected bytes, not names", () => {
+  assert.equal(imageType(PNG), "image/png");
+  assert.equal(inspectedMimeType(PNG), "image/png");
+  assert.equal(inspectedMimeType(Buffer.from("%PDF-1.7\n")), "application/pdf");
+  assert.equal(inspectedMimeType(Buffer.from('{"a":1}')), "application/json");
+  assert.equal(
+    inspectedMimeType(Buffer.from("plain words")),
+    "text/plain; charset=utf-8",
+  );
+  assert.equal(
+    inspectedMimeType(Buffer.from([0, 1, 2, 3])),
+    "application/octet-stream",
+  );
+});

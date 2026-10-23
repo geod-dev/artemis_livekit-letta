@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@artemis/contracts": "workspace:*",
+    "@artemis/workspace": "workspace:*",
     "@hono/node-server": "^1.19.5",
     "@modelcontextprotocol/sdk": "1.30.0",
     "hono": "^4.10.1",

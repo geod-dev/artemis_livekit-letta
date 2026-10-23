@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Stats } from 'node:fs';
+import { createReadStream, type Stats } from 'node:fs';
 import {
   glob as globFiles,
   lstat,
@@ -9,12 +9,15 @@ import {
   realpath,
   rename,
   rm,
+  rmdir,
   stat,
   unlink,
   writeFile,
 } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { Readable } from 'node:stream';
 import {
+  type ByteRange,
   type FileStat,
   type GlobOptions,
   type GrepMatch,
@@ -136,9 +139,24 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
     await unlink(this.containment.host(rel));
   }
 
+  async readStream(path: string, range?: ByteRange): Promise<ReadableStream<Uint8Array>> {
+    const real = await this.containment.existing(this.rel(path));
+    if (!(await stat(real)).isFile()) throw new Error(`${path}: not a regular file`);
+    return Readable.toWeb(createReadStream(real, range ? { start: range.start, end: range.end } : {})) as ReadableStream<Uint8Array>;
+  }
+
   async makeDirectory(path: string): Promise<void> {
     const target = await this.containment.forWrite(this.rel(path));
     await mkdir(target, { recursive: true });
+  }
+
+  async removeEmptyDirectory(path: string): Promise<void> {
+    const rel = this.rel(path);
+    if (rel === '') throw new WorkspacePathError('.', 'the workspace root cannot be removed');
+    await this.containment.directory(parentOf(rel));
+    await rmdir(this.containment.host(rel)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY') throw error;
+    });
   }
 
   async list(path: string): Promise<FileStat[]> {

@@ -10,8 +10,10 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { Hono } from 'hono';
 import { AgentServerClient } from '../agent-server/client.ts';
+import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
 import { type AppConfig, validateConfig } from '../assistant/config.ts';
 import { createAuth } from '../auth.ts';
+import { composeWorkspace } from '../compose.ts';
 import { createConversationRoutes } from './conversations.ts';
 
 const AGENT_TOKEN = 'gateway-integration-agent-token';
@@ -127,7 +129,7 @@ function buildGateway(config: AppConfig): Hono {
   const app = createAuth(config.auth.password, config.auth.deviceToken);
   app.get('/health', (c) => c.json({ status: 'ok' }));
   app.get('/ready', (c) => agent.relay(c.req.raw, '/ready'));
-  app.route('/api/conversations', createConversationRoutes(agent));
+  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(config.workspace.dir))));
   return app;
 }
 

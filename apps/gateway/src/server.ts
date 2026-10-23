@@ -2,7 +2,6 @@ import { serve } from '@hono/node-server';
 import type { Server } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { loadConfig } from './assistant/config';
-import { startAttachmentCleanup, stopAttachmentCleanup } from './assistant/filesystem/attachment-retention';
 import { createAuth } from './auth';
 import { composeGateway } from './compose';
 import { errorResponse } from './http';
@@ -26,7 +25,7 @@ export async function startBackend(): Promise<BackendApplication> {
     { createConversationRoutes },
     { createMcpRoutes },
     { createVoiceRoutes },
-    { files },
+    { createFileRoutes },
     { utilities },
   ] = await Promise.all([
     import('./devices/hub'),
@@ -38,8 +37,8 @@ export async function startBackend(): Promise<BackendApplication> {
     import('./routes/files'),
     import('./routes/utilities'),
   ]);
-  const { agentServer } = composeGateway(config);
-  startAttachmentCleanup();
+  const { agentServer, workspace, attachments } = composeGateway(config);
+  attachments.registry.startCleanup();
   const app = createAuth(config.auth.password, config.auth.deviceToken);
   // The public liveness/readiness endpoints remain outside the /api auth middleware.
   app.get('/health', (c) => c.json({ status: 'ok' }));
@@ -67,10 +66,10 @@ export async function startBackend(): Promise<BackendApplication> {
 
   app.route('/internal/mcp/devices', createDeviceMcpRoutes(deviceHub));
   app.route('/api/devices', createDeviceRoutes(deviceHub, config.workspace.dir));
-  app.route('/api/conversations', createConversationRoutes(agentServer));
+  app.route('/api/conversations', createConversationRoutes(agentServer, attachments));
   app.route('/api/voice', createVoiceRoutes(agentServer));
   app.route('/api/mcp', createMcpRoutes(agentServer));
-  app.route('/api', files);
+  app.route('/api', createFileRoutes(attachments, workspace));
   app.route('/api', utilities);
 
   deviceHub.start();
@@ -90,7 +89,7 @@ export async function startBackend(): Promise<BackendApplication> {
       });
       clearInterval(deviceSyncTimer);
       deviceHub.close();
-      await stopAttachmentCleanup();
+      await attachments.registry.stopCleanup();
     })();
     return closing;
   };

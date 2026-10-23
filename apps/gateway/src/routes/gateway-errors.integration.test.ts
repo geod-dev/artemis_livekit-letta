@@ -10,8 +10,10 @@ import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { Hono } from 'hono';
 import { AgentServerClient } from '../agent-server/client.ts';
+import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
 import { type AppConfig, validateConfig } from '../assistant/config.ts';
 import { createAuth } from '../auth.ts';
+import { composeWorkspace } from '../compose.ts';
 import { createConversationRoutes } from './conversations.ts';
 
 const AGENT_TOKEN = 'gateway-errors-agent-token';
@@ -84,7 +86,7 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
 function buildGateway(config: AppConfig): Hono {
   const agent = new AgentServerClient(config.agentServer);
   const app = createAuth(config.auth.password, config.auth.deviceToken);
-  app.route('/api/conversations', createConversationRoutes(agent));
+  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(config.workspace.dir))));
   return app;
 }
 

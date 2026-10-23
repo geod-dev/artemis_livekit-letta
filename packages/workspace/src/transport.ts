@@ -4,8 +4,8 @@
  * (`files/report.xlsx`); implementations reject anything resolving outside the
  * root (realpath containment, symlinks included).
  *
- * `FilesystemWorkspaceTransport` (`@artemis/workspace/filesystem`) serves a
- * local directory and spawns local processes; a future remote transport (SSH,
+ * The filesystem vendor's `FilesystemWorkspaceTransport` serves a local
+ * directory and spawns local processes; a future remote transport (SSH,
  * sandbox API, ...) implements the same two halves: files and processes.
  */
 
@@ -14,6 +14,12 @@ export interface FileStat {
   type: 'file' | 'directory' | 'symlink' | 'other';
   size: number;
   modifiedAt: string;
+}
+
+/** An inclusive byte range, as in an HTTP `Range` header. */
+export interface ByteRange {
+  start: number;
+  end: number;
 }
 
 export interface GlobOptions {
@@ -96,8 +102,12 @@ export abstract class WorkspaceTransport {
   abstract readText(path: string, options?: { offset?: number; limit?: number }): Promise<string>;
   /** Atomic (tmp + rename); creates parent directories. */
   abstract writeFile(path: string, data: Uint8Array | string): Promise<void>;
+  /** Streams the whole file, or the inclusive `range` of it. Rejects before streaming when the path is not a contained regular file. */
+  abstract readStream(path: string, range?: ByteRange): Promise<ReadableStream<Uint8Array>>;
   abstract deleteFile(path: string): Promise<void>;
   abstract makeDirectory(path: string): Promise<void>;
+  /** Removes a directory only when it is empty; a missing or non-empty directory is left alone. */
+  abstract removeEmptyDirectory(path: string): Promise<void>;
   abstract list(path: string): Promise<FileStat[]>;
   abstract glob(pattern: string, options?: GlobOptions): Promise<string[]>;
   abstract grep(pattern: string, options?: GrepOptions): Promise<GrepMatch[]>;

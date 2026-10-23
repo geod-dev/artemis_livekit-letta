@@ -75,6 +75,9 @@ importers:
       '@artemis/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@artemis/workspace':
+        specifier: workspace:*
+        version: link:../../packages/workspace
       '@hono/node-server':
         specifier: ^1.19.5
         version: 1.19.17(hono@4.13.13)

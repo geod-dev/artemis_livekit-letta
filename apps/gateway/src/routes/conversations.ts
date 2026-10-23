@@ -2,12 +2,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AgentServerClient } from '../agent-server/client';
 import type { ChatAttachment, TextEffort } from '../chat-types';
-import {
-  addAttachmentReferences,
-  releaseAttachmentReferences,
-  setAttachmentReferences,
-} from '../assistant/filesystem/attachment-retention';
-import { resolveAttachments } from '../assistant/filesystem/workspace-adapter';
+import type { AttachmentStore } from '../assistant/attachments/attachment-store';
 import { errorResponse, jsonObject, PROXY_BODY_LIMIT, routeError, withQuery } from '../http';
 
 const MAX_ATTACHMENTS = 10;
@@ -18,7 +13,7 @@ const TEXT_EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'
  * agent-server; this router relays them and keeps the gateway's upload
  * references in step with the conversations that use the uploads.
  */
-export function createConversationRoutes(agent: AgentServerClient): Hono {
+export function createConversationRoutes(agent: AgentServerClient, store: AttachmentStore): Hono {
   const conversations = new Hono();
   conversations.onError(routeError);
   conversations.use('*', bodyLimit({ maxSize: PROXY_BODY_LIMIT }));
@@ -34,7 +29,7 @@ export function createConversationRoutes(agent: AgentServerClient): Hono {
     const id = c.req.param('id');
     const response = await agent.relay(c.req.raw, conversationPath(id));
     if (response.ok) {
-      await releaseAttachmentReferences(id).catch((error) => {
+      await store.registry.releaseReferences(id).catch((error) => {
         console.error('[conversations] could not release attachment references:', error);
       });
     }
@@ -111,7 +106,7 @@ export function createConversationRoutes(agent: AgentServerClient): Hono {
     if (!text.trim() && attachments.length === 0) return errorResponse('text is required', 400);
     let resolved: ChatAttachment[];
     try {
-      resolved = await resolveAttachments(attachments as ChatAttachment[]);
+      resolved = await store.resolve(attachments as ChatAttachment[]);
     } catch (error) {
       return errorResponse(error, 400);
     }
@@ -127,7 +122,7 @@ export function createConversationRoutes(agent: AgentServerClient): Hono {
     );
     // Only an accepted turn keeps its uploads; a refused or unknown conversation must not pin them.
     if (response.status === 202) {
-      await addAttachmentReferences(id, resolved).catch((error) => {
+      await store.registry.addReferences(id, resolved).catch((error) => {
         console.error('[conversations] could not persist attachment references:', error);
       });
     }
@@ -144,7 +139,7 @@ export function createConversationRoutes(agent: AgentServerClient): Hono {
     if (messageId.length > 200) return errorResponse('Invalid message id', 400);
     const response = await agent.relay(c.req.raw, `${conversationPath(id)}/messages/${encodeURIComponent(messageId)}`);
     if (response.ok) {
-      await setAttachmentReferences(id, await attachmentsInConversation(agent, id)).catch((error) => {
+      await store.registry.setReferences(id, await attachmentsInConversation(agent, id)).catch((error) => {
         console.error('[conversations] could not refresh attachment references:', error);
       });
     }

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { config } from '../assistant/config';
-import { MAX_RECORDING_BYTES } from '../assistant/filesystem/workspace-adapter.ts';
+import { MAX_RECORDING_BYTES } from '../assistant/attachments/attachment-policy';
 import { errorResponse } from '../http';
 import { linkPreview } from '../link-preview';
 

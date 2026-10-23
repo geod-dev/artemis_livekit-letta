@@ -1,56 +1,62 @@
 import { Hono } from 'hono';
-import { createReadStream } from 'node:fs';
 import { basename } from 'node:path';
-import { Readable } from 'node:stream';
-import { MAX_ATTACHMENT_BYTES, saveAttachment, workspaceFile } from '../assistant/filesystem/workspace-adapter.ts';
-import { removeUnusedAttachment } from '../assistant/filesystem/attachment-retention';
+import type { WorkspaceTransport } from '@artemis/workspace';
+import { MAX_ATTACHMENT_BYTES } from '../assistant/attachments/attachment-policy';
+import type { AttachmentStore } from '../assistant/attachments/attachment-store';
+import { describeWorkspaceFile } from '../assistant/workspace-files';
 import { errorResponse } from '../http';
 
 /** Files: attachment uploads, and read access to the agent's workspace. */
-export const files = new Hono();
+export function createFileRoutes(attachments: AttachmentStore, workspace: WorkspaceTransport): Hono {
+  const files = new Hono();
 
-/** Upload one file (multipart field `file`) as an attachment. */
-files.post('/attachments', async (c) => {
-  const bounded = await readBoundedBody(c.req.raw, MAX_ATTACHMENT_BYTES + 1024 * 1024);
-  if (!bounded.ok) return errorResponse(bounded.error, bounded.status);
-  const request = new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: new Uint8Array(bounded.body) });
-  const file = (await request.formData().catch(() => null))?.get('file');
-  if (!file || typeof file === 'string') return errorResponse('file is required', 400);
-  if (file.size > MAX_ATTACHMENT_BYTES) return errorResponse('File is larger than 25 MB', 413);
-  try {
-    return Response.json(await saveAttachment(file), { status: 201 });
-  } catch (error) {
-    return errorResponse(error, error instanceof Error && /25 MB/.test(error.message) ? 413 : 400);
-  }
-});
+  /** Upload one file (multipart field `file`) as an attachment. */
+  files.post('/attachments', async (c) => {
+    const bounded = await readBoundedBody(c.req.raw, MAX_ATTACHMENT_BYTES + 1024 * 1024);
+    if (!bounded.ok) return errorResponse(bounded.error, bounded.status);
+    const request = new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: new Uint8Array(bounded.body) });
+    const file = (await request.formData().catch(() => null))?.get('file');
+    if (!file || typeof file === 'string') return errorResponse('file is required', 400);
+    if (file.size > MAX_ATTACHMENT_BYTES) return errorResponse('File is larger than 25 MB', 413);
+    try {
+      return Response.json(await attachments.save(file), { status: 201 });
+    } catch (error) {
+      return errorResponse(error, error instanceof Error && /25 MB/.test(error.message) ? 413 : 400);
+    }
+  });
 
-/** Discard an uploaded composer file if no conversation has used it. */
-files.delete('/attachments', async (c) => {
-  const path = c.req.query('path') ?? '';
-  if (path.length > 500) return errorResponse('Invalid attachment path', 400);
-  await removeUnusedAttachment(path).catch((error) => console.error('[files] attachment removal failed:', error));
-  return new Response(null, { status: 204 });
-});
+  /** Discard an uploaded composer file if no conversation has used it. */
+  files.delete('/attachments', async (c) => {
+    const path = c.req.query('path') ?? '';
+    if (path.length > 500) return errorResponse('Invalid attachment path', 400);
+    await attachments.registry
+      .removeUnused(path)
+      .catch((error) => console.error('[files] attachment removal failed:', error));
+    return new Response(null, { status: 204 });
+  });
 
-/**
- * Any file in the workspace, by its workspace path: attachments, and the files
- * the agent shares in its replies. Viewable types display in the browser
- * (`?download` forces a download); text formats are served as plain text and
- * every response is sandboxed, so no file runs as a page of the app. PDFs are
- * exempt from the sandbox, which would block the browser's PDF viewer.
- */
-files.get('/workspace/*', async (c) => {
-  const path = c.req.path;
-  const marker = path.indexOf('/workspace/');
-  const encoded = marker >= 0 ? path.slice(marker + '/workspace/'.length) : '';
-  const file = await workspaceFile(safeDecode(encoded));
-  if (!file) return errorResponse('File not found', 404);
-  const plan = planWorkspaceResponse(file, c.req.method, c.req.query('download') !== undefined, c.req.raw.headers.get('range'));
-  if (plan.range === false) return new Response(null, { status: 416, headers: plan.headers });
-  if (plan.noBody) return new Response(null, { status: plan.status, headers: plan.headers });
-  const stream = Readable.toWeb(createReadStream(file.path, plan.range ? plan.range : {})) as ReadableStream<Uint8Array>;
-  return new Response(stream, { status: plan.status, headers: plan.headers });
-});
+  /**
+   * Any file in the workspace, by its workspace path: attachments, and the files
+   * the agent shares in its replies. Viewable types display in the browser
+   * (`?download` forces a download); text formats are served as plain text and
+   * every response is sandboxed, so no file runs as a page of the app. PDFs are
+   * exempt from the sandbox, which would block the browser's PDF viewer.
+   */
+  files.get('/workspace/*', async (c) => {
+    const path = c.req.path;
+    const marker = path.indexOf('/workspace/');
+    const encoded = marker >= 0 ? path.slice(marker + '/workspace/'.length) : '';
+    const file = await describeWorkspaceFile(workspace, safeDecode(encoded));
+    if (!file) return errorResponse('File not found', 404);
+    const plan = planWorkspaceResponse(file, c.req.method, c.req.query('download') !== undefined, c.req.raw.headers.get('range'));
+    if (plan.range === false) return new Response(null, { status: 416, headers: plan.headers });
+    if (plan.noBody) return new Response(null, { status: plan.status, headers: plan.headers });
+    const stream = await workspace.readStream(file.path, plan.range ?? undefined);
+    return new Response(stream, { status: plan.status, headers: plan.headers });
+  });
+
+  return files;
+}
 
 export function planWorkspaceResponse(
   file: { path: string; size: number; contentType: string; viewable: boolean },

@@ -3,16 +3,20 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { Hono } from 'hono';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { config } from '../assistant/config.ts';
-import { MAX_ATTACHMENT_BYTES } from '../assistant/filesystem/workspace-adapter.ts';
-import { files, planWorkspaceResponse } from './files.ts';
+import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
+import { MAX_ATTACHMENT_BYTES } from '../assistant/attachments/attachment-policy.ts';
+import { composeWorkspace } from '../compose.ts';
+import { createFileRoutes, planWorkspaceResponse } from './files.ts';
 
-const app = new Hono().route('/api', files);
+/** The file routes over a workspace rooted at `root`. */
+function routesFor(root: string): Hono {
+  const workspace = composeWorkspace(root);
+  return new Hono().route('/api', createFileRoutes(new AttachmentStore(workspace), workspace));
+}
 
 test('workspace file GET and HEAD use inspected MIME and bounded byte ranges', async () => {
-  const previousRoot = config.workspace.dir;
   const root = await mkdtemp(join(process.cwd(), '.test-workspace-file-'));
-  config.workspace.dir = root;
+  const app = routesFor(root);
   try {
     await writeFile(join(root, 'note.txt'), 'abcdef');
     const ranged = await app.fetch(new Request('http://localhost/api/workspace/note.txt', {
@@ -28,7 +32,6 @@ test('workspace file GET and HEAD use inspected MIME and bounded byte ranges', a
     assert.equal(head.headers.get('content-length'), '6');
     assert.equal(await head.text(), '');
   } finally {
-    config.workspace.dir = previousRoot;
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -54,6 +57,8 @@ test('workspace response planning bounds ranges and preserves HEAD semantics', (
 });
 
 test('upload rejects oversized streamed bodies before multipart parsing without content-length', async () => {
+    const root = await mkdtemp(join(process.cwd(), '.test-workspace-upload-'));
+    const app = routesFor(root);
     const oversized = new Uint8Array(MAX_ATTACHMENT_BYTES + 1024 * 1024 + 1);
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -70,4 +75,5 @@ test('upload rejects oversized streamed bodies before multipart parsing without 
     const response = await app.fetch(request);
     assert.equal(response.status, 413);
     assert.match((await response.json() as { error: string }).error, /too large/i);
+    await rm(root, { recursive: true, force: true });
 });

@@ -10,8 +10,8 @@ import { test } from 'node:test';
 import { AgentServerClient } from '../agent-server/client.ts';
 import { config } from '../assistant/config.ts';
 import type { McpServer } from '../chat-types.ts';
-import { removeUnusedAttachment } from '../assistant/filesystem/attachment-retention.ts';
-import { saveAttachment } from '../assistant/filesystem/workspace-adapter.ts';
+import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
+import { composeWorkspace } from '../compose.ts';
 import { createConversationRoutes } from './conversations.ts';
 import { createMcpRoutes } from './mcp.ts';
 import { createVoiceRoutes } from './voice.ts';
@@ -109,24 +109,23 @@ async function fakeAgentServer() {
 
 /** The gateway's API routers, as startBackend mounts them, in front of a fake agent-server. */
 async function fixture() {
-  const previousRoot = config.workspace.dir;
   const previousVoiceToken = config.voiceGatewayToken;
   const root = await mkdtemp(join(tmpdir(), 'artemis-gateway-proxy-'));
-  config.workspace.dir = root;
   config.voiceGatewayToken = VOICE_TOKEN;
+  const attachments = new AttachmentStore(composeWorkspace(root));
   const agentServer = await fakeAgentServer();
   const agent = new AgentServerClient({ url: agentServer.url, token: AGENT_TOKEN });
   const app = new Hono();
-  app.route('/api/conversations', createConversationRoutes(agent));
+  app.route('/api/conversations', createConversationRoutes(agent, attachments));
   app.route('/api/mcp', createMcpRoutes(agent));
   app.route('/api/voice', createVoiceRoutes(agent));
   return {
     app,
     agent,
     agentServer,
+    attachments,
     root,
     close: async () => {
-      config.workspace.dir = previousRoot;
       config.voiceGatewayToken = previousVoiceToken;
       await agentServer.close();
       await rm(root, { recursive: true, force: true });
@@ -174,7 +173,7 @@ test('server-sent events stream through the gateway', async () => {
 test('a message references its uploads and goes to the agent-server as a turn', async () => {
   const f = await fixture();
   try {
-    const upload = await saveAttachment(new File([PNG], 'photo.png', { type: 'image/png' }));
+    const upload = await f.attachments.save(new File([PNG], 'photo.png', { type: 'image/png' }));
     const response = await f.app.request(
       'https://gateway.test/api/conversations/c1/messages',
       json('POST', {
@@ -196,7 +195,7 @@ test('a message references its uploads and goes to the agent-server as a turn', 
     assert.deepEqual(body.attachments, [
       { path: upload.path, name: 'photo.png', kind: 'image', mimeType: 'image/png', size: PNG.length },
     ]);
-    assert.equal(await removeUnusedAttachment(upload.path), false);
+    assert.equal(await f.attachments.registry.removeUnused(upload.path), false);
 
     const invalid = await f.app.request(
       'https://gateway.test/api/conversations/c1/messages',
@@ -212,13 +211,13 @@ test('a message references its uploads and goes to the agent-server as a turn', 
 test('a refused turn does not keep its uploads', async () => {
   const f = await fixture();
   try {
-    const upload = await saveAttachment(new File([PNG], 'photo.png', { type: 'image/png' }));
+    const upload = await f.attachments.save(new File([PNG], 'photo.png', { type: 'image/png' }));
     const refused = await f.app.request('https://gateway.test/api/conversations/c1/messages', json('POST', {
       text: 'busy',
       attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
     }));
     assert.equal(refused.status, 429);
-    assert.equal(await removeUnusedAttachment(upload.path), true);
+    assert.equal(await f.attachments.registry.removeUnused(upload.path), true);
   } finally {
     await f.close();
   }
@@ -227,18 +226,18 @@ test('a refused turn does not keep its uploads', async () => {
 test('rewinding a conversation releases the uploads its remaining messages no longer show', async () => {
   const f = await fixture();
   try {
-    const upload = await saveAttachment(new File([PNG], 'photo.png', { type: 'image/png' }));
+    const upload = await f.attachments.save(new File([PNG], 'photo.png', { type: 'image/png' }));
     await f.app.request('https://gateway.test/api/conversations/c1/messages', json('POST', {
       text: 'look',
       attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
     }));
-    assert.equal(await removeUnusedAttachment(upload.path), false);
+    assert.equal(await f.attachments.registry.removeUnused(upload.path), false);
 
     f.agentServer.state.messages = [{ id: 'm1', role: 'user', text: 'look', attachments: [upload] }];
     const rewind = await f.app.request('https://gateway.test/api/conversations/c1/messages/m1', { method: 'DELETE' });
     assert.equal(rewind.status, 200);
     assert.equal((await rewind.json() as { conversation: { id: string } }).conversation.id, 'c1');
-    assert.equal(await removeUnusedAttachment(upload.path), true);
+    assert.equal(await f.attachments.registry.removeUnused(upload.path), true);
   } finally {
     await f.close();
   }
@@ -247,14 +246,14 @@ test('rewinding a conversation releases the uploads its remaining messages no lo
 test('deleting a conversation releases its uploads', async () => {
   const f = await fixture();
   try {
-    const upload = await saveAttachment(new File([PNG], 'photo.png', { type: 'image/png' }));
+    const upload = await f.attachments.save(new File([PNG], 'photo.png', { type: 'image/png' }));
     await f.app.request('https://gateway.test/api/conversations/c1/messages', json('POST', {
       text: 'look',
       attachments: [{ path: upload.path, name: 'photo.png', kind: 'image' }],
     }));
     const deleted = await f.app.request('https://gateway.test/api/conversations/c1', { method: 'DELETE' });
     assert.equal(deleted.status, 204);
-    assert.equal(await removeUnusedAttachment(upload.path), true);
+    assert.equal(await f.attachments.registry.removeUnused(upload.path), true);
   } finally {
     await f.close();
   }
@@ -342,8 +341,14 @@ test('voice agent calls need the voice token and reach the agent-server voice en
 
 test('an unreachable agent-server is reported as unavailable', async () => {
   const app = new Hono();
-  app.route('/api/conversations', createConversationRoutes(new AgentServerClient({ url: 'http://127.0.0.1:9', token: AGENT_TOKEN })));
-  const response = await app.request('https://gateway.test/api/conversations');
-  assert.equal(response.status, 503);
-  assert.match(((await response.json()) as { error: string }).error, /could not be completed/);
+  const agent = new AgentServerClient({ url: 'http://127.0.0.1:9', token: AGENT_TOKEN });
+  const root = await mkdtemp(join(tmpdir(), 'artemis-gateway-unreachable-'));
+  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(root))));
+  try {
+    const response = await app.request('https://gateway.test/api/conversations');
+    assert.equal(response.status, 503);
+    assert.match(((await response.json()) as { error: string }).error, /could not be completed/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

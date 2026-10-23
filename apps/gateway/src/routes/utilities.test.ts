@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import { test } from 'node:test';
 import { config } from '../assistant/config.ts';
-import { MAX_RECORDING_BYTES } from '../assistant/filesystem/workspace-adapter.ts';
+import { MAX_RECORDING_BYTES } from '../assistant/attachments/attachment-policy.ts';
 import { utilities } from './utilities.ts';
 
 const app = new Hono().route('/api', utilities);
