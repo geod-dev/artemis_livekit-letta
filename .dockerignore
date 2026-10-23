@@ -17,5 +17,15 @@
 **/*.aab
 **/*.keystore
 **/*.jks
-apps/gateway/.workspace
+
+# Runtime data (created by Compose bind mounts and the apps at run time), never image content.
+/data
+apps/*/data
+apps/*/.workspace
+
+# Build outputs that the image rebuilds itself.
 apps/web/dist
+mobile/build
+mobile/app/build
+apps/mobile/build
+apps/mobile/app/build

@@ -1,11 +1,17 @@
+# Build from the repository root: docker compose sets `context: .` and `dockerfile: apps/web/Dockerfile`.
+
 FROM node:24.19-alpine AS build
 
 # The web app is a member of the root pnpm workspace, so it installs from the repo root.
-# Build context: the repository root (see docker-compose.yml).
+# It depends on packages/contracts through `link:`, so that package is copied alongside it.
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@10.18.0 --activate
-COPY . .
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/contracts/package.json packages/contracts/
+COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile --filter @artemis/frontend...
+COPY packages/contracts packages/contracts
+COPY apps/web apps/web
 
 ARG IP_ADDRESS=127.0.0.1
 ARG ASSISTANT_NAME=Artemis
