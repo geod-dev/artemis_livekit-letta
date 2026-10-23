@@ -15,7 +15,7 @@ services:
       ARTEMIS_DB_PASSWORD: ${ARTEMIS_DB_PASSWORD:?set ARTEMIS_DB_PASSWORD in .env}
       HINDSIGHT_DB_PASSWORD: ${HINDSIGHT_DB_PASSWORD:?set HINDSIGHT_DB_PASSWORD in .env}
     volumes:
-      - postgres-data:/var/lib/postgresql   # PG18 image layout (VOLUME /var/lib/postgresql)
+      - postgres-pg18:/var/lib/postgresql   # PG18 image layout (VOLUME /var/lib/postgresql)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
@@ -147,4 +147,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres-data:
+  # Renamed from postgres-data: that volume was initialized before the init script
+  # could run, so it has no artemis/hindsight roles. A new name forces a fresh init.
+  postgres-pg18:
