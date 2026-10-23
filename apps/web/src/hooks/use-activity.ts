@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage } from '@artemis/contracts/chat-types';
-import type { ActivityTask } from '@/components/chat/activity-context';
-import type { TaskStatus } from '@/hooks/use-conversation';
-import { runDuration, taskRuns } from '@/lib/agent-runs';
+import { type AgentRun, runDuration, taskRuns } from '@/lib/agent-runs';
+import { apiFetch, conversationRoute } from '@/lib/api';
+import type { RunningTask } from '@/lib/conversation-state';
 
 /** Durable task inventory, refreshed alongside live conversation events. */
 export function useActivityTasks(
   id: string | null,
-  running: TaskStatus[],
+  running: RunningTask[],
   messages: ChatMessage[]
 ) {
-  const [inventory, setInventory] = useState<{ id: string; tasks: ActivityTask[] } | null>(null);
+  const [inventory, setInventory] = useState<{ id: string; tasks: AgentRun[] } | null>(null);
   const [stopping, setStopping] = useState<Set<string>>(new Set());
   const [failure, setFailure] = useState<{ id: string; message: string } | null>(null);
   const owner = useRef(id);
@@ -29,7 +29,7 @@ export function useActivityTasks(
       if (!id) return;
       const request = ++latestRequest.current;
       try {
-        const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/tasks`, {
+        const response = await apiFetch(conversationRoute(id, '/tasks'), {
           signal,
           cache: 'no-store',
         });
@@ -124,8 +124,8 @@ export function useActivityTasks(
       const stopKey = `${id}:${taskId}`;
       setStopping((items) => new Set(items).add(stopKey));
       try {
-        const response = await fetch(
-          `/api/conversations/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/cancel`,
+        const response = await apiFetch(
+          conversationRoute(id, `/tasks/${encodeURIComponent(taskId)}/cancel`),
           { method: 'POST' }
         );
         if (!response.ok) {

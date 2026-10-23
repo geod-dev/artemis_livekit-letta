@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { McpServers } from '@/components/settings/mcp-servers';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { isRecord, responseJson } from '@/lib/api';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { apiFetch, isRecord, responseJson } from '@/lib/api';
 import { cn } from '@/lib/shadcn/utils';
 import { type Theme, applyTheme, getStoredTheme } from '@/lib/theme';
 
@@ -77,7 +78,7 @@ export function SettingsDialog({
     setSigningOut(true);
     setSignOutError('');
     try {
-      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      const response = await apiFetch(`${CHAT_HTTP.auth}/logout`, { method: 'POST' });
       const result = await responseJson(
         response,
         (value): value is { authenticated: false } =>

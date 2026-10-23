@@ -1,16 +1,12 @@
-import type { ChatMessage } from '@artemis/contracts/chat-types';
+import type { ChatMessage, ConversationTask } from '@artemis/contracts/chat-types';
 
 export interface LiveConversationItem {
   turnId: string;
   message: ChatMessage;
 }
 
-export interface ConversationTaskStatus {
-  id: string;
-  title: string;
-  status: 'running';
-  kind?: 'agent' | 'command';
-}
+/** A background task as the live stream reports it while it runs. */
+export type RunningTask = Pick<ConversationTask, 'id' | 'title' | 'kind'> & { status: 'running' };
 
 type ConversationRequestStatus = 'idle' | 'loading' | 'ready' | 'error';
 type ConversationField =
@@ -23,7 +19,7 @@ interface ConversationStoreState {
   live: LiveConversationItem[];
   pending: Extract<ChatMessage, { role: 'user' }> | null;
   activeTurns: string[];
-  tasks: ConversationTaskStatus[];
+  tasks: RunningTask[];
   settledTurns: number;
   stopped: ReadonlySet<string>;
   error: string | null;

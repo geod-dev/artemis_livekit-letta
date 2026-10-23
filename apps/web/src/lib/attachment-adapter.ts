@@ -1,5 +1,7 @@
-import type { AttachmentAdapter, CompleteAttachment } from '@assistant-ui/react';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import type { ChatAttachment } from '@artemis/contracts/chat-types';
+import type { AttachmentAdapter, CompleteAttachment } from '@assistant-ui/react';
+import { apiFetch } from '@/lib/api';
 import { MAX_ATTACHMENT_BYTES } from './attachments';
 import { toThreadAttachment } from './thread-messages';
 
@@ -23,7 +25,7 @@ export const attachmentAdapter: AttachmentAdapter = {
   async send(attachment, options) {
     const form = new FormData();
     form.append('file', attachment.file);
-    const res = await fetch('/api/attachments', {
+    const res = await apiFetch(CHAT_HTTP.attachments, {
       method: 'POST',
       body: form,
       signal: options?.signal,
@@ -34,7 +36,7 @@ export const attachmentAdapter: AttachmentAdapter = {
   },
   async remove(attachment) {
     if (!attachment.id.startsWith('data/attachments/')) return;
-    await fetch(`/api/attachments?path=${encodeURIComponent(attachment.id)}`, {
+    await apiFetch(`${CHAT_HTTP.attachments}?path=${encodeURIComponent(attachment.id)}`, {
       method: 'DELETE',
       keepalive: true,
     }).catch(() => {});

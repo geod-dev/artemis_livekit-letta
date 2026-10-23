@@ -6,6 +6,7 @@ import {
   useFileInfo,
 } from '@/components/assistant-ui/files/workspace-file';
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
+import { apiFetch } from '@/lib/api';
 import { workspaceUrl } from '@/lib/attachments';
 import { getMimeTypeIcon } from '@/lib/file-icons';
 import { fileKind, isTextKind } from '@/lib/file-kinds';
@@ -34,7 +35,7 @@ function TextPreview({ path, markdown }: { path: string; markdown?: boolean }) {
   const [entry, setEntry] = useState<{ path: string; text: string | null } | null>(null);
   useEffect(() => {
     let active = true;
-    fetch(workspaceUrl(path))
+    apiFetch(workspaceUrl(path))
       .then((res) => (res.ok ? res.text() : null))
       .catch(() => null)
       .then((text) => {

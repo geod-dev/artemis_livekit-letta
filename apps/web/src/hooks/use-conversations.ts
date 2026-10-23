@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import type { ConversationListEvent, ConversationSummary } from '@artemis/contracts/chat-types';
-import { isRecord, requestJson, responseJson } from '@/lib/api';
+import {
+  apiFetch,
+  conversationRoute,
+  isRecord,
+  openEventSource,
+  requestJson,
+  responseJson,
+} from '@/lib/api';
 
 const isSummary = (value: unknown): value is ConversationSummary =>
   isRecord(value) &&
@@ -28,7 +36,7 @@ export function useConversations() {
     const beforeMutation = mutationRevision.current;
     try {
       const body = await requestJson(
-        '/api/conversations',
+        CHAT_HTTP.conversations,
         { cache: 'no-store' },
         isSummaryList,
         'Could not load conversations'
@@ -52,7 +60,7 @@ export function useConversations() {
 
   // Unread background results change without the list being refetched.
   useEffect(() => {
-    const source = new EventSource('/api/conversations/events');
+    const source = openEventSource(`${CHAT_HTTP.conversations}/events`);
     source.onmessage = (e) => {
       let event: unknown;
       try {
@@ -81,7 +89,7 @@ export function useConversations() {
 
   const create = useCallback(async (): Promise<ConversationSummary> => {
     const body = await requestJson(
-      '/api/conversations',
+      CHAT_HTTP.conversations,
       { method: 'POST' },
       isSummary,
       'Could not create conversation'
@@ -94,7 +102,7 @@ export function useConversations() {
     const revision = ++mutationRevision.current;
     refreshRevision.current += 1;
     const body = await requestJson(
-      `/api/conversations/${id}`,
+      conversationRoute(id),
       {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -112,7 +120,7 @@ export function useConversations() {
   const remove = useCallback(async (id: string) => {
     const revision = ++mutationRevision.current;
     refreshRevision.current += 1;
-    const response = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+    const response = await apiFetch(conversationRoute(id), { method: 'DELETE' });
     if (!response.ok)
       await responseJson(
         response,
@@ -133,8 +141,8 @@ export function useConversations() {
     async (id: string, messageId: string): Promise<ConversationSummary | null> => {
       const revision = ++mutationRevision.current;
       refreshRevision.current += 1;
-      const res = await fetch(
-        `/api/conversations/${id}/messages/${encodeURIComponent(messageId)}`,
+      const res = await apiFetch(
+        conversationRoute(id, `/messages/${encodeURIComponent(messageId)}`),
         { method: 'DELETE' }
       );
       const body = await responseJson(

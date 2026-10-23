@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
 import type { McpServer, McpSettingsResponse, McpTransport } from '@artemis/contracts/chat-types';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -49,7 +51,7 @@ export function McpServers({ active }: { active: boolean }) {
   const load = useCallback(async (silent = false) => {
     if (!silent) setStatus('Loading…');
     try {
-      const response = await fetch('/api/mcp');
+      const response = await apiFetch(CHAT_HTTP.mcp);
       if (!response.ok) {
         setStatus(await errorText(response, 'Could not read the MCP servers'));
         return;
@@ -77,7 +79,7 @@ export function McpServers({ active }: { active: boolean }) {
     }
     setStatus('Saving and connecting…');
     try {
-      const response = await fetch('/api/mcp', {
+      const response = await apiFetch(CHAT_HTTP.mcp, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

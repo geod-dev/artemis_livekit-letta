@@ -4,6 +4,8 @@ import { MessageCirclePlusIcon, PanelRightIcon } from 'lucide-react';
 import { AssistantRuntimeProvider, AuiConfig, Tools } from '@assistant-ui/react';
 import { RoomAudioRenderer, SessionProvider, useSession } from '@livekit/components-react';
 import type { ConversationSummary, TextEffort } from '@artemis/contracts/chat-types';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { apiFetch } from '@/lib/api';
 import { StartAudioButton } from '@/components/agents-ui/start-audio-button';
 import { Thread } from '@/components/assistant-ui/chat/thread';
 import { WorkspaceFilePanelContext } from '@/components/assistant-ui/files/workspace-file';
@@ -168,7 +170,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
       TokenSource.literal(async () => {
         const conversationId = callTarget.current;
         callTarget.current = null;
-        const res = await fetch('/api/voice/token', {
+        const res = await apiFetch(CHAT_HTTP.voiceToken, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // Calls from the web app are conversations: they stay open until ended.

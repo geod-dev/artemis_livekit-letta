@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { MascotMark } from '@/components/chat/mascot';
-import { isRecord, requestJson, responseJson } from '@/lib/api';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { apiFetch, isRecord, requestJson, responseJson } from '@/lib/api';
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -15,7 +16,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const check = () => {
       const revision = ++checkRevision.current;
       void requestJson(
-        '/api/auth/session',
+        `${CHAT_HTTP.auth}/session`,
         {},
         (value): value is { authenticated: boolean } =>
           isRecord(value) && typeof value.authenticated === 'boolean',
@@ -52,7 +53,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setBusy(true);
     setError('');
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await apiFetch(`${CHAT_HTTP.auth}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),

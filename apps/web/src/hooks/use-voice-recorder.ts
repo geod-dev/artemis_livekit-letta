@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { apiFetch } from '@/lib/api';
 
 export type VoiceRecorderStatus = 'idle' | 'recording' | 'transcribing';
 
@@ -95,7 +97,9 @@ export function useVoiceRecorder() {
       });
       const chunks: Blob[] = [];
       let resolveStopped!: () => void;
-      const stopped = new Promise<void>((resolve) => { resolveStopped = resolve; });
+      const stopped = new Promise<void>((resolve) => {
+        resolveStopped = resolve;
+      });
       recorder.addEventListener('stop', resolveStopped, { once: true });
       const context = new AudioContext();
       const node = context.createAnalyser();
@@ -187,7 +191,7 @@ export function useVoiceRecorder() {
     try {
       const body = new FormData();
       body.set('audio', audio, `recording.${extension(type)}`);
-      const res = await fetch('/api/transcribe', {
+      const res = await apiFetch(CHAT_HTTP.transcribe, {
         method: 'POST',
         body,
         signal: controller.signal,

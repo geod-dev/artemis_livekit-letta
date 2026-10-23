@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { DownloadIcon, FileXIcon } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { workspaceUrl } from '@/lib/attachments';
 import { getMimeTypeIcon } from '@/lib/file-icons';
 import { fileKind } from '@/lib/file-kinds';
@@ -44,7 +45,7 @@ function fileInfo(path: string): Promise<FileInfo> {
   if (cached) return Promise.resolve(cached);
   let pending = infoRequests.get(path);
   if (!pending) {
-    pending = fetch(workspaceUrl(path), { method: 'HEAD' })
+    pending = apiFetch(workspaceUrl(path), { method: 'HEAD' })
       .then((res): FileInfo => {
         if (!res.ok) return { status: 'missing' };
         return {

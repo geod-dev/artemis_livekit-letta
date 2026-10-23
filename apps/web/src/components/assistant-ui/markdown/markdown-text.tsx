@@ -21,6 +21,8 @@ import {
   StreamdownTextPrimitive,
 } from '@assistant-ui/react-streamdown';
 import { code } from '@streamdown/code';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { apiFetch } from '@/lib/api';
 import { workspacePath } from '@/lib/attachments';
 import { rehypeCitations } from '@/lib/citations';
 import { cn } from '@/lib/shadcn/utils';
@@ -125,7 +127,7 @@ function useLinkMetadata(href: string | undefined): PreviewMetadata | undefined 
     }
     let pending = metadataRequests.get(href);
     if (!pending) {
-      pending = fetch(`/api/link-preview?url=${encodeURIComponent(href)}`)
+      pending = apiFetch(`${CHAT_HTTP.linkPreview}?url=${encodeURIComponent(href)}`)
         .then(async (response) => {
           if (!response.ok) return undefined;
           const result: { title?: unknown; description?: unknown } = await response.json();

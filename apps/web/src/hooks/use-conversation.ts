@@ -15,53 +15,27 @@ import type {
   ConversationSummary,
   TextEffort,
 } from '@artemis/contracts/chat-types';
-import { isRecord, requestJson, responseJson } from '@/lib/api';
+import {
+  cancelTurn,
+  fetchHistory,
+  markUpdatesRead,
+  openConversationStream,
+  sendMessage,
+} from '@/lib/conversation-client';
 import { historyCoversMessage, mergeConversationMessages } from '@/lib/conversation-messages';
-import { isChatMessage, isConversationEvent } from '@/lib/conversation-protocol';
 import {
   type ConversationStatePatch,
-  type ConversationTaskStatus,
   type LiveConversationItem,
+  type RunningTask,
   conversationStateReducer,
   initialConversationState,
 } from '@/lib/conversation-state';
 
 type LiveItem = LiveConversationItem;
-export type TaskStatus = ConversationTaskStatus;
+/** A background task that is running in this conversation. */
+export type TaskStatus = RunningTask;
 
 type UserMessage = Extract<ChatMessage, { role: 'user' }>;
-
-/** A conversation's persisted messages, or null when they could not be loaded. */
-async function fetchHistory(id: string, signal?: AbortSignal): Promise<ChatMessage[] | null> {
-  try {
-    const pages: ChatMessage[][] = [];
-    const seenCursors = new Set<string>();
-    let before: string | null = null;
-    // Bound pagination in case a proxy or server returns a cursor cycle.
-    for (let page = 0; page < 100; page += 1) {
-      const query = new URLSearchParams({ limit: '100' });
-      if (before) query.set('before', before);
-      const response = await fetch(`/api/conversations/${id}/messages?${query}`, {
-        cache: 'no-store',
-        signal,
-      });
-      const rows = await responseJson(
-        response,
-        (value): value is ChatMessage[] => Array.isArray(value) && value.every(isChatMessage),
-        'Could not load this conversation'
-      );
-      pages.unshift(rows);
-      const cursor = response.headers.get('X-Next-Cursor');
-      if (!cursor) return pages.flat();
-      if (seenCursors.has(cursor)) return null;
-      seenCursors.add(cursor);
-      before = cursor;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * One conversation as the UI sees it: persisted history plus live
@@ -249,7 +223,6 @@ export function useConversation(
       });
     }
 
-    const source = new EventSource(`/api/conversations/${conversationId}/events`);
     const makeGate = () => {
       let resolve!: () => void;
       let settled = false;
@@ -268,47 +241,40 @@ export function useConversation(
       };
     };
     let gate = makeGate();
-    // A subscription is only ready after each successful open, including retries.
-    source.addEventListener('open', () => {
-      setContextUsageRevision((revision) => revision + 1);
-      gate.resolve();
-      connected.current = { id: conversationId, ready: Promise.resolve() };
-      setLive([]);
-      setActiveTurns([]);
-      setTasks([]);
-      void reconcileHistory();
+    const closeStream = openConversationStream(conversationId, {
+      // A subscription is only ready after each successful open, including retries.
+      onOpen: () => {
+        setContextUsageRevision((revision) => revision + 1);
+        gate.resolve();
+        connected.current = { id: conversationId, ready: Promise.resolve() };
+        setLive([]);
+        setActiveTurns([]);
+        setTasks([]);
+        void reconcileHistory();
+      },
+      onError: () => {
+        // EventSource retries automatically. Keep sends waiting for the next open.
+        if (connected.current.id === conversationId && gate.settled) {
+          gate = makeGate();
+          connected.current = { id: conversationId, ready: gate.promise };
+        }
+      },
+      onEvent: (event) => {
+        if (backlog) backlog.push(event);
+        else processEvent(event);
+      },
+      onRejected: (reason) => {
+        setError(
+          reason === 'oversized'
+            ? 'Received an oversized conversation update; refreshing…'
+            : reason === 'invalid'
+              ? 'Received an invalid conversation update; refreshing…'
+              : 'Received an unsupported conversation update; refreshing…'
+        );
+        void reconcileHistory();
+      },
     });
     connected.current = { id: conversationId, ready: gate.promise };
-    source.onerror = () => {
-      // EventSource retries automatically. Keep sends waiting for the next open.
-      if (connected.current.id === conversationId && gate.settled) {
-        gate = makeGate();
-        connected.current = { id: conversationId, ready: gate.promise };
-      }
-    };
-    source.onmessage = (e) => {
-      if (typeof e.data !== 'string' || e.data.length > 1_000_000) {
-        setError('Received an oversized conversation update; refreshing…');
-        void reconcileHistory();
-        return;
-      }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(e.data);
-      } catch {
-        setError('Received an invalid conversation update; refreshing…');
-        void reconcileHistory();
-        return;
-      }
-      if (!isConversationEvent(parsed)) {
-        setError('Received an unsupported conversation update; refreshing…');
-        void reconcileHistory();
-        return;
-      }
-      const event = parsed;
-      if (backlog) backlog.push(event);
-      else processEvent(event);
-    };
 
     function processEvent(event: ConversationEvent) {
       try {
@@ -474,7 +440,7 @@ export function useConversation(
       gate.resolve();
       if (connected.current.id === conversationId)
         connected.current = { id: null, ready: Promise.resolve() };
-      source.close();
+      closeStream();
     };
   }, [
     conversationId,
@@ -596,17 +562,7 @@ export function useConversation(
       }
       const clientMessageId = pendingClientId.current ?? crypto.randomUUID();
       try {
-        const response = await requestJson(
-          `/api/conversations/${id}/messages`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, effort, attachments, clientMessageId }),
-          },
-          (value): value is { accepted: boolean } =>
-            isRecord(value) && typeof value.accepted === 'boolean',
-          'Failed to send'
-        );
+        const response = await sendMessage(id, { text, effort, attachments, clientMessageId });
         if (response.accepted) return true;
         throw new Error('The server did not accept the message');
       } catch (failure) {
@@ -626,13 +582,7 @@ export function useConversation(
     async (id: string) => {
       stopRequested.current = true;
       try {
-        const body = await requestJson(
-          `/api/conversations/${id}/cancel`,
-          { method: 'POST' },
-          (value): value is { cancelled: boolean } =>
-            isRecord(value) && typeof value.cancelled === 'boolean',
-          'Could not stop the response'
-        );
+        const body = await cancelTurn(id);
         if (!body.cancelled) stopRequested.current = false;
       } catch (error) {
         stopRequested.current = false;
@@ -660,17 +610,7 @@ export function useConversation(
         let failure: unknown;
         for (let attempt = 0; attempt < 2; attempt += 1) {
           try {
-            await requestJson(
-              `/api/conversations/${id}/read`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ updateIds }),
-              },
-              (value): value is { read: number } =>
-                isRecord(value) && typeof value.read === 'number',
-              'Could not mark updates as read'
-            );
+            await markUpdatesRead(id, updateIds);
             return;
           } catch (error) {
             failure = error;
