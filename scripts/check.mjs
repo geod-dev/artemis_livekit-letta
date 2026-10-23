@@ -26,24 +26,25 @@ const commands = {
   device: [
     ['tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_device.py'], 'apps/device-client'],
   ],
-  boundaries: [
-    ['dependency rules', process.execPath, ['scripts/check-boundaries.mjs'], '.'],
-    ['dependency rules self-test', process.execPath, ['scripts/check-boundaries.mjs', '--self-test'], '.'],
-  ],
   packages: [
     ['typecheck', pnpmExecutable, ['run', 'typecheck:packages'], '.'],
     ['tests', pnpmExecutable, ['run', 'test:packages'], '.'],
   ],
-  operations: [
+  deploy: [
     ['mocked deployment tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'deploy/coolify', '-p', 'test_*.py'], '.'],
   ],
   schema: [
     ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'packages/contracts/scripts/generate-present-tool.ts', '--check'], '.'],
   ],
+  boundaries: [
+    ['dependency rules', process.execPath, ['scripts/check-boundaries.mjs'], '.'],
+    ['dependency rules self-test', process.execPath, ['scripts/check-boundaries.mjs', '--self-test'], '.'],
+  ],
 };
 
 const selected = process.argv[2];
-const defaultGroups = ['gateway', 'agent-server', 'web', 'voice', 'device', 'boundaries', 'packages', 'operations', 'schema'];
+// Every group in `commands`, in declaration order, so the default run covers each group exactly once.
+const defaultGroups = Object.keys(commands);
 const groups = selected === 'all' || selected === undefined ? defaultGroups : [selected];
 
 if (groups.some((group) => !(group in commands))) {
