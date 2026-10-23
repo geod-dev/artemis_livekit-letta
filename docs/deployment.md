@@ -24,7 +24,7 @@ Example host roots are:
 
 ```dotenv
 WORKSPACE_PATH=/data/artemis/workspace
-ASSISTANT_DATA_ROOT=/data/artemis/backend-data
+ARTEMIS_DATA_DIR=/data/artemis/data/gateway
 LIVEKIT_SIGNAL_BIND=127.0.0.1
 FRONTEND_BIND=127.0.0.1
 FRONTEND_PORT=5180
@@ -32,7 +32,7 @@ FRONTEND_PORT=5180
 
 Compose sets `WORKSPACE_PATH=/workspace` inside the containers and mounts each
 host root separately. The workspace is mounted at `/workspace` in `agent-server`
-and `backend`. The data root is mounted at `/workspace/data` in `agent-server` and
+and `gateway`. The data root is mounted at `/workspace/data` in `agent-server` and
 at `/data/backend` in `backend`.
 The public reverse proxy routes the site to frontend port 80. Only LiveKit media
 TCP 7881 and UDP 7882 need public firewall access. Host nginx can use the
@@ -89,10 +89,10 @@ Configure Coolify to use `docker-compose.coolify.yml` as its single Compose file
 and set the application environment values in Coolify. This file is a complete
 production stack with static volume sources because Coolify rejects environment
 substitution in bind mount paths. It uses `/data/artemis/workspace` for the
-workspace, `/data/artemis/workspace/data` for the data directory, and the
+workspace, `/data/artemis/data/gateway` for the gateway data, and the
 Compose-managed `postgres-data` volume. Create the host directories before
 deploying. The container paths are set inside the Compose file, so
-`WORKSPACE_PATH` and `ASSISTANT_DATA_ROOT` do not need to be set in Coolify for
+`WORKSPACE_PATH` and `ARTEMIS_DATA_DIR` do not need to be set in Coolify for
 this configuration. Keep Traefik on ports 80/443 and route the app domain to the
 frontend container on port 80.
 

@@ -1,6 +1,12 @@
 # Coolify deployment stack. Set the Coolify domain to the frontend service on
 # port 80 and to the LiveKit service on port 7880 for WebSocket signaling.
 # Persistent workspace files use the host directory previously used by Coolify.
+#
+# REQUIRED SERVER-SIDE CHANGE (outside this repository, before the first deploy of this
+# layout): the gateway data folder moves from /data/artemis/workspace/data to
+# /data/artemis/data/gateway. Create /data/artemis/data/gateway on the host. It starts
+# empty, because there is no user data to copy. /data/artemis/workspace stays the workspace.
+# The gateway also mounts it at /workspace/data, so its attachments stay visible to agent-server.
 name: artemis
 
 services:
@@ -64,7 +70,7 @@ services:
         condition: service_started
     volumes:
       - /data/artemis/workspace:/workspace
-      - /data/artemis/workspace/data:/workspace/data
+      - /data/artemis/data/gateway:/workspace/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -103,8 +109,8 @@ services:
         condition: service_healthy
     volumes:
       - /data/artemis/workspace:/workspace
-      - /data/artemis/workspace/data:/data/gateway
-      - /data/artemis/workspace/data:/workspace/data
+      - /data/artemis/data/gateway:/data/gateway
+      - /data/artemis/data/gateway:/workspace/data
     healthcheck:
       # `/ready` waits for asynchronous agent-server/MCP setup. Compose uses this
       # process health check so that initialization does not block deployment.

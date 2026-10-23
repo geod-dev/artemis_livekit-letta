@@ -32,7 +32,7 @@ and recalls relevant memories before each answer. A recall failure or timeout
 does not fail the turn.
 
 The host workspace is mounted at `/workspace` in both `agent-server` and `backend`.
-The data root (`ASSISTANT_DATA_ROOT`) is mounted at `/workspace/data` in
+The data root (`ARTEMIS_DATA_DIR`) is mounted at `/workspace/data` in
 `agent-server` and at `/data/backend` in `backend`. The containers write to the
 data root; agent commands run as an unprivileged `workspace` user (uid 1001) that
 can read it but not write it. The backend serves workspace files through a

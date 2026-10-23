@@ -3,7 +3,7 @@
 Use `docker-compose.coolify.yml` as the application's Compose file and set the
 production environment values in Coolify. The application requires unique
 secrets, persistent workspace and data host roots (`/data/artemis/workspace` and
-`/data/artemis/workspace/data`), and the Compose-managed `postgres-data` volume.
+`/data/artemis/data/gateway`), and the Compose-managed `postgres-data` volume.
 See [deployment](../../docs/deployment.md) for storage and recovery instructions.
 
 ## Deployment poller
