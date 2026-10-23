@@ -1,7 +1,12 @@
 import { ConflictError } from '@artemis/core';
 import type { McpServer, McpSettingsResponse } from '@artemis/contracts/chat-types';
 import type { CatalogStatus } from './catalog.ts';
-import { InvalidMcpServersError, describeInvalidEntry, mcpRevision, validateMcpServers } from './settings.ts';
+import {
+  InvalidMcpServersError,
+  describeInvalidEntry,
+  mcpRevision,
+  validateMcpServers,
+} from './settings.ts';
 
 /** Persistence port (implemented over `McpSettingsRepository`). */
 export interface McpSettingsStore {
@@ -10,7 +15,11 @@ export interface McpSettingsStore {
    * Compare-and-set on `expectedRevision` (null = nothing stored yet); returns
    * the new revision (`mcpRevision(servers)`). Throws `ConflictError('revision_conflict')`.
    */
-  save(servers: McpServer[], invalidEntries: unknown[], expectedRevision: string | null): Promise<string>;
+  save(
+    servers: McpServer[],
+    invalidEntries: unknown[],
+    expectedRevision: string | null
+  ): Promise<string>;
 }
 
 type McpSync = NonNullable<McpSettingsResponse['sync']>;
@@ -140,7 +149,8 @@ export class McpServerRegistry {
 function validateNames(servers: readonly McpServer[]): void {
   const names = new Set<string>();
   for (const server of servers) {
-    if (names.has(server.name)) throw new InvalidMcpServersError(`Duplicate server name: ${server.name}`);
+    if (names.has(server.name))
+      throw new InvalidMcpServersError(`Duplicate server name: ${server.name}`);
     names.add(server.name);
   }
 }

@@ -1,29 +1,27 @@
-import { AppError, consoleLogger } from '@artemis/core';
+import { AppError, consoleLogger, uuid } from '@artemis/core';
 
 const logger = consoleLogger('http');
 
-export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    readonly code?: string
-  ) {
-    super(message);
+/** An AppError raised at the HTTP edge (a non-2xx answer or a malformed exchange). */
+export class HttpError extends AppError {
+  constructor(status: number, message: string, code = 'http_error') {
+    super(code, message, status);
     this.name = 'HttpError';
   }
 }
 
 /**
- * `{error, code?, requestId?}` JSON response. `AppError`/`HttpError` carry their
- * own status; other errors use `status` (default 500). 5xx responses hide the
- * message, return a request id and log the stack instead.
+ * `{error, code?, requestId?}` JSON response. An `AppError` (HttpError included)
+ * carries its own status and code; other errors use `status` (default 500). 5xx
+ * responses hide the message, return a request id and log the stack instead.
  */
 export function errorResponse(error: unknown, status = 500): Response {
-  const declared = error instanceof AppError || error instanceof HttpError ? error.status : status;
-  const resolved = Number.isInteger(declared) && declared >= 400 && declared <= 599 ? declared : 500;
-  const code = error instanceof AppError || error instanceof HttpError ? error.code : undefined;
+  const declared = error instanceof AppError ? error.status : status;
+  const resolved =
+    Number.isInteger(declared) && declared >= 400 && declared <= 599 ? declared : 500;
+  const code = error instanceof AppError ? error.code : undefined;
   if (resolved >= 500) {
-    const requestId = crypto.randomUUID();
+    const requestId = uuid();
     logger.error(`request=${requestId} failed`, {
       stack: error instanceof Error ? (error.stack ?? error.message) : String(error),
     });
@@ -41,7 +39,10 @@ export function errorResponse(error: unknown, status = 500): Response {
  * not valid JSON, or not a JSON object. Bytes are counted while streaming, so
  * a body without `Content-Length` cannot exceed `maxBytes` in memory.
  */
-export async function jsonObject(request: Request, maxBytes = 1_000_000): Promise<Record<string, unknown> | null> {
+export async function jsonObject(
+  request: Request,
+  maxBytes = 1_000_000
+): Promise<Record<string, unknown> | null> {
   const declared = Number(request.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) return null;
   const bytes = await readBounded(request, maxBytes);

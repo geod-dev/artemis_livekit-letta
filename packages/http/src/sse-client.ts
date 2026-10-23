@@ -10,7 +10,10 @@ import { HttpError } from './errors.ts';
  * cancels the body and throws its reason. A payload that is not JSON throws
  * `HttpError` 502 (`bad_event`).
  */
-export async function* readSse<E = unknown>(body: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncIterable<E> {
+export async function* readSse<E = unknown>(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal
+): AsyncIterable<E> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const onAbort = () => {

@@ -24,14 +24,25 @@ class MemorySettingsStore implements McpSettingsStore {
   afterLoad: (() => void) | null = null;
 
   async load() {
-    const loaded = { servers: this.servers, invalidEntries: this.invalidEntries, revision: this.revision };
+    const loaded = {
+      servers: this.servers,
+      invalidEntries: this.invalidEntries,
+      revision: this.revision,
+    };
     this.afterLoad?.();
     return loaded;
   }
 
-  async save(servers: McpServer[], invalidEntries: unknown[], expectedRevision: string | null): Promise<string> {
+  async save(
+    servers: McpServer[],
+    invalidEntries: unknown[],
+    expectedRevision: string | null
+  ): Promise<string> {
     if (expectedRevision !== this.revision) {
-      throw new ConflictError('revision_conflict', 'MCP settings were changed by another save; reload and retry');
+      throw new ConflictError(
+        'revision_conflict',
+        'MCP settings were changed by another save; reload and retry'
+      );
     }
     this.saves += 1;
     this.servers = structuredClone(servers);
@@ -79,9 +90,15 @@ describe('managed and manual servers', () => {
   test('the editor cannot create managed entries or take a connected device name', async () => {
     const { registry, store } = await registryWith([manual]);
     await registry.setManaged([device]);
-    await assert.rejects(registry.save([{ ...manual, name: 'device_laptop' }], null), /connected device/);
+    await assert.rejects(
+      registry.save([{ ...manual, name: 'device_laptop' }], null),
+      /connected device/
+    );
     await assert.rejects(registry.save([device], null), /cannot be edited/);
-    await assert.rejects(registry.setManaged([{ ...manual, name: 'search' }]), /not connection-managed/);
+    await assert.rejects(
+      registry.setManaged([{ ...manual, name: 'search' }]),
+      /not connection-managed/
+    );
     await assert.rejects(
       registry.setManaged([device, { ...device }]),
       /Duplicate server name: device_laptop/
@@ -111,11 +128,14 @@ describe('revisions', () => {
     const { registry, store } = await registryWith([manual]);
     const stale = (await registry.settings()).revision;
     await registry.save([{ ...manual, url: 'https://first.example/mcp' }], stale);
-    await assert.rejects(registry.save([{ ...manual, name: 'renamed' }], stale), (error: unknown) => {
-      assert.ok(error instanceof ConflictError);
-      assert.equal(error.code, 'revision_conflict');
-      return true;
-    });
+    await assert.rejects(
+      registry.save([{ ...manual, name: 'renamed' }], stale),
+      (error: unknown) => {
+        assert.ok(error instanceof ConflictError);
+        assert.equal(error.code, 'revision_conflict');
+        return true;
+      }
+    );
     assert.deepEqual(names(store.servers), ['search']);
     assert.equal(store.servers[0]?.url, 'https://first.example/mcp');
   });
@@ -174,12 +194,16 @@ describe('catalog sync and settings', () => {
 
   test('the bridge section mirrors the catalog status', async () => {
     const store = new MemorySettingsStore();
-    const registry = new McpServerRegistry(store, async () => {}, () => ({
-      servers: ['search'],
-      tools: 3,
-      failures: { notes: '401' },
-      refreshedAt: null,
-    }));
+    const registry = new McpServerRegistry(
+      store,
+      async () => {},
+      () => ({
+        servers: ['search'],
+        tools: 3,
+        failures: { notes: '401' },
+        refreshedAt: null,
+      })
+    );
     await registry.load();
     assert.deepEqual((await registry.settings()).bridge, {
       servers: ['search'],

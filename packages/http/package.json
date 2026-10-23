@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "HTTP helpers shared by services: SSE server stream, SSE client parser, bearer auth, errors.",
+  "description": "HTTP helpers shared by apps/gateway and apps/agent-server: SSE server stream, SSE client parser, bearer auth, and the error response.",
   "exports": {
     ".": "./src/index.ts"
   },

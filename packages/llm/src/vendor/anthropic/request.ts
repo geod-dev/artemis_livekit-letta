@@ -1,5 +1,11 @@
 import type * as Messages from '@anthropic-ai/sdk/resources/messages';
-import type { LlmMessage, LlmRequest, ToolDefinition, UserContent, AssistantContent } from '../../types.ts';
+import type {
+  LlmMessage,
+  LlmRequest,
+  ToolDefinition,
+  UserContent,
+  AssistantContent,
+} from '../../types.ts';
 
 /** Beta flag and context-management edit for server-side compaction. */
 export const COMPACTION_BETA = 'compact-2026-01-12';
@@ -60,7 +66,8 @@ export function buildAnthropicCall(request: LlmRequest, cacheTtl: '5m' | '1h'): 
  * (three of Anthropic's four allowed). Changing any earlier byte invalidates them.
  */
 function applyCacheBreakpoints(params: AnthropicCallPlan['params'], ttl: '5m' | '1h'): void {
-  const control: CacheControl = ttl === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' };
+  const control: CacheControl =
+    ttl === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' };
 
   const tools = params.tools;
   const lastTool = tools?.[tools.length - 1];
@@ -108,8 +115,10 @@ function toUserBlock(block: UserContent): Messages.ContentBlockParam {
       return {
         type: 'tool_result',
         tool_use_id: block.toolUseId,
-        content: block.content.map(part =>
-          part.type === 'text' ? { type: 'text' as const, text: part.text } : imageParam(part.mediaType, part.data)
+        content: block.content.map((part) =>
+          part.type === 'text'
+            ? { type: 'text' as const, text: part.text }
+            : imageParam(part.mediaType, part.data)
         ),
         is_error: block.isError,
       };
@@ -133,7 +142,14 @@ function toAssistantBlocks(block: AssistantContent): Messages.ContentBlockParam[
       }
       return [];
     case 'tool_use':
-      return [{ type: 'tool_use', id: block.id, name: block.name, input: block.input as Record<string, unknown> }];
+      return [
+        {
+          type: 'tool_use',
+          id: block.id,
+          name: block.name,
+          input: block.input as Record<string, unknown>,
+        },
+      ];
     case 'provider':
       return block.provider === 'anthropic' ? [block.block as Messages.ContentBlockParam] : [];
   }
@@ -142,6 +158,10 @@ function toAssistantBlocks(block: AssistantContent): Messages.ContentBlockParam[
 function imageParam(mediaType: string, data: string): Messages.ImageBlockParam {
   return {
     type: 'image',
-    source: { type: 'base64', media_type: mediaType as Messages.Base64ImageSource['media_type'], data },
+    source: {
+      type: 'base64',
+      media_type: mediaType as Messages.Base64ImageSource['media_type'],
+      data,
+    },
   };
 }

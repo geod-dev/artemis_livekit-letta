@@ -30,13 +30,17 @@ export async function oneShot(input: {
 
   if (signal?.aborted) throw signal.reason ?? new Error('Aborted');
   if (response.stopReason === 'aborted') throw new Error('Aborted');
-  if (response.stopReason === 'refusal') throw new LlmError('refusal', 'The model refused the request', false);
+  if (response.stopReason === 'refusal')
+    throw new LlmError('refusal', 'The model refused the request', false);
   if (response.stopReason === 'error') throw new LlmError('unknown', 'The model call failed', true);
 
   return response.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('');
 }
 
-function combineSignals(signal: AbortSignal | undefined, timeoutMs: number | undefined): AbortSignal | undefined {
+function combineSignals(
+  signal: AbortSignal | undefined,
+  timeoutMs: number | undefined
+): AbortSignal | undefined {
   const timeout = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
   if (signal && timeout) return AbortSignal.any([signal, timeout]);
   return signal ?? timeout;

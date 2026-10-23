@@ -15,7 +15,13 @@ class StubProvider extends LlmProvider {
   }
 
   modelInfo(model: string): ModelInfo {
-    return { model, contextWindow: 1, maxOutputTokens: 1, supportsThinking: false, supportsImages: false };
+    return {
+      model,
+      contextWindow: 1,
+      maxOutputTokens: 1,
+      supportsThinking: false,
+      supportsImages: false,
+    };
   }
 }
 
@@ -32,7 +38,10 @@ test('parseModelHandle splits at the first slash', () => {
 
 test('parseModelHandle rejects handles without a provider or a model', () => {
   for (const handle of ['claude-haiku-5-5', '/claude', 'anthropic/', '']) {
-    assert.throws(() => parseModelHandle(handle), (error: unknown) => error instanceof AppError && error.code === 'invalid_model_handle');
+    assert.throws(
+      () => parseModelHandle(handle),
+      (error: unknown) => error instanceof AppError && error.code === 'invalid_model_handle'
+    );
   }
 });
 
@@ -46,9 +55,15 @@ test('ProviderRegistry resolves a handle to its provider and model', () => {
 
 test('ProviderRegistry rejects an unknown provider prefix', () => {
   const registry = new ProviderRegistry([new StubProvider('anthropic')]);
-  assert.throws(() => registry.resolve('openai/gpt-x'), (error: unknown) => error instanceof AppError && error.code === 'unknown_provider');
+  assert.throws(
+    () => registry.resolve('openai/gpt-x'),
+    (error: unknown) => error instanceof AppError && error.code === 'unknown_provider'
+  );
 });
 
 test('ProviderRegistry rejects duplicate provider ids', () => {
-  assert.throws(() => new ProviderRegistry([new StubProvider('anthropic'), new StubProvider('anthropic')]), /Duplicate LLM provider id/);
+  assert.throws(
+    () => new ProviderRegistry([new StubProvider('anthropic'), new StubProvider('anthropic')]),
+    /Duplicate LLM provider id/
+  );
 });

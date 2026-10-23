@@ -54,9 +54,9 @@ export class AnthropicLlmProvider extends LlmProvider {
           ? this.client.beta.messages.stream(plan.params, { signal })
           : this.client.messages.stream(plan.params, { signal });
       },
-      apply: event => mapper.apply(event),
+      apply: (event) => mapper.apply(event),
       stopReason: () => mapper.stopReason,
-      isAbort: error => isAbort(error, signal),
+      isAbort: (error) => isAbort(error, signal),
       toError,
     });
   }
@@ -79,5 +79,10 @@ function toError(error: unknown): LlmError {
     return llmErrorFromHttp(error.status, error.message, error);
   }
   const message = error instanceof Error ? error.message : String(error);
-  return new LlmError('unknown', message, false, error === undefined ? undefined : { cause: error });
+  return new LlmError(
+    'unknown',
+    message,
+    false,
+    error === undefined ? undefined : { cause: error }
+  );
 }

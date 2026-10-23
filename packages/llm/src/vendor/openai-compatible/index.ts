@@ -45,9 +45,9 @@ export class OpenAiCompatibleLlmProvider extends LlmProvider {
     const mapper = new OpenAiStreamMapper(acc);
     return runModelStep(acc, {
       open: () => this.client.chat.completions.create(buildChatRequest(request), { signal }),
-      apply: chunk => mapper.apply(chunk),
+      apply: (chunk) => mapper.apply(chunk),
       stopReason: () => mapper.stopReason,
-      isAbort: error => isAbort(error, signal),
+      isAbort: (error) => isAbort(error, signal),
       toError,
     });
   }
@@ -70,5 +70,10 @@ function toError(error: unknown): LlmError {
     return llmErrorFromHttp(error.status, error.message, error);
   }
   const message = error instanceof Error ? error.message : String(error);
-  return new LlmError('unknown', message, false, error === undefined ? undefined : { cause: error });
+  return new LlmError(
+    'unknown',
+    message,
+    false,
+    error === undefined ? undefined : { cause: error }
+  );
 }

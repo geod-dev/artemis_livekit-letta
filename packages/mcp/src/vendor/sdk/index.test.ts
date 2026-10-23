@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { McpServer } from '@artemis/contracts/chat-types';
-import { MemoryArtifactSink } from '../../test-support.ts';
+import { MemoryArtifactSink } from '../../testing/support.ts';
 import { SdkMcpClient, adaptListedTool } from './index.ts';
 
 describe('adaptListedTool', () => {
@@ -30,7 +30,10 @@ describe('adaptListedTool', () => {
   });
 
   test('refuses malformed schema, annotation and description values', () => {
-    assert.throws(() => adaptListedTool({ name: 'lookup', inputSchema: [] }), /invalid input schema/);
+    assert.throws(
+      () => adaptListedTool({ name: 'lookup', inputSchema: [] }),
+      /invalid input schema/
+    );
     assert.throws(
       () => adaptListedTool({ name: 'lookup', annotations: { readOnlyHint: 'yes' } }),
       /invalid read-only annotation/
@@ -40,8 +43,15 @@ describe('adaptListedTool', () => {
 });
 
 describe('SdkMcpClient over stdio', () => {
-  const fixture = fileURLToPath(new URL('./fixtures/stdio-server.mjs', import.meta.url));
-  const server: McpServer = { name: 'fixture', transport: 'stdio', command: process.execPath, args: [fixture] };
+  const fixture = fileURLToPath(
+    new URL('../../../test/fixtures/stdio-server.mjs', import.meta.url)
+  );
+  const server: McpServer = {
+    name: 'fixture',
+    transport: 'stdio',
+    command: process.execPath,
+    args: [fixture],
+  };
 
   test('lists tools, calls them, saves images as artifacts, and closes its session', async () => {
     const sink = new MemoryArtifactSink();
@@ -57,7 +67,12 @@ describe('SdkMcpClient over stdio', () => {
         ]
       );
 
-      const echo = await client.callTool(server, 'echo', { text: 'hi there' }, { conversationId: 'conv_1' });
+      const echo = await client.callTool(
+        server,
+        'echo',
+        { text: 'hi there' },
+        { conversationId: 'conv_1' }
+      );
       assert.equal(echo.isError, false);
       assert.match(echo.text, /"text": "hi there"/);
       assert.deepEqual(echo.artifacts, []);
@@ -77,13 +92,20 @@ describe('SdkMcpClient over stdio', () => {
 
   test('a server that cannot be started is an error, not a hang', async () => {
     const client = new SdkMcpClient({ artifacts: new MemoryArtifactSink(), deadlineMs: 20_000 });
-    const broken: McpServer = { name: 'broken', transport: 'stdio', command: 'artemis-no-such-binary-xyz' };
+    const broken: McpServer = {
+      name: 'broken',
+      transport: 'stdio',
+      command: 'artemis-no-such-binary-xyz',
+    };
     await assert.rejects(client.listTools(broken));
     await client.close();
   });
 
   test('a stdio server without a command is refused before spawning anything', async () => {
     const client = new SdkMcpClient({ artifacts: new MemoryArtifactSink() });
-    await assert.rejects(client.listTools({ name: 'nocommand', transport: 'stdio' }), /has no command/);
+    await assert.rejects(
+      client.listTools({ name: 'nocommand', transport: 'stdio' }),
+      /has no command/
+    );
   });
 });

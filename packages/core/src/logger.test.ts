@@ -32,3 +32,20 @@ test('debug output is only emitted when LOG_LEVEL is debug', (t) => {
     else process.env.LOG_LEVEL = previous;
   }
 });
+
+test('an explicit level wins over the environment, and the environment is read once at creation', (t) => {
+  const debug = t.mock.method(console, 'debug', () => {});
+  const previous = process.env.LOG_LEVEL;
+  try {
+    delete process.env.LOG_LEVEL;
+    const quiet = consoleLogger('x', { level: 'warn' });
+    const plain = consoleLogger('y');
+    process.env.LOG_LEVEL = 'debug';
+    quiet.child('z').debug('never');
+    plain.debug('hidden: level was read when the logger was created');
+    assert.equal(debug.mock.callCount(), 0);
+  } finally {
+    if (previous === undefined) delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = previous;
+  }
+});

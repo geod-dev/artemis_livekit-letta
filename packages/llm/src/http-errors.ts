@@ -9,7 +9,11 @@ export function llmNetworkError(message: string, cause?: unknown): LlmError {
  * Maps an HTTP status from any vendor SDK to a provider-neutral `LlmError`.
  * Vendor adapters detect their SDK's error classes and call this with the status.
  */
-export function llmErrorFromHttp(status: number | undefined, message: string, cause?: unknown): LlmError {
+export function llmErrorFromHttp(
+  status: number | undefined,
+  message: string,
+  cause?: unknown
+): LlmError {
   const options = cause === undefined ? undefined : { cause };
   if (status === undefined) return new LlmError('unknown', message, false, options);
   if (status === 429) return new LlmError('rate_limited', message, true, options);
@@ -23,4 +27,5 @@ export function llmErrorFromHttp(status: number | undefined, message: string, ca
   return new LlmError('invalid_request', message, false, options);
 }
 
-const CONTEXT_OVERFLOW = /prompt is too long|context (length|window)|too many tokens|maximum context/i;
+const CONTEXT_OVERFLOW =
+  /prompt is too long|context (length|window)|too many tokens|maximum context/i;

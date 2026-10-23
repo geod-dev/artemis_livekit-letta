@@ -1,33 +1,37 @@
 import { createHash } from 'node:crypto';
+import { AppError } from '@artemis/core';
 import type { McpServer, McpTransport } from '@artemis/contracts/chat-types';
 
 export type { McpServer, McpTransport };
 
 /** A payload we refuse to store. Surfaced to callers as a 400. */
-export class InvalidMcpServersError extends Error {
+export class InvalidMcpServersError extends AppError {
   constructor(
     message: string,
     readonly entries: Array<{ index: number; diagnostic: string; value: unknown }> = []
   ) {
-    super(message);
+    super('invalid_mcp_servers', message, 400);
     this.name = 'InvalidMcpServersError';
   }
 }
 
-export interface InvalidMcpEntry {
+interface InvalidMcpEntry {
   index: number;
   value: unknown;
   diagnostic: string;
 }
 
 /** Shared MCP list limit (manual servers only; device servers come from connections). */
-export const MAX_MCP_SERVERS = 100;
+const MAX_MCP_SERVERS = 100;
 
 function isStringRecord(value: unknown): value is Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   return Object.entries(value).every(
     ([key, entry]) =>
-      key.trim().length > 0 && !/[\r\n]/.test(key) && typeof entry === 'string' && !/[\r\n]/.test(entry)
+      key.trim().length > 0 &&
+      !/[\r\n]/.test(key) &&
+      typeof entry === 'string' &&
+      !/[\r\n]/.test(entry)
   );
 }
 
@@ -42,7 +46,16 @@ function validateServer(value: unknown, index: number): McpServer {
     throw new InvalidMcpServersError(`Server ${index} is not an object`);
   }
   const raw = value as Record<string, unknown>;
-  const allowed = new Set(['name', 'transport', 'command', 'args', 'url', 'env', 'headers', 'managed']);
+  const allowed = new Set([
+    'name',
+    'transport',
+    'command',
+    'args',
+    'url',
+    'env',
+    'headers',
+    'managed',
+  ]);
   const extra = Object.keys(raw).find((key) => !allowed.has(key));
   if (extra) throw new InvalidMcpServersError(`Server ${index} has an unsupported field: ${extra}`);
   if (raw.managed !== undefined) {
@@ -52,7 +65,9 @@ function validateServer(value: unknown, index: number): McpServer {
   if (!name) throw new InvalidMcpServersError(`Server ${index} has no name`);
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
     // The name is the tool namespace, `mcp__<name>__<tool>`.
-    throw new InvalidMcpServersError(`Server "${name}": use letters, digits, "-" and "_" only in a name`);
+    throw new InvalidMcpServersError(
+      `Server "${name}": use letters, digits, "-" and "_" only in a name`
+    );
   }
 
   const transport = (typeof raw.transport === 'string' ? raw.transport : 'stdio') as McpTransport;
@@ -77,13 +92,16 @@ function validateServer(value: unknown, index: number): McpServer {
     }
   } else {
     if (raw.command !== undefined || raw.args !== undefined || raw.env !== undefined) {
-      throw new InvalidMcpServersError(`Server "${name}" has stdio-only fields for a remote transport`);
+      throw new InvalidMcpServersError(
+        `Server "${name}" has stdio-only fields for a remote transport`
+      );
     }
     const url = typeof raw.url === 'string' ? raw.url.trim() : '';
     if (!url) throw new InvalidMcpServersError(`Server "${name}" has no url`);
     try {
       const parsed = new URL(url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('unsupported protocol');
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+        throw new Error('unsupported protocol');
     } catch {
       throw new InvalidMcpServersError(`Server "${name}" has an invalid url: ${url}`);
     }
@@ -120,7 +138,8 @@ export function validateMcpServers(value: unknown): McpServer[] {
   const servers = value.map(validateServer);
   const names = new Set<string>();
   for (const server of servers) {
-    if (names.has(server.name)) throw new InvalidMcpServersError(`Duplicate server name: ${server.name}`);
+    if (names.has(server.name))
+      throw new InvalidMcpServersError(`Duplicate server name: ${server.name}`);
     names.add(server.name);
   }
   return servers;
@@ -141,7 +160,8 @@ export function readMcpEntries(entries: readonly unknown[]): {
   entries.forEach((entry, index) => {
     try {
       const server = validateServer(entry, index);
-      if (names.has(server.name)) throw new InvalidMcpServersError(`Duplicate server name: ${server.name}`);
+      if (names.has(server.name))
+        throw new InvalidMcpServersError(`Duplicate server name: ${server.name}`);
       names.add(server.name);
       servers.push(server);
     } catch (error) {
@@ -163,7 +183,9 @@ export function describeInvalidEntry(value: unknown): string {
 
 /** sha256 of the canonical JSON of the list (object keys sorted): the `revision` / ETag. */
 export function mcpRevision(servers: readonly McpServer[]): string {
-  return createHash('sha256').update(JSON.stringify(sortKeys(servers))).digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify(sortKeys(servers)))
+    .digest('hex');
 }
 
 function sortKeys(value: unknown): unknown {

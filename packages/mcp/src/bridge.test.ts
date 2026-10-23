@@ -5,7 +5,7 @@ import type { ToolContext } from '@artemis/tools';
 import { McpCatalog } from './catalog.ts';
 import { createMcpBridgeTools } from './bridge.ts';
 import { type McpCallResult } from './client.ts';
-import { FakeMcpClient } from './test-support.ts';
+import { FakeMcpClient } from './testing/support.ts';
 
 const WEB: McpServer = { name: 'web', transport: 'http', url: 'https://web.example.com/mcp' };
 const NOTES: McpServer = { name: 'notes', transport: 'sse', url: 'https://notes.example.com/sse' };
@@ -128,7 +128,10 @@ describe('mcp_call and mcp_call_write', () => {
 
   test('malformed arguments are refused before the server is called', async () => {
     const { client, run } = setup();
-    const answer = await run('mcp_call_write', { tool: 'mcp__notes__create_note', arguments: [1, 2] });
+    const answer = await run('mcp_call_write', {
+      tool: 'mcp__notes__create_note',
+      arguments: [1, 2],
+    });
     assert.equal(answer.isError, true);
     assert.match((answer.content[0] as { text: string }).text, /must be an object/);
     assert.deepEqual(client.calls, []);
@@ -140,7 +143,10 @@ describe('mcp_call and mcp_call_write', () => {
     const { run } = setup(client);
     const answer = await run('mcp_call', { tool: 'mcp__web__web_search' });
     assert.equal(answer.isError, true);
-    assert.match((answer.content[0] as { text: string }).text, /could not be reached: connection refused/);
+    assert.match(
+      (answer.content[0] as { text: string }).text,
+      /could not be reached: connection refused/
+    );
   });
 
   test('results carry display.mcp with the saved artifacts, and small images go to the model inline', async () => {
@@ -188,7 +194,12 @@ describe('mcp_call and mcp_call_write', () => {
   });
 
   test('an empty successful result says so instead of sending nothing', async () => {
-    const client = new FakeMcpClient(CATALOG, () => ({ text: '', isError: false, images: [], artifacts: [] }));
+    const client = new FakeMcpClient(CATALOG, () => ({
+      text: '',
+      isError: false,
+      images: [],
+      artifacts: [],
+    }));
     const { run } = setup(client);
     const result = await run('mcp_call', { tool: 'mcp__web__web_search' });
     assert.equal((result.content[0] as { text: string }).text, '(no output)');

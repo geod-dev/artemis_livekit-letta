@@ -1,6 +1,5 @@
 /**
- * `<system-reminder>` for the next user turn (port of
- * pre-refactor assistant/mcp-context.ts): the full list when `previous` is null,
+ * `<system-reminder>` for the next user turn: the full list when `previous` is null,
  * otherwise Added/Removed; undefined when nothing changed.
  */
 export function mcpToolsReminder(
@@ -11,7 +10,8 @@ export function mcpToolsReminder(
   const previous = previousNames === null ? null : new Set(previousNames);
   const added = previous === null ? current : current.filter((name) => !previous.has(name));
   const currentSet = new Set(current);
-  const removed = previous === null ? [] : [...previous].filter((name) => !currentSet.has(name)).sort();
+  const removed =
+    previous === null ? [] : [...previous].filter((name) => !currentSet.has(name)).sort();
   if (!added.length && !removed.length) return undefined;
 
   const safeName = (name: string) =>
@@ -42,7 +42,9 @@ export function mcpToolsSection(
 ): string {
   if (tools.length === 0) return 'No MCP tools are available.';
   const lines = tools.map((tool) => {
-    const access = tool.readOnly ? 'read-only, run with mcp_call' : 'may change things, run with mcp_call_write';
+    const access = tool.readOnly
+      ? 'read-only, run with mcp_call'
+      : 'may change things, run with mcp_call_write';
     return `- ${tool.qualified} (${access}): ${oneLine(tool.description) || 'No description.'}`;
   });
   return [
@@ -53,5 +55,7 @@ export function mcpToolsSection(
 
 function oneLine(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > SECTION_DESCRIPTION_MAX ? `${flat.slice(0, SECTION_DESCRIPTION_MAX - 3)}...` : flat;
+  return flat.length > SECTION_DESCRIPTION_MAX
+    ? `${flat.slice(0, SECTION_DESCRIPTION_MAX - 3)}...`
+    : flat;
 }

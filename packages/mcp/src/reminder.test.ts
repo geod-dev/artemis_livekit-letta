@@ -6,7 +6,13 @@ describe('mcpToolsReminder', () => {
   test('the first turn lists every tool, sorted and de-duplicated', () => {
     assert.equal(
       mcpToolsReminder(['mcp__b__x', 'mcp__a__y', 'mcp__a__y'], null),
-      ['<system-reminder>', 'Available MCP tools:', 'mcp__a__y', 'mcp__b__x', '</system-reminder>'].join('\n')
+      [
+        '<system-reminder>',
+        'Available MCP tools:',
+        'mcp__a__y',
+        'mcp__b__x',
+        '</system-reminder>',
+      ].join('\n')
     );
   });
 
@@ -48,7 +54,10 @@ describe('mcpToolsSection', () => {
       { qualified: 'mcp__notes__create', description: '', readOnly: false },
     ]);
     assert.match(section, /- mcp__web__search \(read-only, run with mcp_call\): Search the web\./);
-    assert.match(section, /- mcp__notes__create \(may change things, run with mcp_call_write\): No description\./);
+    assert.match(
+      section,
+      /- mcp__notes__create \(may change things, run with mcp_call_write\): No description\./
+    );
     assert.match(section, /untrusted data/);
   });
 

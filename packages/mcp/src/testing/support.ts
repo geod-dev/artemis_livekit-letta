@@ -1,5 +1,5 @@
 import type { ChatAttachment, McpServer } from '@artemis/contracts/chat-types';
-import { type ArtifactSink, type ListedTool, McpClient, type McpCallResult } from './client.ts';
+import { type ArtifactSink, type ListedTool, McpClient, type McpCallResult } from '../client.ts';
 
 export interface FakeTool {
   name: string;
@@ -7,7 +7,11 @@ export interface FakeTool {
   readOnly?: boolean;
 }
 
-export type FakeAnswer = (server: string, tool: string, args: Record<string, unknown>) => McpCallResult;
+export type FakeAnswer = (
+  server: string,
+  tool: string,
+  args: Record<string, unknown>
+) => McpCallResult;
 
 export const EMPTY_RESULT: McpCallResult = { text: '', isError: false, images: [], artifacts: [] };
 
@@ -63,7 +67,12 @@ export interface SavedArtifact {
 export class MemoryArtifactSink implements ArtifactSink {
   readonly saved: SavedArtifact[] = [];
 
-  async save(input: { conversationId: string; name: string; mimeType: string; bytes: Uint8Array }): Promise<ChatAttachment> {
+  async save(input: {
+    conversationId: string;
+    name: string;
+    mimeType: string;
+    bytes: Uint8Array;
+  }): Promise<ChatAttachment> {
     const attachment: ChatAttachment = {
       path: `data/artifacts/${input.conversationId}/${input.name}`,
       name: input.name,

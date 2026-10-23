@@ -1,3 +1,4 @@
+import type { ImageMediaType } from '@artemis/core';
 import type { ChatAttachment, McpServer } from '@artemis/contracts/chat-types';
 
 /** A tool as `tools/list` describes it (the subset used). */
@@ -8,11 +9,8 @@ export interface ListedTool {
   annotations?: { readOnlyHint?: boolean };
 }
 
-/** Image types the model accepts inline (same union as `ImageBlock` in `@artemis/llm`). */
-export type InlineImageType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
-
 export interface InlineImage {
-  mediaType: InlineImageType;
+  mediaType: ImageMediaType;
   /** Base64, no `data:` prefix. */
   data: string;
 }
@@ -29,7 +27,12 @@ export interface McpCallResult {
 
 /** Where binary MCP results are written (backed by the WorkspaceTransport). */
 export interface ArtifactSink {
-  save(input: { conversationId: string; name: string; mimeType: string; bytes: Uint8Array }): Promise<ChatAttachment>;
+  save(input: {
+    conversationId: string;
+    name: string;
+    mimeType: string;
+    bytes: Uint8Array;
+  }): Promise<ChatAttachment>;
 }
 
 /**

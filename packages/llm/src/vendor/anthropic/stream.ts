@@ -5,8 +5,7 @@ import type { StopReason } from '../../types.ts';
 
 /** Raw events from `messages.stream` (plain) or `beta.messages.stream` (compaction). */
 export type AnthropicRawEvent =
-  | Messages.RawMessageStreamEvent
-  | BetaMessages.BetaRawMessageStreamEvent;
+  Messages.RawMessageStreamEvent | BetaMessages.BetaRawMessageStreamEvent;
 
 type ContentBlockStart =
   | Messages.RawContentBlockStartEvent['content_block']
@@ -94,7 +93,10 @@ export class AnthropicStreamMapper {
         return;
       }
       case 'tool_use': {
-        const index = this.acc.startBlock('tool_use', { toolUseId: block.id, toolName: block.name });
+        const index = this.acc.startBlock('tool_use', {
+          toolUseId: block.id,
+          toolName: block.name,
+        });
         this.indexes.set(sdkIndex, index);
         return;
       }
@@ -162,7 +164,8 @@ export class AnthropicStreamMapper {
     if (!usage) return;
     if (usage.input_tokens != null) this.inputTokens = usage.input_tokens;
     if (usage.cache_read_input_tokens != null) this.cacheReadTokens = usage.cache_read_input_tokens;
-    if (usage.cache_creation_input_tokens != null) this.cacheWriteTokens = usage.cache_creation_input_tokens;
+    if (usage.cache_creation_input_tokens != null)
+      this.cacheWriteTokens = usage.cache_creation_input_tokens;
     if (usage.output_tokens != null) this.outputTokens = usage.output_tokens;
     this.acc.usage({
       // Anthropic reports uncached input separately from cache reads and writes.

@@ -8,8 +8,16 @@ function request(overrides: Partial<LlmRequest> = {}): LlmRequest {
     model: 'claude-haiku-5-5',
     system: 'You are the assistant.',
     tools: [
-      { name: 'read_file', description: 'Read a file', inputSchema: { type: 'object', properties: { path: { type: 'string' } } } },
-      { name: 'bash', description: 'Run a command', inputSchema: { type: 'object', properties: {} } },
+      {
+        name: 'read_file',
+        description: 'Read a file',
+        inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+      },
+      {
+        name: 'bash',
+        description: 'Run a command',
+        inputSchema: { type: 'object', properties: {} },
+      },
     ],
     messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
     maxTokens: 4096,
@@ -24,17 +32,23 @@ test('adaptive thinking shows summaries only when reasoning is requested; never 
   assert.equal(omitted.max_tokens, 4096);
   for (const key of ['temperature', 'top_p', 'top_k']) assert.equal(key in omitted, false);
 
-  const summarized = buildAnthropicCall(request({ showReasoning: true }), '5m').params as unknown as Record<string, unknown>;
+  const summarized = buildAnthropicCall(request({ showReasoning: true }), '5m')
+    .params as unknown as Record<string, unknown>;
   assert.deepEqual(summarized.thinking, { type: 'adaptive', display: 'summarized' });
 
-  const disabled = buildAnthropicCall(request({ thinking: 'disabled' }), '5m').params as unknown as Record<string, unknown>;
+  const disabled = buildAnthropicCall(request({ thinking: 'disabled' }), '5m')
+    .params as unknown as Record<string, unknown>;
   assert.deepEqual(disabled.thinking, { type: 'disabled' });
 });
 
 test('effort maps to output_config and every tool is eager-streamed', () => {
   const plan = buildAnthropicCall(request({ effort: 'low' }), '5m');
   assert.deepEqual(plan.params.output_config, { effort: 'low' });
-  assert.ok(plan.params.tools?.every(tool => (tool as { eager_input_streaming?: boolean }).eager_input_streaming === true));
+  assert.ok(
+    plan.params.tools?.every(
+      (tool) => (tool as { eager_input_streaming?: boolean }).eager_input_streaming === true
+    )
+  );
 });
 
 test('parallel tool calls are on by default and can be disabled', () => {
@@ -59,7 +73,14 @@ test('cache breakpoints sit on the last tool, the system block and the last cach
         },
         {
           role: 'user',
-          content: [{ type: 'tool_result', toolUseId: 't1', content: [{ type: 'text', text: 'a.txt' }], isError: false }],
+          content: [
+            {
+              type: 'tool_result',
+              toolUseId: 't1',
+              content: [{ type: 'text', text: 'a.txt' }],
+              isError: false,
+            },
+          ],
         },
       ],
     }),
@@ -74,9 +95,16 @@ test('cache breakpoints sit on the last tool, the system block and the last cach
   assert.deepEqual(params.tools[0]?.cache_control, undefined);
   assert.deepEqual(params.tools[1]?.cache_control, { type: 'ephemeral', ttl: '1h' });
   assert.deepEqual(params.system, [
-    { type: 'text', text: 'You are the assistant.', cache_control: { type: 'ephemeral', ttl: '1h' } },
+    {
+      type: 'text',
+      text: 'You are the assistant.',
+      cache_control: { type: 'ephemeral', ttl: '1h' },
+    },
   ]);
-  assert.deepEqual(params.messages.at(-1)?.content[0]?.cache_control, { type: 'ephemeral', ttl: '1h' });
+  assert.deepEqual(params.messages.at(-1)?.content[0]?.cache_control, {
+    type: 'ephemeral',
+    ttl: '1h',
+  });
 
   const breakpoints = JSON.stringify(plan.params).match(/"cache_control"/g) ?? [];
   assert.equal(breakpoints.length, 3);
@@ -118,8 +146,14 @@ test('compaction provider blocks replay verbatim only for Anthropic and switch o
     request({
       compaction: true,
       messages: [
-        { role: 'assistant', content: [{ type: 'provider', provider: 'anthropic', block: compaction }] },
-        { role: 'assistant', content: [{ type: 'provider', provider: 'other', block: { type: 'x' } }] },
+        {
+          role: 'assistant',
+          content: [{ type: 'provider', provider: 'anthropic', block: compaction }],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'provider', provider: 'other', block: { type: 'x' } }],
+        },
         { role: 'user', content: [{ type: 'text', text: 'next' }] },
       ],
     }),
@@ -170,6 +204,9 @@ test('tool results carry error flags and image parts; images in user turns are b
 });
 
 test('provider options are merged last as the escape hatch', () => {
-  const plan = buildAnthropicCall(request({ providerOptions: { metadata: { user_id: 'u1' } } }), '5m');
+  const plan = buildAnthropicCall(
+    request({ providerOptions: { metadata: { user_id: 'u1' } } }),
+    '5m'
+  );
   assert.deepEqual(plan.params.metadata, { user_id: 'u1' });
 });

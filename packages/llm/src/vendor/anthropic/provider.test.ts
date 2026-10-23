@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { LlmError } from '../../provider.ts';
 import type { LlmRequest, LlmStreamEvent } from '../../types.ts';
-import { jsonResponse, openStream, recordingFetch, sseResponse, type SseEvent } from '../../testing/sse.ts';
+import {
+  jsonResponse,
+  openStream,
+  recordingFetch,
+  sseResponse,
+  type SseEvent,
+} from '../../testing/sse.ts';
 import { AnthropicLlmProvider } from './index.ts';
 
 /** Event sequence as the Messages API streams it (hand-written from the SDK's event types). */
@@ -19,41 +25,80 @@ const TOOL_TURN: SseEvent[] = [
         content: [],
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 25, cache_creation_input_tokens: 0, cache_read_input_tokens: 100, output_tokens: 1 },
+        usage: {
+          input_tokens: 25,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 100,
+          output_tokens: 1,
+        },
       },
     },
   },
   {
     event: 'content_block_start',
-    data: { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
+    data: {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'thinking', thinking: '', signature: '' },
+    },
   },
   {
     event: 'content_block_delta',
-    data: { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Let me look.' } },
+    data: {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'thinking_delta', thinking: 'Let me look.' },
+    },
   },
   {
     event: 'content_block_delta',
-    data: { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig-123' } },
+    data: {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'signature_delta', signature: 'sig-123' },
+    },
   },
   { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
   {
     event: 'content_block_start',
-    data: { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '', citations: null } },
+    data: {
+      type: 'content_block_start',
+      index: 1,
+      content_block: { type: 'text', text: '', citations: null },
+    },
   },
-  { event: 'content_block_delta', data: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Reading' } } },
-  { event: 'content_block_delta', data: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: ' it.' } } },
+  {
+    event: 'content_block_delta',
+    data: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Reading' } },
+  },
+  {
+    event: 'content_block_delta',
+    data: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: ' it.' } },
+  },
   { event: 'content_block_stop', data: { type: 'content_block_stop', index: 1 } },
   {
     event: 'content_block_start',
-    data: { type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 'toolu_1', name: 'read_file', input: {} } },
+    data: {
+      type: 'content_block_start',
+      index: 2,
+      content_block: { type: 'tool_use', id: 'toolu_1', name: 'read_file', input: {} },
+    },
   },
   {
     event: 'content_block_delta',
-    data: { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"path":' } },
+    data: {
+      type: 'content_block_delta',
+      index: 2,
+      delta: { type: 'input_json_delta', partial_json: '{"path":' },
+    },
   },
   {
     event: 'content_block_delta',
-    data: { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '"a.txt"}' } },
+    data: {
+      type: 'content_block_delta',
+      index: 2,
+      delta: { type: 'input_json_delta', partial_json: '"a.txt"}' },
+    },
   },
   { event: 'content_block_stop', data: { type: 'content_block_stop', index: 2 } },
   {
@@ -85,8 +130,17 @@ async function collect(events: AsyncIterable<LlmStreamEvent>): Promise<LlmStream
   return out;
 }
 
-function providerWith(fetch: typeof globalThis.fetch, extra: { cacheTtl?: '5m' | '1h' } = {}): AnthropicLlmProvider {
-  return new AnthropicLlmProvider({ apiKey: 'test-key', baseUrl: 'https://anthropic.test', maxRetries: 0, fetch, ...extra });
+function providerWith(
+  fetch: typeof globalThis.fetch,
+  extra: { cacheTtl?: '5m' | '1h' } = {}
+): AnthropicLlmProvider {
+  return new AnthropicLlmProvider({
+    apiKey: 'test-key',
+    baseUrl: 'https://anthropic.test',
+    maxRetries: 0,
+    fetch,
+    ...extra,
+  });
 }
 
 test('streams a tool turn into canonical events and a final response with signed reasoning', async () => {
@@ -94,7 +148,7 @@ test('streams a tool turn into canonical events and a final response with signed
   const events = await collect(providerWith(fetch).stream(REQUEST));
 
   assert.deepEqual(
-    events.map(e => e.type),
+    events.map((e) => e.type),
     [
       'message_start',
       'block_start',
@@ -111,8 +165,14 @@ test('streams a tool turn into canonical events and a final response with signed
       'message_end',
     ]
   );
-  const toolStart = events.find(e => e.type === 'block_start' && e.block === 'tool_use');
-  assert.deepEqual(toolStart, { type: 'block_start', index: 2, block: 'tool_use', toolUseId: 'toolu_1', toolName: 'read_file' });
+  const toolStart = events.find((e) => e.type === 'block_start' && e.block === 'tool_use');
+  assert.deepEqual(toolStart, {
+    type: 'block_start',
+    index: 2,
+    block: 'tool_use',
+    toolUseId: 'toolu_1',
+    toolName: 'read_file',
+  });
 
   const end = events.at(-1);
   assert.equal(end?.type, 'message_end');
@@ -160,36 +220,70 @@ test('compaction uses the beta endpoint and keeps the compaction block for repla
       event: 'message_start',
       data: {
         type: 'message_start',
-        message: { id: 'msg_c', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } },
+        message: {
+          id: 'msg_c',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-haiku-5-5',
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 1 },
+        },
       },
     },
     {
       event: 'content_block_start',
-      data: { type: 'content_block_start', index: 0, content_block: { type: 'compaction', content: null, encrypted_content: null } },
+      data: {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'compaction', content: null, encrypted_content: null },
+      },
     },
     {
       event: 'content_block_delta',
-      data: { type: 'content_block_delta', index: 0, delta: { type: 'compaction_delta', content: 'Earlier: ', encrypted_content: null } },
+      data: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'compaction_delta', content: 'Earlier: ', encrypted_content: null },
+      },
     },
     {
       event: 'content_block_delta',
-      data: { type: 'content_block_delta', index: 0, delta: { type: 'compaction_delta', content: 'summary.', encrypted_content: 'enc-9' } },
+      data: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'compaction_delta', content: 'summary.', encrypted_content: 'enc-9' },
+      },
     },
     { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
     {
       event: 'content_block_start',
-      data: { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '', citations: null } },
+      data: {
+        type: 'content_block_start',
+        index: 1,
+        content_block: { type: 'text', text: '', citations: null },
+      },
     },
-    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'ok' } } },
+    {
+      event: 'content_block_delta',
+      data: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'ok' } },
+    },
     { event: 'content_block_stop', data: { type: 'content_block_stop', index: 1 } },
     {
       event: 'message_delta',
-      data: { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } },
+      data: {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn', stop_sequence: null },
+        usage: { output_tokens: 5 },
+      },
     },
     { event: 'message_stop', data: { type: 'message_stop' } },
   ];
   const { fetch, requests } = recordingFetch(() => sseResponse(compactionTurn));
-  const events = await collect(providerWith(fetch).stream({ ...REQUEST, compaction: true, cache: false }));
+  const events = await collect(
+    providerWith(fetch).stream({ ...REQUEST, compaction: true, cache: false })
+  );
 
   assert.equal(requests[0]?.headers.get('anthropic-beta'), 'compact-2026-01-12');
   assert.deepEqual(requests[0]?.body.context_management, { edits: [{ type: 'compact_20260112' }] });
@@ -206,7 +300,9 @@ test('compaction uses the beta endpoint and keeps the compaction block for repla
 
 test('an aborted stream ends with message_end aborted and the partial content', async () => {
   const controller = new AbortController();
-  const prefix = TOOL_TURN.slice(0, 7).map(({ event, data }) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
+  const prefix = TOOL_TURN.slice(0, 7)
+    .map(({ event, data }) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    .join('');
   const { fetch } = recordingFetch((_request, init) => openStream(prefix, init));
   const events: LlmStreamEvent[] = [];
   for await (const event of providerWith(fetch).stream(REQUEST, controller.signal)) {
@@ -225,12 +321,33 @@ test('an aborted stream ends with message_end aborted and the partial content', 
 
 test('failures before any output throw LlmError with the mapped code', async () => {
   const cases: Array<[number, unknown, string, boolean]> = [
-    [429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } }, 'rate_limited', true],
-    [529, { type: 'error', error: { type: 'overloaded_error', message: 'busy' } }, 'overloaded', true],
-    [401, { type: 'error', error: { type: 'authentication_error', message: 'bad key' } }, 'auth', false],
+    [
+      429,
+      { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } },
+      'rate_limited',
+      true,
+    ],
+    [
+      529,
+      { type: 'error', error: { type: 'overloaded_error', message: 'busy' } },
+      'overloaded',
+      true,
+    ],
+    [
+      401,
+      { type: 'error', error: { type: 'authentication_error', message: 'bad key' } },
+      'auth',
+      false,
+    ],
     [
       400,
-      { type: 'error', error: { type: 'invalid_request_error', message: 'prompt is too long: 250000 tokens > 200000 maximum' } },
+      {
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message: 'prompt is too long: 250000 tokens > 200000 maximum',
+        },
+      },
       'context_overflow',
       false,
     ],
@@ -250,8 +367,14 @@ test('a failure after output started ends the step with stopReason error', async
   const partial: SseEvent[] = [
     TOOL_TURN[0] as SseEvent,
     TOOL_TURN[5] as SseEvent,
-    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Par' } } },
-    { event: 'error', data: { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } } },
+    {
+      event: 'content_block_delta',
+      data: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Par' } },
+    },
+    {
+      event: 'error',
+      data: { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } },
+    },
   ];
   const { fetch } = recordingFetch(() => sseResponse(partial));
   const events = await collect(providerWith(fetch).stream(REQUEST));

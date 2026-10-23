@@ -41,7 +41,8 @@ export class OpenAiStreamMapper {
     if (delta.content) this.text('text', delta.content);
     for (const toolCall of delta.tool_calls ?? []) this.toolCall(toolCall);
 
-    if (choice.finish_reason) this.stopReason = mapFinishReason(choice.finish_reason, this.sawToolCalls);
+    if (choice.finish_reason)
+      this.stopReason = mapFinishReason(choice.finish_reason, this.sawToolCalls);
   }
 
   private text(kind: 'text' | 'reasoning', value: string): void {

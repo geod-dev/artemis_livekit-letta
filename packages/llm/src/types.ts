@@ -7,6 +7,7 @@
  * unchanged, so the provider's prompt-cache prefix and preserved-thinking
  * checks stay valid. History is append-only.
  */
+import type { ImageMediaType } from '@artemis/core';
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -17,7 +18,7 @@ export interface TextBlock {
 
 export interface ImageBlock {
   type: 'image';
-  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  mediaType: ImageMediaType;
   /** Base64 data, no `data:` prefix. */
   data: string;
 }
@@ -59,8 +60,7 @@ export type UserContent = TextBlock | ImageBlock | ToolResultBlock;
 export type AssistantContent = TextBlock | ReasoningBlock | ToolUseBlock | ProviderBlock;
 
 export type LlmMessage =
-  | { role: 'user'; content: UserContent[] }
-  | { role: 'assistant'; content: AssistantContent[] };
+  { role: 'user'; content: UserContent[] } | { role: 'assistant'; content: AssistantContent[] };
 
 export interface ToolDefinition {
   name: string;
@@ -97,13 +97,7 @@ export interface LlmRequest {
 }
 
 export type StopReason =
-  | 'end_turn'
-  | 'tool_use'
-  | 'max_tokens'
-  | 'refusal'
-  | 'pause_turn'
-  | 'aborted'
-  | 'error';
+  'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'pause_turn' | 'aborted' | 'error';
 
 export interface LlmUsage {
   /** All prompt tokens, including cache reads and writes (comparable across providers). */

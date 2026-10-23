@@ -40,7 +40,7 @@ const CALL_SCHEMA = {
 };
 
 /** A qualified name, or a bare tool name when only one server has it. */
-export function resolveTool(tools: readonly CatalogTool[], name: string): CatalogTool | string {
+function resolveTool(tools: readonly CatalogTool[], name: string): CatalogTool | string {
   const wanted = name.trim();
   if (!wanted) return '`tool` is required: use a qualified name from the latest MCP tool reminder.';
   const exact = tools.find((tool) => tool.qualified === wanted);
@@ -54,12 +54,13 @@ export function resolveTool(tools: readonly CatalogTool[], name: string): Catalo
 }
 
 /** Tool arguments: an object, or a JSON string holding one (models send both). */
-export function argumentsOf(value: unknown): Record<string, unknown> | string {
+function argumentsOf(value: unknown): Record<string, unknown> | string {
   if (value === undefined || value === null) return {};
   if (typeof value === 'string') {
     try {
       const parsed: unknown = JSON.parse(value);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+        return parsed as Record<string, unknown>;
     } catch {
       // fall through to the error below
     }
@@ -70,7 +71,7 @@ export function argumentsOf(value: unknown): Record<string, unknown> | string {
 }
 
 /** What mcp_describe shows: how to run the tool, its full description and its parameters. */
-export function describeTool(tool: CatalogTool): string {
+function describeTool(tool: CatalogTool): string {
   const access = tool.readOnly ? 'read-only: run with mcp_call' : 'writes: run with mcp_call_write';
   return `${tool.qualified} [${access}]\n\n${tool.description || 'No description.'}\n\nParameters (JSON schema):\n${JSON.stringify(tool.inputSchema, null, 2)}`;
 }
@@ -89,7 +90,11 @@ abstract class McpBridgeTool extends Tool {
     return typeof found === 'string' ? errorResult(found) : found;
   }
 
-  protected async call(input: Record<string, unknown>, context: ToolContext, allowWrites: boolean): Promise<ToolResult> {
+  protected async call(
+    input: Record<string, unknown>,
+    context: ToolContext,
+    allowWrites: boolean
+  ): Promise<ToolResult> {
     const found = await this.resolve(input);
     if (!isCatalogTool(found)) return found;
     if (!found.readOnly && !allowWrites) {
@@ -104,11 +109,17 @@ abstract class McpBridgeTool extends Tool {
         conversationId: context.conversationId,
         signal: context.signal,
       });
-      const text = result.text || (result.isError ? 'The tool reported an error with no details.' : '(no output)');
+      const text =
+        result.text ||
+        (result.isError ? 'The tool reported an error with no details.' : '(no output)');
       return {
         content: [
           { type: 'text', text: capText(text, 'ask the tool for less, e.g. a smaller page') },
-          ...result.images.map((image) => ({ type: 'image' as const, mediaType: image.mediaType, data: image.data })),
+          ...result.images.map((image) => ({
+            type: 'image' as const,
+            mediaType: image.mediaType,
+            data: image.data,
+          })),
         ],
         isError: result.isError,
         display: {
@@ -167,10 +178,17 @@ class CallWriteTool extends McpBridgeTool {
  * tools only), `mcp_call_write`. Fixed definitions keep the tool list (and the
  * prompt cache) stable however many MCP tools exist; the model learns names from
  * reminders. Call results carry `display: {type:'mcp', artifacts}`. Specs and
- * handlers ported from pre-refactor mcp-bridge/tools.ts.
+ * handlers are one class per tool, defined below.
  */
-export function createMcpBridgeTools(catalog: McpCatalog, client: McpClient): AnyTool<ToolContext>[] {
-  return [new DescribeTool(catalog, client), new CallTool(catalog, client), new CallWriteTool(catalog, client)];
+export function createMcpBridgeTools(
+  catalog: McpCatalog,
+  client: McpClient
+): AnyTool<ToolContext>[] {
+  return [
+    new DescribeTool(catalog, client),
+    new CallTool(catalog, client),
+    new CallWriteTool(catalog, client),
+  ];
 }
 
 function isCatalogTool(value: CatalogTool | ToolResult): value is CatalogTool {

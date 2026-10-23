@@ -12,12 +12,11 @@ import {
   type ToolUseBlock,
 } from '@artemis/llm';
 import { errorResult, Toolset, type ToolContext, type ToolResult } from '@artemis/tools';
-import type { LoopEvent, LoopInput } from './loop.ts';
+import type { LoopEvent, LoopInput } from '../loop.ts';
 
 /** One scripted model call: fixed events, or a generator that may react to the request and signal. */
 export type StreamScript =
-  | LlmStreamEvent[]
-  | ((request: LlmRequest, signal: AbortSignal) => AsyncGenerator<LlmStreamEvent>);
+  LlmStreamEvent[] | ((request: LlmRequest, signal: AbortSignal) => AsyncGenerator<LlmStreamEvent>);
 
 /** Scripted `LlmProvider`: each `stream` call consumes the next script entry and records its request. */
 export class FakeProvider extends LlmProvider {
@@ -39,7 +38,13 @@ export class FakeProvider extends LlmProvider {
   }
 
   modelInfo(model: string): ModelInfo {
-    return { model, contextWindow: 1_000_000, maxOutputTokens: 128_000, supportsThinking: true, supportsImages: true };
+    return {
+      model,
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      supportsThinking: true,
+      supportsImages: true,
+    };
   }
 }
 
@@ -47,11 +52,16 @@ export const FAKE_USAGE = { inputTokens: 10, outputTokens: 5 };
 
 /** A complete step: text block, then `message_end`. */
 export function textStep(text: string, stopReason: StopReason = 'end_turn'): LlmStreamEvent[] {
-  return messageEvents([{ type: 'text', text }], stopReason, [{ type: 'text_delta', index: 0, text }]);
+  return messageEvents([{ type: 'text', text }], stopReason, [
+    { type: 'text_delta', index: 0, text },
+  ]);
 }
 
 /** A complete step with tool calls (one `tool_use` block each), optionally preceded by text. */
-export function toolStep(calls: Array<{ id: string; name: string; input?: unknown }>, text = ''): LlmStreamEvent[] {
+export function toolStep(
+  calls: Array<{ id: string; name: string; input?: unknown }>,
+  text = ''
+): LlmStreamEvent[] {
   const toolBlocks: AssistantContent[] = calls.map((call) => ({
     type: 'tool_use',
     id: call.id,
@@ -66,7 +76,13 @@ export function toolStep(calls: Array<{ id: string; name: string; input?: unknow
     index += 1;
   }
   for (const call of calls) {
-    deltas.push({ type: 'block_start', index, block: 'tool_use', toolUseId: call.id, toolName: call.name });
+    deltas.push({
+      type: 'block_start',
+      index,
+      block: 'tool_use',
+      toolUseId: call.id,
+      toolName: call.name,
+    });
     deltas.push({ type: 'block_end', index });
     index += 1;
   }
@@ -111,7 +127,11 @@ export class FakeToolset extends Toolset<ToolContext> {
   }
 
   override definitions(): ToolDefinition[] {
-    return Object.keys(this.handlers).map((name) => ({ name, description: `${name} tool`, inputSchema: { type: 'object' } }));
+    return Object.keys(this.handlers).map((name) => ({
+      name,
+      description: `${name} tool`,
+      inputSchema: { type: 'object' },
+    }));
   }
 
   override async execute(name: string, input: unknown, context: ToolContext): Promise<ToolResult> {

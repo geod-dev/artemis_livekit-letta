@@ -2,10 +2,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { LlmError } from '../../provider.ts';
 import type { LlmRequest, LlmStreamEvent } from '../../types.ts';
-import { jsonResponse, openStream, recordingFetch, sseResponse, type SseEvent } from '../../testing/sse.ts';
+import {
+  jsonResponse,
+  openStream,
+  recordingFetch,
+  sseResponse,
+  type SseEvent,
+} from '../../testing/sse.ts';
 import { OpenAiCompatibleLlmProvider } from './index.ts';
 
-const BASE = { id: 'chatcmpl-1', object: 'chat.completion.chunk', created: 1, model: 'zai-org/GLM-5.3-Flash' };
+const BASE = {
+  id: 'chatcmpl-1',
+  object: 'chat.completion.chunk',
+  created: 1,
+  model: 'zai-org/GLM-5.3-Flash',
+};
 
 function chunk(delta: Record<string, unknown>, finish: string | null = null): SseEvent {
   return { data: { ...BASE, choices: [{ index: 0, delta, finish_reason: finish }] } };
@@ -18,7 +29,9 @@ const TOOL_TURN: SseEvent[] = [
   chunk({ content: 'Hel' }),
   chunk({ content: 'lo' }),
   chunk({
-    tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'read_file', arguments: '' } }],
+    tool_calls: [
+      { index: 0, id: 'call_1', type: 'function', function: { name: 'read_file', arguments: '' } },
+    ],
   }),
   chunk({ tool_calls: [{ index: 0, function: { arguments: '{"path"' } }] }),
   chunk({ tool_calls: [{ index: 0, function: { arguments: ': "a.txt"}' } }] }),
@@ -68,7 +81,7 @@ test('streams reasoning, text and tool calls into canonical blocks with usage', 
   const events = await collect(providerWith(fetch).stream(REQUEST));
 
   assert.deepEqual(
-    events.map(e => e.type),
+    events.map((e) => e.type),
     [
       'message_start',
       'block_start',
@@ -86,7 +99,13 @@ test('streams reasoning, text and tool calls into canonical blocks with usage', 
       'message_end',
     ]
   );
-  assert.deepEqual(events[9], { type: 'block_start', index: 2, block: 'tool_use', toolUseId: 'call_1', toolName: 'read_file' });
+  assert.deepEqual(events[9], {
+    type: 'block_start',
+    index: 2,
+    block: 'tool_use',
+    toolUseId: 'call_1',
+    toolName: 'read_file',
+  });
 
   const end = events.at(-1);
   assert.equal(end?.type, 'message_end');
@@ -98,7 +117,12 @@ test('streams reasoning, text and tool calls into canonical blocks with usage', 
     { type: 'text', text: 'Hello' },
     { type: 'tool_use', id: 'call_1', name: 'read_file', input: { path: 'a.txt' } },
   ]);
-  assert.deepEqual(end.message.usage, { inputTokens: 50, outputTokens: 12, cacheReadTokens: 10, reasoningTokens: 5 });
+  assert.deepEqual(end.message.usage, {
+    inputTokens: 50,
+    outputTokens: 12,
+    cacheReadTokens: 10,
+    reasoningTokens: 5,
+  });
 
   assert.equal(requests[0]?.url, 'https://telnyx.test/v2/ai/openai/chat/completions');
   assert.equal(requests[0]?.body.reasoning_effort, 'high');
@@ -112,7 +136,9 @@ test('a finish_reason of length maps to max_tokens and content_filter to refusal
     ['content_filter', 'refusal'],
   ];
   for (const [finish, expected] of cases) {
-    const { fetch } = recordingFetch(() => sseResponse([chunk({ content: 'x' }, finish)], { done: true }));
+    const { fetch } = recordingFetch(() =>
+      sseResponse([chunk({ content: 'x' }, finish)], { done: true })
+    );
     const events = await collect(providerWith(fetch).stream(REQUEST));
     const end = events.at(-1);
     assert.equal(end?.type === 'message_end' && end.message.stopReason, expected);
@@ -121,7 +147,9 @@ test('a finish_reason of length maps to max_tokens and content_filter to refusal
 
 test('an aborted stream ends with message_end aborted and the partial text', async () => {
   const controller = new AbortController();
-  const prefix = TOOL_TURN.slice(0, 3).map(({ data }) => `data: ${JSON.stringify(data)}\n\n`).join('');
+  const prefix = TOOL_TURN.slice(0, 3)
+    .map(({ data }) => `data: ${JSON.stringify(data)}\n\n`)
+    .join('');
   const { fetch } = recordingFetch((_request, init) => openStream(prefix, init));
   const events: LlmStreamEvent[] = [];
   for await (const event of providerWith(fetch).stream(REQUEST, controller.signal)) {
@@ -155,7 +183,9 @@ test('HTTP failures before output throw LlmError with the mapped code', async ()
 });
 
 test('a stream that ends without a finish_reason ends with stopReason error', async () => {
-  const { fetch } = recordingFetch(() => sseResponse([chunk({ content: 'partial' })], { done: true }));
+  const { fetch } = recordingFetch(() =>
+    sseResponse([chunk({ content: 'partial' })], { done: true })
+  );
   const events = await collect(providerWith(fetch).stream(REQUEST));
   const end = events.at(-1);
   assert.equal(end?.type, 'message_end');

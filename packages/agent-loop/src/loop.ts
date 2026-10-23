@@ -20,9 +20,21 @@ export type LoopEvent =
   | { type: 'reasoning_delta'; messageId: string; blockIndex: number; text: string }
   | { type: 'tool_call'; messageId: string; toolCallId: string; name: string }
   /** The assistant message of a step is complete (persist it before tools run). */
-  | { type: 'assistant_message'; messageId: string; message: LlmMessage & { role: 'assistant' }; response: LlmResponse }
+  | {
+      type: 'assistant_message';
+      messageId: string;
+      message: LlmMessage & { role: 'assistant' };
+      response: LlmResponse;
+    }
   /** Completion order (calls of one step run concurrently); `tool_results_message` follows all of them. */
-  | { type: 'tool_result'; toolCallId: string; name: string; input: unknown; result: ToolResult; durationMs: number }
+  | {
+      type: 'tool_result';
+      toolCallId: string;
+      name: string;
+      input: unknown;
+      result: ToolResult;
+      durationMs: number;
+    }
   /** Tool results of a step, as the user message appended to the history. */
   | { type: 'tool_results_message'; messageId: string; message: LlmMessage & { role: 'user' } }
   | { type: 'loop_end'; outcome: LoopOutcome };
@@ -99,7 +111,13 @@ interface CallResult {
 class LoopRun<C extends ToolContext> {
   private readonly messages: LlmMessage[];
   private readonly maxSteps: number;
-  private readonly usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 };
+  private readonly usage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+  };
   private steps = 0;
   private lastContextTokens = 0;
   private lastText = '';
@@ -133,10 +151,14 @@ class LoopRun<C extends ToolContext> {
       const messageId = newMessageId();
       const step = yield* this.streamStep(messageId);
       if (step.kind === 'cancelled') return this.outcome('cancelled');
-      if (step.kind === 'error') return this.outcome(signal.aborted ? 'cancelled' : 'failed', step.error);
+      if (step.kind === 'error')
+        return this.outcome(signal.aborted ? 'cancelled' : 'failed', step.error);
 
       const { response } = step;
-      const message: LlmMessage & { role: 'assistant' } = { role: 'assistant', content: response.content };
+      const message: LlmMessage & { role: 'assistant' } = {
+        role: 'assistant',
+        content: response.content,
+      };
       this.messages.push(message);
       this.record(response);
       yield { type: 'assistant_message', messageId, message, response };
@@ -184,7 +206,12 @@ class LoopRun<C extends ToolContext> {
             break;
           case 'block_start':
             if (event.block === 'tool_use' && event.toolUseId) {
-              yield { type: 'tool_call', messageId, toolCallId: event.toolUseId, name: event.toolName ?? '' };
+              yield {
+                type: 'tool_call',
+                messageId,
+                toolCallId: event.toolUseId,
+                name: event.toolName ?? '',
+              };
             }
             break;
           case 'message_end':
@@ -198,17 +225,24 @@ class LoopRun<C extends ToolContext> {
       return signal.aborted ? { kind: 'cancelled' } : { kind: 'error', error: errorMessage(error) };
     }
     if (response) return { kind: 'response', response };
-    return signal.aborted ? { kind: 'cancelled' } : { kind: 'error', error: 'The provider ended without a message' };
+    return signal.aborted
+      ? { kind: 'cancelled' }
+      : { kind: 'error', error: 'The provider ended without a message' };
   }
 
   /**
    * Runs (or, with `skipReason`, synthesizes results for) the calls of one step
    * and appends one user message with their results in call order.
    */
-  private async *runCalls(calls: ToolUseBlock[], skipReason?: string): AsyncGenerator<LoopEvent, void> {
+  private async *runCalls(
+    calls: ToolUseBlock[],
+    skipReason?: string
+  ): AsyncGenerator<LoopEvent, void> {
     const completions = new CompletionQueue<CallResult>();
     calls.forEach((call, index) => {
-      void this.invoke(call, skipReason).then(({ result, durationMs }) => completions.push({ index, result, durationMs }));
+      void this.invoke(call, skipReason).then(({ result, durationMs }) =>
+        completions.push({ index, result, durationMs })
+      );
     });
 
     const results: ToolResult[] = [];
@@ -217,20 +251,35 @@ class LoopRun<C extends ToolContext> {
       const call = calls[index];
       if (!call) throw new Error(`Unknown tool call index ${index}`);
       results[index] = result;
-      yield { type: 'tool_result', toolCallId: call.id, name: call.name, input: call.input, result, durationMs };
+      yield {
+        type: 'tool_result',
+        toolCallId: call.id,
+        name: call.name,
+        input: call.input,
+        result,
+        durationMs,
+      };
     }
 
     if (calls.length === 0) return;
     const content = calls.map((call, index) => {
       const result = results[index] ?? errorResult('No result');
-      return { type: 'tool_result' as const, toolUseId: call.id, content: result.content, isError: result.isError };
+      return {
+        type: 'tool_result' as const,
+        toolUseId: call.id,
+        content: result.content,
+        isError: result.isError,
+      };
     });
     const message: LlmMessage & { role: 'user' } = { role: 'user', content };
     this.messages.push(message);
     yield { type: 'tool_results_message', messageId: this.input.newMessageId(), message };
   }
 
-  private async invoke(call: ToolUseBlock, skipReason?: string): Promise<{ result: ToolResult; durationMs: number }> {
+  private async invoke(
+    call: ToolUseBlock,
+    skipReason?: string
+  ): Promise<{ result: ToolResult; durationMs: number }> {
     const started = performance.now();
     const result = await this.execute(call, skipReason);
     return { result, durationMs: Math.round(performance.now() - started) };
@@ -279,8 +328,11 @@ class LoopRun<C extends ToolContext> {
     this.usage.cacheReadTokens += usage.cacheReadTokens ?? 0;
     this.usage.cacheWriteTokens += usage.cacheWriteTokens ?? 0;
     this.usage.reasoningTokens += usage.reasoningTokens ?? 0;
-    this.lastContextTokens = usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
-    this.lastText = response.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('');
+    this.lastContextTokens =
+      usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
+    this.lastText = response.content
+      .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+      .join('');
   }
 
   private outcome(status: LoopOutcome['status'], error?: string): LoopOutcome {
@@ -299,7 +351,11 @@ function isToolUse(block: AssistantContent): block is ToolUseBlock {
 }
 
 /** Resolves with `onAbort()` as soon as `signal` aborts, otherwise with `work`. */
-function untilAborted(work: Promise<ToolResult>, signal: AbortSignal, onAbort: () => ToolResult): Promise<ToolResult> {
+function untilAborted(
+  work: Promise<ToolResult>,
+  signal: AbortSignal,
+  onAbort: () => ToolResult
+): Promise<ToolResult> {
   return new Promise((resolve) => {
     const aborted = () => resolve(onAbort());
     if (signal.aborted) return aborted();

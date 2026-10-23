@@ -3,7 +3,10 @@ import { test } from 'node:test';
 import { hasBearer } from './auth.ts';
 
 function request(authorization?: string): Request {
-  return new Request('http://localhost/v1/x', authorization === undefined ? {} : { headers: { authorization } });
+  return new Request(
+    'http://localhost/v1/x',
+    authorization === undefined ? {} : { headers: { authorization } }
+  );
 }
 
 test('hasBearer accepts the exact token with any case of the scheme', () => {

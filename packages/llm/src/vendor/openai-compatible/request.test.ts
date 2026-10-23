@@ -26,7 +26,10 @@ test('request params: system role, max_tokens, streamed usage, reasoning_effort,
   assert.equal('store' in params, false);
   assert.deepEqual(params.messages[0], { role: 'system', content: 'system prompt' });
   assert.deepEqual(params.tools, [
-    { type: 'function', function: { name: 'read_file', description: 'Read a file', parameters: { type: 'object' } } },
+    {
+      type: 'function',
+      function: { name: 'read_file', description: 'Read a file', parameters: { type: 'object' } },
+    },
   ]);
 });
 
@@ -48,7 +51,13 @@ test('assistant tool calls become tool_calls with JSON arguments; reasoning is n
   assert.deepEqual(params.messages[1], {
     role: 'assistant',
     content: 'Checking.',
-    tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.txt"}' } }],
+    tool_calls: [
+      {
+        id: 'call_1',
+        type: 'function',
+        function: { name: 'read_file', arguments: '{"path":"a.txt"}' },
+      },
+    ],
   });
 });
 
@@ -59,8 +68,18 @@ test('tool results become tool messages before the trailing user content; errors
         {
           role: 'user',
           content: [
-            { type: 'tool_result', toolUseId: 'call_1', content: [{ type: 'text', text: 'boom' }], isError: true },
-            { type: 'tool_result', toolUseId: 'call_2', content: [{ type: 'text', text: 'ok' }], isError: false },
+            {
+              type: 'tool_result',
+              toolUseId: 'call_1',
+              content: [{ type: 'text', text: 'boom' }],
+              isError: true,
+            },
+            {
+              type: 'tool_result',
+              toolUseId: 'call_2',
+              content: [{ type: 'text', text: 'ok' }],
+              isError: false,
+            },
             { type: 'text', text: 'what now?' },
           ],
         },

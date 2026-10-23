@@ -28,8 +28,14 @@ describe('validateMcpServers', () => {
 
   test('refuses a nameless server, or a name that cannot be a tool namespace', () => {
     assert.throws(() => validateMcpServers([{ command: 'x' }]), InvalidMcpServersError);
-    assert.throws(() => validateMcpServers([{ name: '   ', command: 'x' }]), InvalidMcpServersError);
-    assert.throws(() => validateMcpServers([{ name: 'a b', command: 'x' }]), InvalidMcpServersError);
+    assert.throws(
+      () => validateMcpServers([{ name: '   ', command: 'x' }]),
+      InvalidMcpServersError
+    );
+    assert.throws(
+      () => validateMcpServers([{ name: 'a b', command: 'x' }]),
+      InvalidMcpServersError
+    );
   });
 
   test('refuses an unknown transport', () => {
@@ -40,8 +46,14 @@ describe('validateMcpServers', () => {
   });
 
   test('refuses a stdio server with no command and a remote server with no or a bad url', () => {
-    assert.throws(() => validateMcpServers([{ name: 'a', transport: 'stdio' }]), InvalidMcpServersError);
-    assert.throws(() => validateMcpServers([{ name: 'a', transport: 'http' }]), InvalidMcpServersError);
+    assert.throws(
+      () => validateMcpServers([{ name: 'a', transport: 'stdio' }]),
+      InvalidMcpServersError
+    );
+    assert.throws(
+      () => validateMcpServers([{ name: 'a', transport: 'http' }]),
+      InvalidMcpServersError
+    );
     assert.throws(
       () => validateMcpServers([{ name: 'a', transport: 'http', url: 'not a url' }]),
       InvalidMcpServersError
@@ -49,10 +61,19 @@ describe('validateMcpServers', () => {
   });
 
   test('refuses non-string args, env and headers', () => {
-    assert.throws(() => validateMcpServers([{ name: 'a', command: 'x', args: [1] }]), InvalidMcpServersError);
-    assert.throws(() => validateMcpServers([{ name: 'a', command: 'x', env: { K: 1 } }]), InvalidMcpServersError);
     assert.throws(
-      () => validateMcpServers([{ name: 'a', transport: 'http', url: 'https://e.com', headers: { K: {} } }]),
+      () => validateMcpServers([{ name: 'a', command: 'x', args: [1] }]),
+      InvalidMcpServersError
+    );
+    assert.throws(
+      () => validateMcpServers([{ name: 'a', command: 'x', env: { K: 1 } }]),
+      InvalidMcpServersError
+    );
+    assert.throws(
+      () =>
+        validateMcpServers([
+          { name: 'a', transport: 'http', url: 'https://e.com', headers: { K: {} } },
+        ]),
       InvalidMcpServersError
     );
   });
@@ -80,7 +101,10 @@ describe('validateMcpServers', () => {
   });
 
   test('rejects wrong field shapes and unsafe remote schemes', () => {
-    assert.throws(() => validateMcpServers([{ name: 'a', command: 'x', args: 'not-array' }]), /array/);
+    assert.throws(
+      () => validateMcpServers([{ name: 'a', command: 'x', args: 'not-array' }]),
+      /array/
+    );
     assert.throws(
       () => validateMcpServers([{ name: 'a', transport: 'http', url: 'file:///tmp/x' }]),
       /invalid url/
@@ -99,7 +123,12 @@ describe('validateMcpServers', () => {
             name: 'device_laptop',
             transport: 'http',
             url: 'http://gateway/internal/mcp/devices/laptop',
-            managed: { type: 'device', deviceName: 'laptop', connectedAt: '2026-10-12T00:00:00Z', tools: 1 },
+            managed: {
+              type: 'device',
+              deviceName: 'laptop',
+              connectedAt: '2026-10-12T00:00:00Z',
+              tools: 1,
+            },
           },
         ]),
       /cannot be edited/
@@ -138,7 +167,10 @@ describe('mcpRevision', () => {
   test('is stable across key order and changes with the content', () => {
     const reordered = { url: SEARCH.url, transport: SEARCH.transport, name: SEARCH.name };
     assert.equal(mcpRevision([SEARCH]), mcpRevision([reordered]));
-    assert.notEqual(mcpRevision([SEARCH]), mcpRevision([{ ...SEARCH, url: 'https://new.example/mcp' }]));
+    assert.notEqual(
+      mcpRevision([SEARCH]),
+      mcpRevision([{ ...SEARCH, url: 'https://new.example/mcp' }])
+    );
     assert.notEqual(mcpRevision([SEARCH]), mcpRevision([]));
     assert.match(mcpRevision([]), /^[0-9a-f]{64}$/);
   });

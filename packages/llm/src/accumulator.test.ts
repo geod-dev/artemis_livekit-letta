@@ -29,8 +29,16 @@ test('opening a block closes the previous one and empty text blocks keep their s
   const events = acc.drain();
 
   assert.deepEqual(
-    events.map(e => e.type),
-    ['message_start', 'block_start', 'block_end', 'block_start', 'reasoning_delta', 'block_end', 'message_end']
+    events.map((e) => e.type),
+    [
+      'message_start',
+      'block_start',
+      'block_end',
+      'block_start',
+      'reasoning_delta',
+      'block_end',
+      'message_end',
+    ]
   );
   assert.equal(empty, 0);
   assert.deepEqual(finalMessage(events).content, [
@@ -52,7 +60,7 @@ test('an empty leading text block keeps stream and stored block indexes aligned'
   assert.equal(empty, 0);
   assert.equal(answer, 1);
   assert.deepEqual(
-    events.flatMap(e => (e.type === 'block_start' || e.type === 'text_delta' ? [e.index] : [])),
+    events.flatMap((e) => (e.type === 'block_start' || e.type === 'text_delta' ? [e.index] : [])),
     [0, 1, 1]
   );
   const content = finalMessage(events).content;

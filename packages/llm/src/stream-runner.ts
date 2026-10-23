@@ -3,7 +3,7 @@ import type { LlmError } from './provider.ts';
 import type { LlmStreamEvent, StopReason } from './types.ts';
 
 /** What a vendor adapter supplies to run one model step over its SDK stream. */
-export interface ModelStepDriver<E> {
+interface ModelStepDriver<E> {
   /** Opens the vendor stream. Failures here, before any output, propagate as `LlmError`. */
   open(): AsyncIterable<E> | Promise<AsyncIterable<E>>;
   apply(event: E): void;
@@ -42,7 +42,10 @@ export async function* runModelStep<E>(
     } else if (stopReason) {
       acc.finish(stopReason);
     } else {
-      acc.finish('error', { code: 'no_response', message: 'The stream ended without a stop reason' });
+      acc.finish('error', {
+        code: 'no_response',
+        message: 'The stream ended without a stop reason',
+      });
     }
   } catch (error) {
     if (driver.isAbort(error)) {

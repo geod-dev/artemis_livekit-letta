@@ -47,7 +47,10 @@ test('plain errors use the fallback status; invalid fallbacks become 500', async
 
   const coerced = errorResponse('boom', 200);
   assert.equal(coerced.status, 500);
-  assert.equal(((await coerced.json()) as { error: string }).error, 'The request could not be completed');
+  assert.equal(
+    ((await coerced.json()) as { error: string }).error,
+    'The request could not be completed'
+  );
 });
 
 test('jsonObject returns only JSON objects', async () => {
@@ -67,7 +70,10 @@ test('jsonObject rejects bodies over the limit with or without a Content-Length'
   });
   assert.equal(await jsonObject(declared, 10), null);
 
-  const streamed = new Request('http://localhost/x', { method: 'POST', body: `{"a":"${'x'.repeat(40)}"}` });
+  const streamed = new Request('http://localhost/x', {
+    method: 'POST',
+    body: `{"a":"${'x'.repeat(40)}"}`,
+  });
   assert.equal(await jsonObject(streamed, 10), null);
 
   const small = new Request('http://localhost/x', { method: 'POST', body: '{"a":1}' });

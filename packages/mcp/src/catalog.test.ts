@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import type { McpServer } from '@artemis/contracts/chat-types';
 import { McpCatalog, qualifiedName, toCatalogTools } from './catalog.ts';
 import { McpClient, type ListedTool } from './client.ts';
-import { FakeMcpClient } from './test-support.ts';
+import { FakeMcpClient } from './testing/support.ts';
 
 const WEB: McpServer = { name: 'web', transport: 'http', url: 'https://web.example.com/mcp' };
 const NOTES: McpServer = { name: 'notes', transport: 'sse', url: 'https://notes.example.com/sse' };
@@ -29,7 +29,9 @@ function clock(start = 1_000) {
 
 describe('qualified names and catalog entries', () => {
   test("names tools mcp__<server>__<tool> and reads the server's read-only hint", () => {
-    const [tool] = toCatalogTools(WEB, [{ name: 'web_search', annotations: { readOnlyHint: true } }]);
+    const [tool] = toCatalogTools(WEB, [
+      { name: 'web_search', annotations: { readOnlyHint: true } },
+    ]);
     assert.equal(tool?.qualified, 'mcp__web__web_search');
     assert.equal(tool?.readOnly, true);
     assert.equal(toCatalogTools(WEB, [{ name: 'x' }])[0]?.readOnly, false);
@@ -53,7 +55,10 @@ describe('McpCatalog', () => {
   test('lists every configured server, stdio included (the agent-server spawns those itself)', async () => {
     const catalog = new McpCatalog(new FakeMcpClient(CATALOG), () => [WEB, NOTES, LOCAL]);
     const tools = await catalog.tools();
-    assert.deepEqual(new Set(tools.map((tool) => tool.server.name)), new Set(['web', 'notes', 'local']));
+    assert.deepEqual(
+      new Set(tools.map((tool) => tool.server.name)),
+      new Set(['web', 'notes', 'local'])
+    );
     assert.equal(tools.find((tool) => tool.tool === 'web_search')?.description, 'Search the web.');
   });
 

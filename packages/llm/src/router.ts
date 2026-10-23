@@ -12,7 +12,11 @@ export function parseModelHandle(handle: string): { provider: string; model: str
   const provider = slash > 0 ? handle.slice(0, slash) : '';
   const model = slash > 0 ? handle.slice(slash + 1) : '';
   if (!provider || !model) {
-    throw new AppError('invalid_model_handle', `Model handle must look like "provider/model": "${handle}"`, 400);
+    throw new AppError(
+      'invalid_model_handle',
+      `Model handle must look like "provider/model": "${handle}"`,
+      400
+    );
   }
   return { provider, model };
 }
@@ -48,7 +52,11 @@ export class ProviderRegistry {
     const parsed = parseModelHandle(handle);
     const provider = this.byId.get(parsed.provider);
     if (!provider) {
-      throw new AppError('unknown_provider', `No LLM provider registered as "${parsed.provider}"`, 400);
+      throw new AppError(
+        'unknown_provider',
+        `No LLM provider registered as "${parsed.provider}"`,
+        400
+      );
     }
     return { provider, model: parsed.model };
   }

@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared primitives used by several packages: injectable clock, AppError and its subclasses, id helpers, console logger. Depends on no workspace package.",
+  "description": "Shared primitives used by several packages: injectable clock, AppError and its subclasses, errorMessage, id helpers, console logger. The ./testing subpath holds the FakeClock. Depends on no workspace package.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

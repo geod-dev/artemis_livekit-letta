@@ -1,5 +1,11 @@
 import type * as Chat from 'openai/resources/chat/completions';
-import type { JsonSchema, LlmMessage, LlmRequest, ToolDefinition, UserContent } from '../../types.ts';
+import type {
+  JsonSchema,
+  LlmMessage,
+  LlmRequest,
+  ToolDefinition,
+  UserContent,
+} from '../../types.ts';
 
 export type ChatMessageParam = Chat.ChatCompletionMessageParam;
 
@@ -22,7 +28,8 @@ export function buildChatRequest(request: LlmRequest): Chat.ChatCompletionCreate
   };
   if (request.tools.length > 0) {
     params.tools = request.tools.map(toTool);
-    if (request.parallelToolCalls !== undefined) params.parallel_tool_calls = request.parallelToolCalls;
+    if (request.parallelToolCalls !== undefined)
+      params.parallel_tool_calls = request.parallelToolCalls;
   }
   if (request.effort) params.reasoning_effort = request.effort;
 
@@ -41,7 +48,9 @@ function toTool(tool: ToolDefinition): Chat.ChatCompletionTool {
 }
 
 function toChatMessages(message: LlmMessage): ChatMessageParam[] {
-  return message.role === 'user' ? toUserMessages(message.content) : toAssistantMessages(message.content);
+  return message.role === 'user'
+    ? toUserMessages(message.content)
+    : toAssistantMessages(message.content);
 }
 
 /**
@@ -77,12 +86,20 @@ function toUserMessages(content: UserContent[]): ChatMessageParam[] {
   return toolMessages;
 }
 
-function toAssistantMessages(content: Extract<LlmMessage, { role: 'assistant' }>['content']): ChatMessageParam[] {
+function toAssistantMessages(
+  content: Extract<LlmMessage, { role: 'assistant' }>['content']
+): ChatMessageParam[] {
   // Reasoning is not replayed to this provider; foreign provider blocks are dropped.
-  const text = content.flatMap(block => (block.type === 'text' ? [block.text] : [])).join('');
-  const toolCalls: Chat.ChatCompletionMessageToolCall[] = content.flatMap(block =>
+  const text = content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('');
+  const toolCalls: Chat.ChatCompletionMessageToolCall[] = content.flatMap((block) =>
     block.type === 'tool_use'
-      ? [{ id: block.id, type: 'function' as const, function: { name: block.name, arguments: JSON.stringify(block.input ?? {}) } }]
+      ? [
+          {
+            id: block.id,
+            type: 'function' as const,
+            function: { name: block.name, arguments: JSON.stringify(block.input ?? {}) },
+          },
+        ]
       : []
   );
   if (!text && toolCalls.length === 0) return [];
@@ -95,16 +112,19 @@ function toAssistantMessages(content: Extract<LlmMessage, { role: 'assistant' }>
   ];
 }
 
-function toolResultText(content: Array<{ type: 'text'; text: string } | { type: 'image' }>, isError: boolean): string {
-  const text = content
-    .flatMap(part => (part.type === 'text' ? [part.text] : []))
-    .join('\n');
-  const hasImage = content.some(part => part.type === 'image');
+function toolResultText(
+  content: Array<{ type: 'text'; text: string } | { type: 'image' }>,
+  isError: boolean
+): string {
+  const text = content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
+  const hasImage = content.some((part) => part.type === 'image');
   const body = text || (hasImage ? '(image output follows)' : '(no output)');
   return isError ? `Error: ${body}` : body;
 }
 
-function userContent(parts: Chat.ChatCompletionContentPart[]): string | Chat.ChatCompletionContentPart[] {
+function userContent(
+  parts: Chat.ChatCompletionContentPart[]
+): string | Chat.ChatCompletionContentPart[] {
   const [only] = parts;
   if (parts.length === 1 && only?.type === 'text') return only.text;
   return parts;

@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { type Clock, systemClock } from '@artemis/core';
 import type { McpServer } from '@artemis/contracts/chat-types';
 import { type ArtifactSink, type ListedTool, McpClient, type McpCallResult } from '../../client.ts';
 import { McpResultConverter, recordOf } from './results.ts';
@@ -10,6 +11,8 @@ export interface SdkMcpClientOptions {
   artifacts: ArtifactSink;
   /** Per-operation deadline (default 120 s). */
   deadlineMs?: number;
+  /** Time source for the deadlines (default: the system clock). */
+  clock?: Clock;
   /** Max tools listed per server (default 500, 20 pages). */
   maxTools?: number;
   /** Working directory and extra env for stdio servers (the server's own `env` wins). */
@@ -33,8 +36,10 @@ export function adaptListedTool(value: unknown): ListedTool | null {
   if (description !== undefined && typeof description !== 'string') {
     throw new Error(`MCP tool ${item.name} has an invalid description`);
   }
-  if (inputSchema !== undefined && !schemaRecord) throw new Error(`MCP tool ${item.name} has an invalid input schema`);
-  if (item.annotations !== undefined && !annotations) throw new Error(`MCP tool ${item.name} has invalid annotations`);
+  if (inputSchema !== undefined && !schemaRecord)
+    throw new Error(`MCP tool ${item.name} has an invalid input schema`);
+  if (item.annotations !== undefined && !annotations)
+    throw new Error(`MCP tool ${item.name} has invalid annotations`);
   const readOnlyHint = annotations?.readOnlyHint;
   if (readOnlyHint !== undefined && typeof readOnlyHint !== 'boolean') {
     throw new Error(`MCP tool ${item.name} has an invalid read-only annotation`);
@@ -57,12 +62,14 @@ export class SdkMcpClient extends McpClient {
   private readonly open = new Set<Client>();
   private readonly converter: McpResultConverter;
   private readonly deadlineMs: number;
+  private readonly clock: Clock;
   private readonly maxTools: number;
 
   constructor(readonly options: SdkMcpClientOptions) {
     super();
     this.converter = new McpResultConverter(options.artifacts);
     this.deadlineMs = options.deadlineMs ?? DEFAULT_DEADLINE_MS;
+    this.clock = options.clock ?? systemClock;
     this.maxTools = options.maxTools ?? DEFAULT_MAX_TOOLS;
   }
 
@@ -73,14 +80,20 @@ export class SdkMcpClient extends McpClient {
       let cursor: string | undefined;
       let pages = 0;
       do {
-        if (pages >= MAX_TOOL_PAGES) throw new Error(`MCP server exceeded ${MAX_TOOL_PAGES} tool pages`);
+        if (pages >= MAX_TOOL_PAGES)
+          throw new Error(`MCP server exceeded ${MAX_TOOL_PAGES} tool pages`);
         pages += 1;
-        const page = await client.listTools(cursor ? { cursor } : {}, { timeout: remainingMs(deadline, this.deadlineMs), signal });
-        if (!Array.isArray(page.tools)) throw new Error('MCP tools/list returned an invalid tools array');
+        const page = await client.listTools(cursor ? { cursor } : {}, {
+          timeout: this.remaining(deadline),
+          signal,
+        });
+        if (!Array.isArray(page.tools))
+          throw new Error('MCP tools/list returned an invalid tools array');
         for (const raw of page.tools) {
           const item = adaptListedTool(raw);
           if (!item) continue;
-          if (tools.length >= this.maxTools) throw new Error(`MCP server exceeded ${this.maxTools} tools`);
+          if (tools.length >= this.maxTools)
+            throw new Error(`MCP server exceeded ${this.maxTools} tools`);
           tools.push(item);
         }
         const next: unknown = page.nextCursor;
@@ -102,7 +115,7 @@ export class SdkMcpClient extends McpClient {
   ): Promise<McpCallResult> {
     return this.withSession(server, options.signal, async (client, deadline) => {
       const result: unknown = await client.callTool({ name: tool, arguments: args }, undefined, {
-        timeout: remainingMs(deadline, this.deadlineMs),
+        timeout: this.remaining(deadline),
         signal: options.signal,
       });
       if (server.managed?.type === 'device' && tool === 'screenshot_capture') {
@@ -118,17 +131,24 @@ export class SdkMcpClient extends McpClient {
     await Promise.all(sessions.map((client) => client.close().catch(() => undefined)));
   }
 
+  private remaining(deadline: number): number {
+    const remaining = deadline - this.clock.now();
+    if (remaining <= 0)
+      throw new Error(`MCP request exceeded its ${this.deadlineMs / 1000} second deadline`);
+    return remaining;
+  }
+
   private async withSession<T>(
     server: McpServer,
     signal: AbortSignal | undefined,
     run: (client: Client, deadline: number) => Promise<T>
   ): Promise<T> {
-    const deadline = Date.now() + this.deadlineMs;
+    const deadline = this.clock.now() + this.deadlineMs;
     const client = new Client(CLIENT_INFO);
     this.open.add(client);
     try {
       await client.connect(this.transportFor(server), {
-        timeout: Math.min(CONNECT_TIMEOUT_MS, remainingMs(deadline, this.deadlineMs)),
+        timeout: Math.min(CONNECT_TIMEOUT_MS, this.remaining(deadline)),
         signal,
       });
       return await run(client, deadline);
@@ -156,10 +176,4 @@ export class SdkMcpClient extends McpClient {
       ? new SSEClientTransport(url, { requestInit })
       : new StreamableHTTPClientTransport(url, { requestInit });
   }
-}
-
-function remainingMs(deadline: number, deadlineMs: number): number {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) throw new Error(`MCP request exceeded its ${deadlineMs / 1000} second deadline`);
-  return remaining;
 }

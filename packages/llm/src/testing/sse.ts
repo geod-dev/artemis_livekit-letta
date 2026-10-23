@@ -39,7 +39,9 @@ export function jsonResponse(status: number, body: unknown): Response {
  * A fetch that records each request and answers with `respond`. The body stays open
  * until the request signal aborts, like a real network stream (see `openStream`).
  */
-export function recordingFetch(respond: (request: RecordedRequest, init: RequestInit) => Response | Promise<Response>): {
+export function recordingFetch(
+  respond: (request: RecordedRequest, init: RequestInit) => Response | Promise<Response>
+): {
   fetch: typeof globalThis.fetch;
   requests: RecordedRequest[];
 } {
@@ -67,7 +69,9 @@ export function openStream(prefix: string, init: RequestInit): Response {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(encoder.encode(prefix));
-      signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')));
+      signal?.addEventListener('abort', () =>
+        controller.error(new DOMException('Aborted', 'AbortError'))
+      );
     },
   });
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });

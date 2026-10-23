@@ -48,10 +48,13 @@ test('an already aborted event request never starts a subscription', async () =>
   const controller = new AbortController();
   controller.abort();
   let started = false;
-  const response = eventStream(new Request('http://localhost/events', { signal: controller.signal }), () => {
-    started = true;
-    return () => {};
-  });
+  const response = eventStream(
+    new Request('http://localhost/events', { signal: controller.signal }),
+    () => {
+      started = true;
+      return () => {};
+    }
+  );
   assert.equal(await response.text(), '');
   assert.equal(started, false);
 });
@@ -65,20 +68,27 @@ test('a throwing subscriber start closes the stream', async (t) => {
 });
 
 test('the stream opens with a connected comment, then one data frame per event', async () => {
-  const response = eventStream<{ a: number }>(new Request('http://localhost/events'), (send, close) => {
-    send({ a: 1 });
-    send({ a: 2 });
-    setTimeout(close, 0);
-  });
+  const response = eventStream<{ a: number }>(
+    new Request('http://localhost/events'),
+    (send, close) => {
+      send({ a: 1 });
+      send({ a: 2 });
+      setTimeout(close, 0);
+    }
+  );
   assert.equal(response.headers.get('content-type'), 'text/event-stream; charset=utf-8');
   assert.equal(await response.text(), ': connected\n\ndata: {"a":1}\n\ndata: {"a":2}\n\n');
 });
 
 test('keepalive pings are sent on the period and a reader cancel runs the cleanup', async () => {
   let stopped = 0;
-  const response = eventStream(new Request('http://localhost/events'), () => () => {
-    stopped++;
-  }, { keepAliveMs: 5 });
+  const response = eventStream(
+    new Request('http://localhost/events'),
+    () => () => {
+      stopped++;
+    },
+    { keepAliveMs: 5 }
+  );
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   assert.equal(decoder.decode((await reader.read()).value), ': connected\n\n');
@@ -90,9 +100,13 @@ test('keepalive pings are sent on the period and a reader cancel runs the cleanu
 test('a client abort closes the stream and runs the cleanup once', async () => {
   const controller = new AbortController();
   let stopped = 0;
-  const response = eventStream(new Request('http://localhost/events', { signal: controller.signal }), () => () => {
-    stopped++;
-  }, { keepAliveMs: 60_000 });
+  const response = eventStream(
+    new Request('http://localhost/events', { signal: controller.signal }),
+    () => () => {
+      stopped++;
+    },
+    { keepAliveMs: 60_000 }
+  );
   const reader = response.body!.getReader();
   await reader.read();
   controller.abort();
@@ -101,11 +115,15 @@ test('a client abort closes the stream and runs the cleanup once', async () => {
 });
 
 test('readSse parses what eventStream writes', async () => {
-  const response = eventStream<{ text: string; n: number }>(new Request('http://localhost/events'), (send, close) => {
-    send({ text: 'first', n: 1 });
-    send({ text: 'line\nbreak "quoted"', n: 2 });
-    setTimeout(close, 0);
-  }, { keepAliveMs: 60_000 });
+  const response = eventStream<{ text: string; n: number }>(
+    new Request('http://localhost/events'),
+    (send, close) => {
+      send({ text: 'first', n: 1 });
+      send({ text: 'line\nbreak "quoted"', n: 2 });
+      setTimeout(close, 0);
+    },
+    { keepAliveMs: 60_000 }
+  );
   assert.deepEqual(await collect(readSse<{ text: string; n: number }>(response.body!)), [
     { text: 'first', n: 1 },
     { text: 'line\nbreak "quoted"', n: 2 },

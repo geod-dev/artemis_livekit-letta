@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { AppError } from '@artemis/core';
 import type { LlmStreamEvent } from '@artemis/llm';
 import { oneShot } from './one-shot.ts';
-import { fakeRoute, FakeProvider, messageEvents, response, textStep } from './test-support.ts';
+import { fakeRoute, FakeProvider, messageEvents, response, textStep } from './testing/support.ts';
 
 describe('oneShot', () => {
   it('sends system and prompt without tools and returns the text', async () => {
@@ -22,7 +22,9 @@ describe('oneShot', () => {
     assert.equal(request?.effort, 'low');
     assert.equal(request?.maxTokens, 64);
     assert.deepEqual(request?.tools, []);
-    assert.deepEqual(request?.messages, [{ role: 'user', content: [{ type: 'text', text: 'user says: login is broken' }] }]);
+    assert.deepEqual(request?.messages, [
+      { role: 'user', content: [{ type: 'text', text: 'user says: login is broken' }] },
+    ]);
   });
 
   it('joins text blocks and ignores reasoning', async () => {
@@ -48,11 +50,14 @@ describe('oneShot', () => {
 
   it('rejects on refusal with an LlmError', async () => {
     const provider = new FakeProvider([messageEvents([], 'refusal')]);
-    await assert.rejects(oneShot({ route: fakeRoute(provider), system: 's', prompt: 'p' }), (error: unknown) => {
-      assert.ok(error instanceof AppError);
-      assert.equal((error as AppError).code, 'refusal');
-      return true;
-    });
+    await assert.rejects(
+      oneShot({ route: fakeRoute(provider), system: 's', prompt: 'p' }),
+      (error: unknown) => {
+        assert.ok(error instanceof AppError);
+        assert.equal((error as AppError).code, 'refusal');
+        return true;
+      }
+    );
   });
 
   it('rejects when the caller signal is already aborted', async () => {
@@ -69,10 +74,14 @@ describe('oneShot', () => {
     const provider = new FakeProvider([
       async function* (_request, signal): AsyncGenerator<LlmStreamEvent> {
         yield { type: 'message_start', model: 'fake-model' };
-        await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));
+        await new Promise<void>((resolve) =>
+          signal.addEventListener('abort', () => resolve(), { once: true })
+        );
         yield { type: 'message_end', message: response([], 'aborted') };
       },
     ]);
-    await assert.rejects(oneShot({ route: fakeRoute(provider), system: 's', prompt: 'p', timeoutMs: 20 }));
+    await assert.rejects(
+      oneShot({ route: fakeRoute(provider), system: 's', prompt: 'p', timeoutMs: 20 })
+    );
   });
 });

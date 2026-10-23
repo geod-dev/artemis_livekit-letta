@@ -78,7 +78,10 @@ export function eventStream<E>(
         write(': connected\n\n');
         if (closed) return;
         try {
-          const cleanup = start((event) => write(`data: ${JSON.stringify(event)}\n\n`), () => close(true));
+          const cleanup = start(
+            (event) => write(`data: ${JSON.stringify(event)}\n\n`),
+            () => close(true)
+          );
           if (typeof cleanup === 'function') stop = cleanup;
         } catch (error) {
           logger.error('subscriber startup failed', { error: String(error) });

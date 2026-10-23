@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { MemoryArtifactSink } from '../../test-support.ts';
+import { MemoryArtifactSink } from '../../testing/support.ts';
 import { McpResultConverter, MAX_ARTIFACT_BYTES } from './results.ts';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
@@ -39,11 +39,17 @@ describe('McpResultConverter.convert', () => {
     assert.deepEqual(JSON.parse(bare.text), { content: [] });
     assert.equal(bare.isError, false);
     const result = await convert.convert(
-      { content: [{ type: 'resource', resource: [{ uri: 'file:///not-an-object', text: 'ignored' }] }] },
+      {
+        content: [
+          { type: 'resource', resource: [{ uri: 'file:///not-an-object', text: 'ignored' }] },
+        ],
+      },
       CONVERSATION
     );
     const envelope = envelopeOf(result.text) as { content: Array<{ resource: unknown }> };
-    assert.deepEqual(envelope.content[0]?.resource, [{ uri: 'file:///not-an-object', text: 'ignored' }]);
+    assert.deepEqual(envelope.content[0]?.resource, [
+      { uri: 'file:///not-an-object', text: 'ignored' },
+    ]);
   });
 
   test('binary blocks are saved as artifacts, listed by path, and dropped from the envelope', async () => {
@@ -52,7 +58,14 @@ describe('McpResultConverter.convert', () => {
       content: [
         { type: 'text', text: 'chart' },
         { type: 'image', data: PNG.toString('base64'), mimeType: 'image/png' },
-        { type: 'resource', resource: { uri: 'file:///report.json', mimeType: 'application/json', text: '{"ok":true}' } },
+        {
+          type: 'resource',
+          resource: {
+            uri: 'file:///report.json',
+            mimeType: 'application/json',
+            text: '{"ok":true}',
+          },
+        },
       ],
       structuredContent: { count: 2 },
       _meta: { trace: 'abc' },
@@ -66,7 +79,10 @@ describe('McpResultConverter.convert', () => {
     assert.equal(report?.mimeType, 'application/json');
     assert.equal(report?.name, 'report.json');
     assert.deepEqual(sink.saved[0]?.bytes, PNG);
-    assert.match(result.text, /^Saved to data\/artifacts\/conv_1\/mcp-image-2\.png\n\nSaved to data\/artifacts\/conv_1\/report\.json/);
+    assert.match(
+      result.text,
+      /^Saved to data\/artifacts\/conv_1\/mcp-image-2\.png\n\nSaved to data\/artifacts\/conv_1\/report\.json/
+    );
 
     const envelope = envelopeOf(result.text);
     assert.deepEqual(envelope.structuredContent, input.structuredContent);
@@ -101,12 +117,22 @@ describe('McpResultConverter.convert', () => {
   test('invalid base64 and oversized resources are refused', async () => {
     const { converter: convert } = converter();
     await assert.rejects(
-      convert.convert({ content: [{ type: 'image', data: 'not base64!', mimeType: 'image/png' }] }, CONVERSATION),
+      convert.convert(
+        { content: [{ type: 'image', data: 'not base64!', mimeType: 'image/png' }] },
+        CONVERSATION
+      ),
       /valid base64/
     );
     await assert.rejects(
       convert.convert(
-        { content: [{ type: 'resource', resource: { uri: 'file:///big.txt', text: 'a'.repeat(MAX_ARTIFACT_BYTES + 1) } }] },
+        {
+          content: [
+            {
+              type: 'resource',
+              resource: { uri: 'file:///big.txt', text: 'a'.repeat(MAX_ARTIFACT_BYTES + 1) },
+            },
+          ],
+        },
         CONVERSATION
       ),
       /larger than 25 MB/
@@ -115,7 +141,10 @@ describe('McpResultConverter.convert', () => {
 
   test('an error result keeps its flag', async () => {
     const { converter: convert } = converter();
-    const result = await convert.convert({ content: [{ type: 'text', text: 'no' }], isError: true }, CONVERSATION);
+    const result = await convert.convert(
+      { content: [{ type: 'text', text: 'no' }], isError: true },
+      CONVERSATION
+    );
     assert.equal(result.isError, true);
   });
 });
@@ -124,13 +153,21 @@ describe('McpResultConverter.screenshot', () => {
   test('a device screenshot is saved under the device name and inlined', async () => {
     const { converter: convert, sink } = converter();
     const result = await convert.screenshot(
-      { content: [{ type: 'image', data: PNG.toString('base64'), mimeType: 'image/png' }, { type: 'text', text: 'ok' }] },
+      {
+        content: [
+          { type: 'image', data: PNG.toString('base64'), mimeType: 'image/png' },
+          { type: 'text', text: 'ok' },
+        ],
+      },
       'laptop',
       CONVERSATION
     );
     assert.match(sink.saved[0]?.name ?? '', /^laptop-.*\.png$/);
     assert.deepEqual(sink.saved[0]?.bytes, PNG);
-    assert.equal(result.artifacts[0]?.path.startsWith(`data/artifacts/${CONVERSATION}/laptop-`), true);
+    assert.equal(
+      result.artifacts[0]?.path.startsWith(`data/artifacts/${CONVERSATION}/laptop-`),
+      true
+    );
     assert.equal(result.images.length, 1);
     assert.match(result.text, /^Screenshot from laptop saved to data\/artifacts\/conv_1\/laptop-/);
     assert.match(result.text, /"text": "ok"/);
@@ -163,7 +200,11 @@ describe('McpResultConverter.screenshot', () => {
 
   test('a result without an image converts like any other result', async () => {
     const { converter: convert } = converter();
-    const result = await convert.screenshot({ content: [{ type: 'text', text: 'no screen' }] }, 'laptop', CONVERSATION);
+    const result = await convert.screenshot(
+      { content: [{ type: 'text', text: 'no screen' }] },
+      'laptop',
+      CONVERSATION
+    );
     assert.deepEqual(result.artifacts, []);
     assert.match(result.text, /no screen/);
   });
