@@ -26,6 +26,10 @@ const commands = {
   devices: [
     ['tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_device.py'], 'devices'],
   ],
+  boundaries: [
+    ['dependency rules', process.execPath, ['scripts/check-boundaries.mjs'], '.'],
+    ['dependency rules self-test', process.execPath, ['scripts/check-boundaries.mjs', '--self-test'], '.'],
+  ],
   packages: [
     ['typecheck', pnpmExecutable, ['run', 'typecheck:packages'], '.'],
     ['tests', pnpmExecutable, ['run', 'test:packages'], '.'],
@@ -39,11 +43,8 @@ const commands = {
 };
 
 const selected = process.argv[2];
-const groups = selected === 'all'
-  ? ['gateway', 'agent-server', 'web', 'voice', 'devices', 'packages', 'operations', 'schema']
-  : selected === undefined
-    ? ['gateway', 'agent-server', 'web', 'voice', 'devices', 'packages', 'operations', 'schema']
-    : [selected];
+const defaultGroups = ['gateway', 'agent-server', 'web', 'voice', 'devices', 'boundaries', 'packages', 'operations', 'schema'];
+const groups = selected === 'all' || selected === undefined ? defaultGroups : [selected];
 
 if (groups.some((group) => !(group in commands))) {
   console.error(`Unknown check group: ${selected}`);

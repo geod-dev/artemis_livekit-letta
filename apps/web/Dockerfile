@@ -3,13 +3,14 @@
 FROM node:24.19-alpine AS build
 
 # The web app is a member of the root pnpm workspace, so it installs from the repo root.
-# It depends on packages/contracts through `link:`, so that package is copied alongside it.
+# It depends on packages/contracts through `link:`, so that package is copied alongside it. Its
+# devDependencies are selected explicitly: the generative UI library it exports is compiled into the app.
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@10.18.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY apps/web/package.json apps/web/
-RUN pnpm install --frozen-lockfile --filter @artemis/frontend...
+RUN pnpm install --frozen-lockfile --filter @artemis/frontend... --filter @artemis/contracts
 COPY packages/contracts packages/contracts
 COPY apps/web apps/web
 

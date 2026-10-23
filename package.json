@@ -9,6 +9,7 @@
   "packageManager": "pnpm@10.18.0",
   "scripts": {
     "check": "node scripts/check.mjs",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:gateway": "node scripts/check.mjs gateway",
     "check:agent-server": "node scripts/check.mjs agent-server",
     "check:web": "node scripts/check.mjs web",

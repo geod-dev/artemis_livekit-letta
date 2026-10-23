@@ -2,13 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import presentComponentsJson from '@artemis/contracts/present-components.json' with { type: 'json' };
 import presentToolJson from '@artemis/contracts/present-tool.json' with { type: 'json' };
-import {
-  presentLibrary,
-  presentToolSchema,
-  presentTree,
-  replyMessage,
-  validatePresent,
-} from './generative-ui.ts';
+import { presentLibrary, presentToolSchema } from '@artemis/contracts/present-library';
+import { presentTree, replyMessage, validatePresent } from './generative-ui.ts';
 
 // Without the schema's shared-prop warnings (see `presentToolSchema`).
 process.env.NODE_ENV = 'production';

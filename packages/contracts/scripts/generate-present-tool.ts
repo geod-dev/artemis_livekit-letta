@@ -1,12 +1,13 @@
 /**
- * Writes the `present` tool's schema, generated from the app's generative UI
- * library, to the file the agent-server registers the tool from. Run it after
- * changing the library or upgrading `@assistant-ui/react-generative-ui`.
+ * Writes the `present` tool's schema, generated from the generative UI library
+ * in `src/present-library.ts`, to the files the agent-server registers the tool
+ * from. Run it after changing the library or upgrading
+ * `@assistant-ui/react-generative-ui`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { toJSONSchema } from 'zod';
-import { presentLibrary, presentToolSchema } from '../../../apps/web/src/lib/generative-ui.ts';
+import { presentLibrary, presentToolSchema } from '../src/present-library.ts';
 
 const generatedDirectory = new URL('../generated/', import.meta.url);
 // Without the schema's shared-prop warnings (see `presentToolSchema`).

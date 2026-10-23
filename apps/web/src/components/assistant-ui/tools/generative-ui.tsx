@@ -5,13 +5,8 @@ import {
   createActionRegistry,
   renderGenerativeUI,
 } from '@assistant-ui/react-generative-ui';
-import {
-  PRESENT_TOOL,
-  REPLY_ACTION,
-  presentLibrary,
-  replyMessage,
-  validatePresent,
-} from '@/lib/generative-ui';
+import { PRESENT_TOOL, presentLibrary } from '@artemis/contracts/present-library';
+import { REPLY_ACTION, replyMessage, validatePresent } from '@/lib/generative-ui';
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
 import { ToolFallback } from '@/components/assistant-ui/tools/tool-fallback';
 
