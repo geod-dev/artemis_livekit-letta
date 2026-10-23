@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "API contracts, the generative UI library and generated present-tool schemas shared by the frontend, the backend and the agent-server. No runtime dependencies: the UI library is a devDependency, read only by the frontend and the schema generator.",
+  "description": "API contracts, the generative UI library and generated present-tool schemas shared by the web app, the gateway and the agent-server. No runtime dependencies: the UI library is a devDependency, read only by the frontend and the schema generator.",
   "exports": {
     "./chat-types": "./src/chat-types.ts",
     "./agent-server": "./src/agent-server.ts",
