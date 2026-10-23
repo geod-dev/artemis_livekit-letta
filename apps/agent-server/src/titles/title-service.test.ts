@@ -96,7 +96,7 @@ describe('TitleService', () => {
 
   async function setup(provider: TitleProvider) {
     const storage = new EphemeralStorage();
-    const config = loadConfig({ DATABASE_URL: 'postgresql://x' });
+    const config = loadConfig({ DATABASE_URL: 'postgresql://x', OPENAI_COMPATIBLE_BASE_URL: 'http://llm.test/v1', OPENAI_COMPATIBLE_API_KEY: 'test-key' });
     const router = createModelRouter(config, new ProviderRegistry([provider, new IdleProvider()]));
     const events = new ConversationEventHub();
     const service = createTitleService({ storage, router, prompts: new PromptRenderer(dir), events });

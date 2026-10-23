@@ -1,12 +1,13 @@
-import { type Clock, type Logger, consoleLogger, systemClock, uuid } from '@artemis/core';
+import { type Clock, type Logger, consoleLogger, errorMessage, systemClock, uuid } from '@artemis/core';
 import type { RecalledMemory, Repositories, MemoryRetentionRecord, MessageRecord, RecallTrace, TurnRecord } from '@artemis/storage';
 import { recallBudget, type MemoryStore, type RetainRequest, type TranscriptTurn } from '@artemis/memory';
 import type { AgentServerConfig } from '../config.ts';
-import { runWithTimeout } from './abort.ts';
+import { runWithTimeout } from '../util/async.ts';
 
 /**
- * Applies the memory rules (architecture.md#7). Talks to long-term memory only
- * through `MemoryStore`; storage holds the outbox and the bookkeeping.
+ * Applies the memory rules (docs/architecture.md, "Conversations memory and
+ * background work"). Talks to long-term memory only through `MemoryStore`;
+ * storage holds the outbox and the bookkeeping.
  * - `conversationActivated(id)` on every accepted user message: swaps
  *   `last_active_conversation_id`; when it changed, flushes the previous
  *   conversation's unanalyzed completed turns.
@@ -20,16 +21,16 @@ import { runWithTimeout } from './abort.ts';
  * exponential backoff and a terminal state after `maxAttempts`; the operation
  * id is the row id, so retries are idempotent. Memory failures never fail a turn.
  */
-export abstract class MemoryCoordinator {
-  abstract conversationActivated(conversationId: string): Promise<void>;
-  abstract recallFor(input: RecallInput): Promise<RecalledMemory[]>;
-  abstract turnCompleted(turn: TurnRecord): Promise<void>;
+export interface MemoryCoordinator {
+  conversationActivated(conversationId: string): Promise<void>;
+  recallFor(input: RecallInput): Promise<RecalledMemory[]>;
+  turnCompleted(turn: TurnRecord): Promise<void>;
   /** Retains every unanalyzed completed turn of the conversation (reason `switch` or `shutdown`). */
-  abstract flush(conversationId: string, reason: 'switch' | 'shutdown'): Promise<void>;
+  flush(conversationId: string, reason: 'switch' | 'shutdown'): Promise<void>;
   /** Starts the outbox pump (periodic) and submits leftovers from a previous run. */
-  abstract start(): void;
+  start(): void;
   /** Stops the pump and waits for the submission in flight. */
-  abstract stop(): Promise<void>;
+  stop(): Promise<void>;
 }
 
 interface RecallInput {
@@ -65,7 +66,7 @@ const LAST_ACTIVE_KEY = 'last_active_conversation_id';
 const PUMP_BATCH = 10;
 const MAX_BACKOFF_MS = 5 * 60_000;
 
-class StoreMemoryCoordinator extends MemoryCoordinator {
+class StoreMemoryCoordinator implements MemoryCoordinator {
   private readonly clock: Clock;
   private readonly logger: Logger;
   private readonly pumpIntervalMs: number;
@@ -81,7 +82,6 @@ class StoreMemoryCoordinator extends MemoryCoordinator {
   private timer: { cancel(): void } | null = null;
 
   constructor(private readonly options: MemoryCoordinatorOptions) {
-    super();
     this.clock = options.clock ?? systemClock;
     this.logger = options.logger ?? consoleLogger('memory');
     this.pumpIntervalMs = options.pumpIntervalMs ?? 5_000;
@@ -101,7 +101,7 @@ class StoreMemoryCoordinator extends MemoryCoordinator {
         await this.flush(previous, 'switch');
       }
     } catch (error) {
-      this.logger.error('activation bookkeeping failed', { conversationId, error: messageOf(error) });
+      this.logger.error('activation bookkeeping failed', { conversationId, error: errorMessage(error) });
     }
   }
 
@@ -142,12 +142,12 @@ class StoreMemoryCoordinator extends MemoryCoordinator {
       }));
       trace.memoryIds = memories.map((item) => item.id);
     } catch (error) {
-      trace.error = messageOf(error);
+      trace.error = errorMessage(error);
       this.logger.warn('recall skipped', { turnId: input.turnId, error: trace.error });
     }
     trace.durationMs = this.clock.now() - started;
     await this.options.storage.turns.setRecall(input.turnId, trace).catch((error: unknown) => {
-      this.logger.warn('recall trace not stored', { turnId: input.turnId, error: messageOf(error) });
+      this.logger.warn('recall trace not stored', { turnId: input.turnId, error: errorMessage(error) });
     });
     return memories;
   }
@@ -217,7 +217,7 @@ class StoreMemoryCoordinator extends MemoryCoordinator {
       try {
         await this.submitPending();
       } catch (error) {
-        this.logger.error('outbox pump failed', { error: messageOf(error) });
+        this.logger.error('outbox pump failed', { error: errorMessage(error) });
       }
     }
   }
@@ -247,7 +247,7 @@ class StoreMemoryCoordinator extends MemoryCoordinator {
       await this.options.storage.memoryRetentions.markSubmitted(row.id, this.iso());
       this.retryAt.delete(row.id);
     } catch (error) {
-      const message = messageOf(error);
+      const message = errorMessage(error);
       const attempts = row.attempts + 1;
       const terminal = attempts >= this.maxAttempts;
       if (terminal) this.retryAt.delete(row.id);
@@ -316,7 +316,7 @@ class StoreMemoryCoordinator extends MemoryCoordinator {
   }
 
   private logError(message: string, conversationId: string, error: unknown): void {
-    this.logger.error(message, { conversationId, error: messageOf(error) });
+    this.logger.error(message, { conversationId, error: errorMessage(error) });
   }
 
   private iso(): string {
@@ -341,8 +341,4 @@ function textOf(content: unknown[]): string {
       return type === 'text' && typeof text === 'string' ? [text] : [];
     })
     .join('\n');
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

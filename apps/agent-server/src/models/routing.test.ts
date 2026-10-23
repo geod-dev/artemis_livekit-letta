@@ -19,8 +19,11 @@ class LimitsProvider extends LlmProvider {
   }
 }
 
+/** The default task model is an OpenAI-compatible handle, so its provider must be configured. */
+const MODEL_ENV = { OPENAI_COMPATIBLE_BASE_URL: 'http://llm.test/v1', OPENAI_COMPATIBLE_API_KEY: 'test-key' };
+
 function setup(env: NodeJS.ProcessEnv = {}) {
-  const config = loadConfig({ DATABASE_URL: 'postgresql://x', ...env });
+  const config = loadConfig({ DATABASE_URL: 'postgresql://x', ...MODEL_ENV, ...env });
   const providers = new ProviderRegistry([
     new LimitsProvider('anthropic', 128_000),
     new LimitsProvider('openai-compatible', 16_000),
@@ -93,8 +96,8 @@ describe('createModelRouter', () => {
   });
 
   it('fails at boot when a configured model has no registered provider', () => {
-    const config = loadConfig({ DATABASE_URL: 'postgresql://x', ASSISTANT_TASK_MODEL: 'mistral/large' });
+    const config = loadConfig({ DATABASE_URL: 'postgresql://x', ...MODEL_ENV });
     const providers = new ProviderRegistry([new LimitsProvider('anthropic', 128_000)]);
-    assert.throws(() => createModelRouter(config, providers), /mistral/);
+    assert.throws(() => createModelRouter(config, providers), /No LLM provider registered as "openai-compatible"/);
   });
 });

@@ -1,14 +1,12 @@
-import Ajv2020 from 'ajv/dist/2020.js';
-import type { ValidateFunction } from 'ajv';
 import type { JsonSchema } from '@artemis/llm';
 import { capText, errorResult, Tool, textResult, type ToolResult } from '@artemis/tools';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { validatePresentTree } from '@artemis/contracts/present-validation';
-import presentComponents from '@artemis/contracts/present-components.json' with { type: 'json' };
 import presentTool from '@artemis/contracts/present-tool.json' with { type: 'json' };
-import type { SubagentSpec } from '../workers/types.ts';
 import type { SubagentDefinition } from '../subagents/definitions.ts';
 import type { AgentToolContext } from './index.ts';
+import type { PresentValidator } from './present-schema.ts';
+import type { SubagentSpec } from './task-port.ts';
 
 const RESULT_CAP_HINT = 'ask for a shorter report or read the full output in the workspace';
 
@@ -158,24 +156,22 @@ export class StopTaskTool extends Tool<{ task_id: string }, AgentToolContext> {
 
 /**
  * `present`: generative UI. Validated against the shared present protocol
- * (bounds, component names and each component's props, via the generated
- * per-component JSON schemas). Advertised only when `ASSISTANT_PRESENT_TOOL=true`.
+ * (bounds, component names and each component's props, via the validator).
+ * Advertised only when `ASSISTANT_PRESENT_TOOL=true`.
  */
-const presentAjv = new Ajv2020({ allowUnionTypes: true });
-const presentValidators = new Map<string, ValidateFunction>(
-  Object.entries(presentComponents).map(([name, schema]) => [name, presentAjv.compile(schema as object)]),
-);
-
 export class PresentTool extends Tool<Record<string, unknown>, AgentToolContext> {
   readonly name = TOOL_NAMES.present;
   readonly description = presentTool.description;
   readonly inputSchema = presentTool.parameters as JsonSchema;
 
+  constructor(private readonly validator: PresentValidator) {
+    super();
+  }
+
   async execute(input: Record<string, unknown>): Promise<ToolResult> {
-    const components = [...presentValidators.keys()];
-    const result = validatePresentTree(input, (type, props) => presentValidators.get(type)?.(props) === true);
+    const result = validatePresentTree(input, (type, props) => this.validator.validateProps(type, props));
     if (!result.ok) {
-      return errorResult(`Not shown: ${result.error} Use only these components: ${components.join(', ')}.`);
+      return errorResult(`Not shown: ${result.error} Use only these components: ${this.validator.components.join(', ')}.`);
     }
     return textResult('Shown to the user in the chat.', { display: { type: 'present' } });
   }

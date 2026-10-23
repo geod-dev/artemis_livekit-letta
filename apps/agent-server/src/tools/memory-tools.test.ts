@@ -3,8 +3,11 @@ import { test } from 'node:test';
 import { Toolset } from '@artemis/tools';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { AgentServerConfig } from '../config.ts';
-import { createMemoryTools, type MemoryToolContext } from './tools.ts';
-import { FakeClock, FakeMemoryStore, fact } from './test-support.ts';
+import { FakeClock } from '@artemis/core/testing';
+import { FakeMemoryStore } from '@artemis/memory/testing';
+import { fact } from '../../test/memory-support.ts';
+import type { AgentToolContext } from './index.ts';
+import { createMemoryTools } from './memory-tools.ts';
 
 function setup(enabled = true) {
   const store = new FakeMemoryStore();
@@ -19,7 +22,7 @@ function setup(enabled = true) {
       recallMaxTokens: { low: 800, mid: 1500, high: 3000 },
     },
   } as unknown as AgentServerConfig;
-  const toolset = new Toolset<MemoryToolContext>(createMemoryTools({ store, config, clock: new FakeClock() }));
+  const toolset = new Toolset<AgentToolContext>(createMemoryTools({ store, config, clock: new FakeClock() }));
   return { store, toolset };
 }
 
@@ -27,7 +30,7 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
   return result.content.map((block) => (block.type === 'text' ? block.text ?? '' : '')).join('');
 }
 
-function context(overrides: Partial<MemoryToolContext> = {}): MemoryToolContext {
+function context(overrides: Partial<AgentToolContext> = {}): AgentToolContext {
   return {
     conversationId: 'c1',
     taskId: null,
@@ -37,7 +40,7 @@ function context(overrides: Partial<MemoryToolContext> = {}): MemoryToolContext 
     mode: 'text',
     effort: null,
     ...overrides,
-  } as MemoryToolContext;
+  } as AgentToolContext;
 }
 
 test('memory tools use the names of the toolset order', () => {

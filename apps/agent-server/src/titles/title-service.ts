@@ -1,7 +1,7 @@
 import { oneShot } from '@artemis/agent-loop';
-import { consoleLogger, type Logger } from '@artemis/core';
+import { DEFAULT_CONVERSATION_TITLE } from '@artemis/contracts/chat-types';
+import { consoleLogger, errorMessage, type Logger } from '@artemis/core';
 import type { Storage } from '@artemis/storage';
-import { DEFAULT_TITLE } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { ModelRouter } from '../models/routing.ts';
 import type { PromptRenderer } from '../prompts/renderer.ts';
@@ -13,21 +13,19 @@ import type { PromptRenderer } from '../prompts/renderer.ts';
  * (fallback: first 60 chars) -> `setTitleIfUntitled` (a user rename wins) ->
  * publish `conversation_updated`. At most one request in flight per conversation.
  */
-export abstract class TitleService {
-  abstract request(conversationId: string, firstUserText: string): void;
-  /** Resolves once every request in flight has settled (immediately, unless an implementation tracks work). */
-  idle(): Promise<void> {
-    return Promise.resolve();
-  }
+export interface TitleService {
+  request(conversationId: string, firstUserText: string): void;
+  /** Resolves once every request in flight has settled. */
+  idle(): Promise<void>;
   /** Aborts requests in flight and refuses new ones. */
-  abstract stop(): Promise<void>;
+  stop(): Promise<void>;
 }
 
 const MAX_TITLE_LENGTH = 60;
 const TITLE_INPUT_LENGTH = 1_000;
 const TITLE_TIMEOUT_MS = 20_000;
 
-/** Port of pre-refactor assistant/conversations/title-text.ts. Null when the reply holds no usable title. */
+/** Null when the reply holds no usable title. */
 export function cleanTitle(raw: string): string | null {
   const line =
     raw
@@ -48,7 +46,7 @@ export function cleanTitle(raw: string): string | null {
 
 /** The first message itself, shortened: used when the title model fails. */
 export function fallbackTitle(text: string): string {
-  return text.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_LENGTH) || DEFAULT_TITLE;
+  return text.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_LENGTH) || DEFAULT_CONVERSATION_TITLE;
 }
 
 interface TitleServiceDeps {
@@ -59,14 +57,13 @@ interface TitleServiceDeps {
   logger?: Logger;
 }
 
-class StorageTitleService extends TitleService {
+class StorageTitleService implements TitleService {
   private readonly inflight = new Map<string, Promise<void>>();
   private readonly abort = new AbortController();
   private readonly logger: Logger;
   private stopped = false;
 
   constructor(private readonly deps: TitleServiceDeps) {
-    super();
     this.logger = deps.logger ?? consoleLogger('titles');
   }
 
@@ -82,7 +79,7 @@ class StorageTitleService extends TitleService {
     this.inflight.set(conversationId, job);
   }
 
-  override async idle(): Promise<void> {
+  async idle(): Promise<void> {
     await Promise.allSettled([...this.inflight.values()]);
   }
 
@@ -120,15 +117,11 @@ class StorageTitleService extends TitleService {
       type: 'conversation_updated',
       conversation: {
         id: record.id,
-        title: record.title?.trim() || DEFAULT_TITLE,
+        title: record.title?.trim() || DEFAULT_CONVERSATION_TITLE,
         updatedAt: record.lastMessageAt ?? record.updatedAt,
       },
     });
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function createTitleService(deps: TitleServiceDeps): TitleService {

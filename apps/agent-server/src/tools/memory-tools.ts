@@ -1,24 +1,21 @@
-import { type Clock, type Logger, systemClock, uuid } from '@artemis/core';
+import { type Clock, type Logger, errorMessage, systemClock, uuid } from '@artemis/core';
 import { type AnyTool, Tool, errorResult, textResult, type ToolResult } from '@artemis/tools';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
-import type { TextEffort } from '@artemis/contracts/chat-types';
 import { type MemoryStore, type RecallBudget, recallBudget, renderRecalledMemories } from '@artemis/memory';
 import type { AgentServerConfig } from '../config.ts';
-import type { AgentToolContext } from '../tools/index.ts';
-import { runWithTimeout } from './abort.ts';
+import { runWithTimeout } from '../util/async.ts';
+import type { AgentToolContext } from './index.ts';
 
 /**
- * Memory tools of the agent (architecture.md#5), on the `MemoryStore`
- * abstraction only. Appended to the agent toolset in `TOOL_NAMES` order.
+ * Memory tools of the agent (docs/architecture.md, "Conversations memory and
+ * background work"), on the `MemoryStore` abstraction only. Appended to the
+ * agent toolset in `TOOL_NAMES` order.
  * - `memory_search {query, budget?}`: on-demand recall, rendered like the
  *   automatic `<recalled-memories>` block. Default budget = `recallBudget` of
  *   the current turn (voice -> low; text effort low/medium -> mid; high+ -> high).
  * - `memory_remember {content, context?}`: immediate retain of one note
  *   (`document_id = memory-note:<uuid>`, metadata `source: 'tool'`).
  */
-
-/** Tool context plus the effort of the turn, when the caller knows it. */
-export type MemoryToolContext = AgentToolContext & { effort?: TextEffort | null };
 
 interface MemoryToolsOptions {
   store: MemoryStore;
@@ -39,7 +36,7 @@ interface SearchInput {
   budget?: RecallBudget;
 }
 
-class MemorySearchTool extends Tool<SearchInput, MemoryToolContext> {
+class MemorySearchTool extends Tool<SearchInput, AgentToolContext> {
   readonly name = TOOL_NAMES.memorySearch;
   readonly description =
     'Search long-term memory of the user (past conversations and notes). Use it when an answer may depend on something said or decided before. Returns the matching memories.';
@@ -62,7 +59,7 @@ class MemorySearchTool extends Tool<SearchInput, MemoryToolContext> {
     super();
   }
 
-  async execute(input: SearchInput, context: MemoryToolContext): Promise<ToolResult> {
+  async execute(input: SearchInput, context: AgentToolContext): Promise<ToolResult> {
     const { memory } = this.options.config;
     if (!memory.enabled) return errorResult('Memory is disabled on this server.');
     const budget =
@@ -86,7 +83,7 @@ class MemorySearchTool extends Tool<SearchInput, MemoryToolContext> {
       if (result.facts.length === 0) return textResult(`No memories match "${input.query}".`);
       return textResult(renderRecalledMemories(result.facts));
     } catch (error) {
-      return errorResult(`Memory search failed: ${messageOf(error)}`);
+      return errorResult(`Memory search failed: ${errorMessage(error)}`);
     }
   }
 
@@ -100,7 +97,7 @@ interface RememberInput {
   context?: string;
 }
 
-class MemoryRememberTool extends Tool<RememberInput, MemoryToolContext> {
+class MemoryRememberTool extends Tool<RememberInput, AgentToolContext> {
   readonly name = TOOL_NAMES.memoryRemember;
   readonly description =
     'Save a note to long-term memory of the user, for something worth recalling in future conversations. Write it as a self-contained statement.';
@@ -118,7 +115,7 @@ class MemoryRememberTool extends Tool<RememberInput, MemoryToolContext> {
     super();
   }
 
-  async execute(input: RememberInput, context: MemoryToolContext): Promise<ToolResult> {
+  async execute(input: RememberInput, context: AgentToolContext): Promise<ToolResult> {
     const { memory, assistant } = this.options.config;
     if (!memory.enabled) return errorResult('Memory is disabled on this server.');
     const clock = this.options.clock ?? systemClock;
@@ -140,12 +137,8 @@ class MemoryRememberTool extends Tool<RememberInput, MemoryToolContext> {
       );
       return textResult(`Saved to memory (note ${id}).`);
     } catch (error) {
-      this.options.logger?.warn('memory note not saved', { error: messageOf(error) });
-      return errorResult(`Could not save the note: ${messageOf(error)}`);
+      this.options.logger?.warn('memory note not saved', { error: errorMessage(error) });
+      return errorResult(`Could not save the note: ${errorMessage(error)}`);
     }
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

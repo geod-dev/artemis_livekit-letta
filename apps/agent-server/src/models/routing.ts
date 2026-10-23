@@ -3,8 +3,8 @@ import type { TextEffort } from '@artemis/contracts/chat-types';
 import type { AgentServerConfig } from '../config.ts';
 
 /**
- * Model routing (ported from the legacy model-request patching and
- * model adapter):
+ * Model routing. Each route names the model handle, thinking mode, effort,
+ * output cap and whether prompt cache and compaction apply:
  * - `assistant-text`: ASSISTANT_MODEL, thinking adaptive (summaries streamed),
  *   effort = the turn's effort (default medium), cache + compaction on.
  * - `assistant-voice`: ASSISTANT_MODEL, thinking disabled, effort medium.
@@ -40,7 +40,7 @@ export function createModelRouter(config: AgentServerConfig, providers: Provider
     wanted: number
   ): number => Math.min(wanted, target.provider.modelInfo(target.model).maxOutputTokens);
 
-  const claudeRoute = (
+  const assistantRoute = (
     thinking: ModelRoute['thinking'],
     effort: Effort,
     maxTokens: number,
@@ -56,18 +56,18 @@ export function createModelRouter(config: AgentServerConfig, providers: Provider
     compaction: true,
   });
 
-  const voiceRoute = () => claudeRoute('disabled', VOICE_EFFORT, VOICE_MAX_TOKENS, false);
+  const voiceRoute = () => assistantRoute('disabled', VOICE_EFFORT, VOICE_MAX_TOKENS, false);
 
   return {
     route(kind, options = {}) {
       switch (kind) {
         case 'assistant-text':
-          return claudeRoute('adaptive', options.effort ?? DEFAULT_TEXT_EFFORT, TEXT_MAX_TOKENS, true);
+          return assistantRoute('adaptive', options.effort ?? DEFAULT_TEXT_EFFORT, TEXT_MAX_TOKENS, true);
         case 'assistant-voice':
           return voiceRoute();
         case 'update':
           if (options.modality === 'voice') return voiceRoute();
-          return claudeRoute('adaptive', options.effort ?? UPDATE_TEXT_EFFORT, TEXT_MAX_TOKENS, true);
+          return assistantRoute('adaptive', options.effort ?? UPDATE_TEXT_EFFORT, TEXT_MAX_TOKENS, true);
         case 'worker':
           return {
             provider: task.provider,

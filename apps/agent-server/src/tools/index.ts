@@ -5,8 +5,9 @@ import { type AnyTool, type ToolContext, Toolset } from '@artemis/tools';
 import { createWorkspaceTools } from '@artemis/tools/workspace-tools';
 import type { CallSessions } from '../calls/call-sessions.ts';
 import type { SubagentDefinition } from '../subagents/definitions.ts';
-import type { TaskService } from '../tasks/task-service.ts';
 import { EndCallTool, GetTaskTool, ListTasksTool, PresentTool, RunAgentTool, SetCallModeTool, StopTaskTool } from './agent-tools.ts';
+import { createPresentValidator } from './present-schema.ts';
+import type { TaskPort } from './task-port.ts';
 
 /** Context of agent-server tools: generic context + conversation services. */
 export interface AgentToolContext extends ToolContext {
@@ -16,12 +17,12 @@ export interface AgentToolContext extends ToolContext {
   effort?: TextEffort | null;
   /** Depth assigned to tasks this call starts (see `depthAfter`). */
   taskDepth: number;
-  tasks: TaskService;
+  tasks: TaskPort;
   calls: CallSessions;
 }
 
 interface AgentToolsetDeps {
-  tasks: TaskService;
+  tasks: TaskPort;
   catalog: McpCatalog;
   mcp: McpClient;
   subagents: readonly SubagentDefinition[];
@@ -29,7 +30,7 @@ interface AgentToolsetDeps {
   backgroundAfterMs: number;
   /** `ASSISTANT_PRESENT_TOOL`: the `present` tool is part of the toolset only when on. */
   present: boolean;
-  /** `memory_search` / `memory_remember` from the memory tools factory (WP-10), in their order. */
+  /** `memory_search` / `memory_remember` from `createMemoryTools`, in their order. */
   memoryTools: readonly AnyTool<AgentToolContext>[];
 }
 
@@ -48,7 +49,7 @@ export function createAgentToolset(deps: AgentToolsetDeps): Toolset<AgentToolCon
     new ListTasksTool(),
     new GetTaskTool(),
     new StopTaskTool(),
-    ...(deps.present ? [new PresentTool()] : []),
+    ...(deps.present ? [new PresentTool(createPresentValidator())] : []),
     new SetCallModeTool(),
     new EndCallTool(),
     ...createMcpBridgeTools(deps.catalog, deps.mcp),

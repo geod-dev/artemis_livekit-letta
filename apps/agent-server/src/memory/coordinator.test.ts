@@ -4,7 +4,9 @@ import type { Logger } from '@artemis/core';
 import { EphemeralStorage } from '@artemis/storage/testing';
 import type { AgentServerConfig } from '../config.ts';
 import { createMemoryCoordinator } from './coordinator.ts';
-import { FakeClock, FakeMemoryStore, fact, seedConversation, seedTurn, settle } from './test-support.ts';
+import { FakeClock } from '@artemis/core/testing';
+import { FakeMemoryStore } from '@artemis/memory/testing';
+import { fact, seedConversation, seedTurn, settle } from '../../test/memory-support.ts';
 
 const silent: Logger = {
   debug() {},
