@@ -54,7 +54,7 @@ The Postgres database is new and starts empty; no earlier data is imported. Any
 volume left from the previous stack is not used by this stack. Keep it until you
 no longer need it. Do not run `docker compose down -v` unless you intend to delete `postgres-data`.
 
-The init script `infrastructure/postgres/init-databases.sh` creates the `artemis`
+The init script `deploy/postgres/init-databases.sh` creates the `artemis`
 and `hindsight` roles and databases only when `postgres-data` is empty.
 
 Agent commands run as uid 1001 (`WORKSPACE_RUN_AS`). That user must be able to
@@ -72,7 +72,7 @@ with the webroot flow. Allow inbound TCP 80/443 and LiveKit TCP 7881/UDP 7882.
 Run as root from the checkout:
 
 ```sh
-CERTBOT=/path/to/certbot sh infrastructure/https/setup.sh PUBLIC_IPV4
+CERTBOT=/path/to/certbot sh deploy/https/setup.sh PUBLIC_IPV4
 ```
 
 The script validates the IPv4 address and Certbot version before changing host

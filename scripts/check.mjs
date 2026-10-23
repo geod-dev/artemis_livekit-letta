@@ -35,7 +35,7 @@ const commands = {
     ['tests', pnpmExecutable, ['run', 'test:packages'], '.'],
   ],
   operations: [
-    ['mocked deployment tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'infrastructure/coolify', '-p', 'test_*.py'], '.'],
+    ['mocked deployment tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'deploy/coolify', '-p', 'test_*.py'], '.'],
   ],
   schema: [
     ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'packages/contracts/scripts/generate-present-tool.ts', '--check'], '.'],

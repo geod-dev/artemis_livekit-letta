@@ -1,7 +1,7 @@
 #!/bin/sh
 # Debian/Ubuntu host, run as root from a checkout with a configured .env.
 set -eu
-ip=${1:?Usage: sh infrastructure/https/setup.sh PUBLIC_IPV4}
+ip=${1:?Usage: sh deploy/https/setup.sh PUBLIC_IPV4}
 
 # Validate four decimal octets without accepting signs, shorthand or overflow.
 case "$ip" in *[!0-9.]*|'') echo 'Expected an IPv4 address' >&2; exit 1 ;; esac
@@ -101,7 +101,7 @@ mv "$env_new" .env
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build backend frontend voice-agent
 
 nginx_new=$(mktemp "${site}.XXXXXX")
-sed "s/@IP@/$ip/g" infrastructure/https/nginx.conf.template > "$nginx_new"
+sed "s/@IP@/$ip/g" deploy/https/nginx.conf.template > "$nginx_new"
 mv "$nginx_new" "$site"
 ln -sf "$site" "$enabled"
 nginx -t

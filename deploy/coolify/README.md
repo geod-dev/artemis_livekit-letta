@@ -25,7 +25,7 @@ issued token and leaves the prior token file unchanged.
 These local tests use fake API responses and do not need Coolify credentials:
 
 ```sh
-python -m unittest infrastructure/coolify/test_poll_deploy.py infrastructure/coolify/test_rotate_token.py
+python -m unittest deploy/coolify/test_poll_deploy.py deploy/coolify/test_rotate_token.py
 ```
 
 Install the scripts and systemd units using the deployment instructions for the
