@@ -11,7 +11,7 @@ import type {
   TaskRecord,
   ToolCallRecord,
   TurnRecord,
-} from '../domain.ts';
+} from '../../domain.ts';
 import {
   AppStateRepository,
   BackgroundUpdateRepository,
@@ -26,7 +26,7 @@ import {
   TaskRepository,
   ToolCallRepository,
   TurnRepository,
-} from '../repositories.ts';
+} from '../../repositories.ts';
 import { type EphemeralAccess, type EphemeralState } from './database.ts';
 
 const copy = <T>(value: T): T => structuredClone(value);

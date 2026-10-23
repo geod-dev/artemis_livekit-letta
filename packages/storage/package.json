@@ -7,8 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./postgres": "./src/vendor/postgres/index.ts",
-    "./postgres/testing": "./src/testing/postgres.ts",
-    "./testing": "./src/testing/ephemeral-storage.ts"
+    "./postgres/testing": "./src/vendor/postgres/testing.ts",
+    "./testing": "./src/vendor/ephemeral/ephemeral-storage.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

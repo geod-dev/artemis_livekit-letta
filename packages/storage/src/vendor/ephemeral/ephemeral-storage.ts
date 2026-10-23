@@ -13,7 +13,7 @@ import {
   type TaskRepository,
   type ToolCallRepository,
   type TurnRepository,
-} from '../repositories.ts';
+} from '../../repositories.ts';
 import { EphemeralAccess, EphemeralDatabase } from './database.ts';
 import { EphemeralRepositories } from './repositories.ts';
 

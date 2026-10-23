@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { deviceScreenshotPolicy } from '../../device-screenshot.ts';
 import { MemoryArtifactSink } from '../../testing/support.ts';
 import { McpResultConverter, MAX_ARTIFACT_BYTES } from './results.ts';
 
@@ -160,9 +161,11 @@ describe('McpResultConverter.screenshot', () => {
         ],
       },
       'laptop',
-      CONVERSATION
+      CONVERSATION,
+      0,
+      deviceScreenshotPolicy
     );
-    assert.match(sink.saved[0]?.name ?? '', /^laptop-.*\.png$/);
+    assert.equal(sink.saved[0]?.name, 'laptop-1970-01-01T00-00-00-000Z.png');
     assert.deepEqual(sink.saved[0]?.bytes, PNG);
     assert.equal(
       result.artifacts[0]?.path.startsWith(`data/artifacts/${CONVERSATION}/laptop-`),
@@ -179,7 +182,9 @@ describe('McpResultConverter.screenshot', () => {
       convert.screenshot(
         { content: [{ type: 'image', data: PNG.toString('base64'), mimeType: 'image/jpeg' }] },
         'laptop',
-        CONVERSATION
+        CONVERSATION,
+        0,
+        deviceScreenshotPolicy
       ),
       /valid PNG/
     );
@@ -192,7 +197,9 @@ describe('McpResultConverter.screenshot', () => {
           ],
         },
         'laptop',
-        CONVERSATION
+        CONVERSATION,
+        0,
+        deviceScreenshotPolicy
       ),
       /only one image/
     );
@@ -203,7 +210,9 @@ describe('McpResultConverter.screenshot', () => {
     const result = await convert.screenshot(
       { content: [{ type: 'text', text: 'no screen' }] },
       'laptop',
-      CONVERSATION
+      CONVERSATION,
+      0,
+      deviceScreenshotPolicy
     );
     assert.deepEqual(result.artifacts, []);
     assert.match(result.text, /no screen/);

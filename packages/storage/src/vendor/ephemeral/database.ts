@@ -10,7 +10,7 @@ import type {
   TaskRecord,
   ToolCallRecord,
   TurnRecord,
-} from '../domain.ts';
+} from '../../domain.ts';
 
 /** One map per table, keyed by primary key (conversation_recalls: conversation -> memory -> turn). */
 export interface EphemeralState {

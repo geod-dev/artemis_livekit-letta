@@ -6,7 +6,7 @@
   "description": "MCP server settings, client, catalog, registry and the mcp_describe/mcp_call/mcp_call_write bridge tools. Subpaths: ./sdk (the vendor client, composition roots only) and ./device-server (serves a connected device as an MCP endpoint).",
   "exports": {
     ".": "./src/index.ts",
-    "./device-server": "./src/device-server.ts",
+    "./device-server": "./src/vendor/sdk/device-server.ts",
     "./sdk": "./src/vendor/sdk/index.ts"
   },
   "scripts": {

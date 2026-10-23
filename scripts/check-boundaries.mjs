@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Mechanical enforcement of the dependency rules (repo reorganisation plan,
- * section 3). Parses every .ts, .tsx, .mjs and .js file under apps/ and
- * packages/ with the root `typescript` compiler API and checks each import and
- * export specifier against the rules below. Prints one line per violation as
- * `file:line rule-N message` and exits 1 when there is any.
+ * Mechanical enforcement of the dependency rules (docs/architecture.md,
+ * "Dependency rules"). Parses every source file under apps/ and packages/
+ * (.ts .tsx .mts .cts .mjs .cjs .js .jsx, declaration files and generated
+ * directories included) with the root `typescript` compiler API and checks each
+ * import and export specifier against the rules below. Prints one line per
+ * violation as `file:line rule-N message` and exits 1 when there is any.
  *
  *   rule-1  packages/contracts imports nothing outside itself; no runtime deps.
  *   rule-2  packages/* never import apps/*, nor reach a vendor path outside
@@ -12,9 +13,17 @@
  *   rule-3  apps/* never import another app, nor a relative path that leaves
  *           their own root.
  *   rule-4  only apps/<app>/src/compose.ts imports a vendor implementation.
- *   rule-5  apps/web imports only @artemis/contracts among workspace packages.
+ *   rule-5  apps/web imports only @artemis/contracts among workspace packages;
+ *           apps/web/src imports no Node built-in and no server-only SDK.
  *   rule-6  every bare import is declared in the importing package.json.
  *   rule-7  the workspace package graph (workspace:/link: references) is acyclic.
+ *   rule-8  a vendor SDK (VENDOR_NPM_PACKAGES) is imported only from src/vendor
+ *           and from apps/<app>/src/compose.ts.
+ *
+ * Test code (`*.test.*` files and anything under a `test/` directory) is
+ * exempt from rule-4, rule-8 and the apps/web/src half of rule-5: tests build
+ * fixtures from the vendor testing subpaths and fake servers, and web tests run
+ * under node itself. Reviewed exceptions live in ALLOWLIST.
  *
  * `--self-test` runs the checker on small synthetic fixtures, one per rule,
  * and exits 1 if any rule fails to fire or the clean fixture is flagged.
@@ -39,8 +48,8 @@ const ts = require('typescript');
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.mjs', '.js']);
-const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'generated', '.git']);
+const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.mjs', '.cjs', '.js', '.jsx']);
+const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', '.git']);
 const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const BUILTIN_MODULES = new Set(builtinModules);
 const CONTRACTS_NAME = '@artemis/contracts';
@@ -49,13 +58,48 @@ const CONTRACTS_DIRECTORY = 'packages/contracts';
 const COMPOSE_FILE = /^apps\/[^/]+\/src\/compose\.ts$/;
 
 /**
+ * npm packages that wrap an external service SDK. Production code imports them
+ * only from a vendor directory or a composition root, and apps/web/src not at
+ * all. A generic validator such as `ajv` is not a service SDK and is not listed.
+ */
+const VENDOR_NPM_PACKAGES = new Set([
+  '@anthropic-ai/sdk',
+  '@modelcontextprotocol/sdk',
+  '@vectorize-io/hindsight-client',
+  'livekit-server-sdk',
+  'openai',
+  'pg',
+]);
+
+/**
  * Reviewed exceptions. Each entry names the file (posix path from the repo
  * root), the rule, the exact specifier, and the reason. Keep this list empty
  * unless a violation is genuinely intended.
  */
 const ALLOWLIST = [
-  // { file: 'apps/x/src/y.ts', rule: 'rule-6', specifier: 'some-pkg', reason: '...' },
+  {
+    file: 'apps/gateway/src/devices/hub.ts',
+    rule: 'rule-4',
+    specifier: '@artemis/mcp/device-server',
+    reason: 'the device MCP endpoint is served directly by the gateway; there is no second implementation to select in compose.ts',
+  },
+  {
+    file: 'apps/gateway/src/devices/mcp-endpoint.ts',
+    rule: 'rule-4',
+    specifier: '@artemis/mcp/device-server',
+    reason: 'the device MCP endpoint is served directly by the gateway; there is no second implementation to select in compose.ts',
+  },
 ];
+
+/** `src/vendor/**` anywhere in the tree (a package's or an app's vendor code). */
+function isVendorFile(rel) {
+  return /(^|\/)src\/vendor\//.test(rel);
+}
+
+/** `*.test.*` files and anything under a `test/` directory. */
+function isTestFile(rel) {
+  return /\.test\.[cm]?[jt]sx?$/.test(rel) || /(^|\/)test\//.test(rel);
+}
 
 function posixRelative(root, path) {
   return relative(root, path).split(sep).join('/');
@@ -98,7 +142,7 @@ function listSourceFiles(directory, out = []) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (!SKIPPED_DIRECTORIES.has(entry.name)) listSourceFiles(path, out);
-    } else if (entry.isFile() && !entry.name.endsWith('.d.ts') && SOURCE_EXTENSIONS.has(extname(entry.name))) {
+    } else if (entry.isFile() && SOURCE_EXTENSIONS.has(extname(entry.name))) {
       out.push(path);
     }
   }
@@ -108,8 +152,12 @@ function listSourceFiles(directory, out = []) {
 const SCRIPT_KINDS = {
   '.ts': ts.ScriptKind.TS,
   '.tsx': ts.ScriptKind.TSX,
+  '.mts': ts.ScriptKind.TS,
+  '.cts': ts.ScriptKind.TS,
   '.mjs': ts.ScriptKind.JS,
+  '.cjs': ts.ScriptKind.JS,
   '.js': ts.ScriptKind.JS,
+  '.jsx': ts.ScriptKind.JSX,
 };
 
 /** Every module specifier in a file: static and re-exports, require(), import(), import types. */
@@ -272,8 +320,18 @@ function checkTree(root) {
       filesChecked += 1;
       const text = readFileSync(file, 'utf8');
 
+      // Browser code under apps/web/src: no Node built-ins, no server-only SDKs (rule-5).
+      // Web tests run under node itself, so they are excepted.
+      const webSource =
+        owner.rel === WEB_DIRECTORY && rel.startsWith(`${WEB_DIRECTORY}/src/`) && !isTestFile(rel);
+
       for (const { specifier, line } of collectSpecifiers(file, text)) {
-        if (specifier.startsWith('node:') || BUILTIN_MODULES.has(specifier)) continue;
+        if (specifier.startsWith('node:') || BUILTIN_MODULES.has(specifier)) {
+          if (webSource) {
+            report(rel, line, 'rule-5', `apps/web/src must not import the Node built-in "${specifier}"`, specifier);
+          }
+          continue;
+        }
 
         let absoluteTarget;
         let targetPackage;
@@ -295,6 +353,13 @@ function checkTree(root) {
           }
           if (!declared.has(bare.name)) {
             report(rel, line, 'rule-6', `"${bare.name}" is not declared in ${owner.rel}/package.json`, specifier);
+          }
+          if (VENDOR_NPM_PACKAGES.has(bare.name)) {
+            if (webSource) {
+              report(rel, line, 'rule-5', `apps/web/src must not import the server-only SDK "${bare.name}"`, specifier);
+            } else if (!isVendorFile(rel) && !COMPOSE_FILE.test(rel) && !isTestFile(rel)) {
+              report(rel, line, 'rule-8', `vendor SDK "${bare.name}" imported outside src/vendor and apps/*/src/compose.ts`, specifier);
+            }
           }
         }
 
@@ -327,7 +392,7 @@ function checkTree(root) {
         // rule-4 and rule-2 (vendor): vendor implementations are reached only from a composition root.
         const vendorDirectory = absoluteTarget ? vendorDirectoryOf(absoluteTarget) : undefined;
         if (vendorDirectory && !isInside(vendorDirectory, file)) {
-          if (!COMPOSE_FILE.test(rel)) {
+          if (!COMPOSE_FILE.test(rel) && !isTestFile(rel)) {
             report(rel, line, 'rule-4', `vendor implementation imported outside apps/*/src/compose.ts ("${specifier}")`, specifier);
           }
           if (owner.kind === 'packages') {
@@ -394,11 +459,12 @@ function baselineFixture() {
     'packages/contracts/src/index.ts': 'export const contract = 1;\n',
     'packages/llm/package.json': manifest(
       '@artemis/llm',
-      { '@artemis/core': 'workspace:*' },
+      { '@artemis/core': 'workspace:*', '@anthropic-ai/sdk': '^0.1.0' },
       { '.': './src/index.ts', './anthropic': './src/vendor/anthropic/index.ts' }
     ),
     'packages/llm/src/index.ts': "import { core } from '@artemis/core';\nexport const llm = core;\n",
-    'packages/llm/src/vendor/anthropic/index.ts': 'export const anthropic = 1;\n',
+    'packages/llm/src/vendor/anthropic/index.ts':
+      "import '@anthropic-ai/sdk';\nexport const anthropic = 1;\n",
     'apps/gateway/package.json': manifest('@artemis/gateway', {
       '@artemis/contracts': 'workspace:*',
       '@artemis/llm': 'workspace:*',
@@ -407,6 +473,8 @@ function baselineFixture() {
       "import { anthropic } from '@artemis/llm/anthropic';\nimport { llm } from '@artemis/llm';\nexport const compose = [anthropic, llm];\n",
     'apps/gateway/src/server.ts':
       "import { compose } from './compose.ts';\nimport { contract } from '@artemis/contracts';\nexport const server = [compose, contract];\n",
+    'apps/gateway/src/server.test.ts':
+      "import { anthropic } from '@artemis/llm/anthropic';\nexport const testing = anthropic;\n",
     'apps/web/package.json': manifest('@artemis/web', {
       '@artemis/contracts': 'link:../../packages/contracts',
       '@artemis/core': 'link:../../packages/core',
@@ -454,6 +522,41 @@ const FIXTURES = [
     },
   },
   {
+    name: 'rule-5-node-builtin',
+    rule: 'rule-5',
+    files: {
+      'apps/web/src/bad-node.ts': "import { readFileSync } from 'node:fs';\nexport const bad = readFileSync;\n",
+    },
+  },
+  {
+    name: 'rule-5-server-sdk',
+    rule: 'rule-5',
+    files: {
+      'apps/web/src/bad-sdk.ts': "import { Pool } from 'pg';\nexport const bad = Pool;\n",
+    },
+  },
+  {
+    name: 'rule-8',
+    rule: 'rule-8',
+    files: {
+      'packages/core/src/bad-sdk.ts': "import { Pool } from 'pg';\nexport const bad = Pool;\n",
+    },
+  },
+  {
+    name: 'scan-generated-declaration',
+    rule: 'rule-2',
+    files: {
+      'packages/core/src/generated/bad.d.ts': "import type { server } from '../../../../apps/gateway/src/server.ts';\nexport type Bad = typeof server;\n",
+    },
+  },
+  {
+    name: 'scan-cjs',
+    rule: 'rule-2',
+    files: {
+      'packages/core/src/bad.cjs': "const server = require('../../../apps/gateway/src/server.ts');\nmodule.exports = server;\n",
+    },
+  },
+  {
     name: 'rule-6',
     rule: 'rule-6',
     files: {
@@ -494,10 +597,10 @@ function selfTest() {
       }
       const fired = violations.some((v) => v.rule === fixture.rule);
       if (fired) {
-        console.log(`PASS ${fixture.rule}: caught the synthetic violation`);
+        console.log(`PASS ${fixture.name}: caught the synthetic violation`);
       } else {
         failures += 1;
-        console.log(`FAIL ${fixture.rule}: the synthetic violation was not caught`);
+        console.log(`FAIL ${fixture.name}: the synthetic violation was not caught`);
         for (const v of violations) console.log(`  ${v.file}:${v.line} ${v.rule} ${v.message}`);
       }
     }

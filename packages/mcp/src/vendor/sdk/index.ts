@@ -5,18 +5,25 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { type Clock, systemClock } from '@artemis/core';
 import type { McpServer } from '@artemis/contracts/chat-types';
 import { type ArtifactSink, type ListedTool, McpClient, type McpCallResult } from '../../client.ts';
+import {
+  deviceScreenshotPolicy,
+  SCREENSHOT_TOOL,
+  type ScreenshotPolicy,
+} from '../../device-screenshot.ts';
 import { McpResultConverter, recordOf } from './results.ts';
 
 export interface SdkMcpClientOptions {
   artifacts: ArtifactSink;
   /** Per-operation deadline (default 120 s). */
   deadlineMs?: number;
-  /** Time source for the deadlines (default: the system clock). */
+  /** Time source for the deadlines and screenshot names (default: the system clock). */
   clock?: Clock;
   /** Max tools listed per server (default 500, 20 pages). */
   maxTools?: number;
   /** Working directory and extra env for stdio servers (the server's own `env` wins). */
   stdio?: { cwd?: string; env?: Record<string, string> };
+  /** How device screenshots are checked and named (default: one PNG of at most 10 MB). */
+  screenshots?: ScreenshotPolicy;
 }
 
 const DEFAULT_DEADLINE_MS = 120_000;
@@ -64,6 +71,7 @@ export class SdkMcpClient extends McpClient {
   private readonly deadlineMs: number;
   private readonly clock: Clock;
   private readonly maxTools: number;
+  private readonly screenshots: ScreenshotPolicy;
 
   constructor(readonly options: SdkMcpClientOptions) {
     super();
@@ -71,6 +79,7 @@ export class SdkMcpClient extends McpClient {
     this.deadlineMs = options.deadlineMs ?? DEFAULT_DEADLINE_MS;
     this.clock = options.clock ?? systemClock;
     this.maxTools = options.maxTools ?? DEFAULT_MAX_TOOLS;
+    this.screenshots = options.screenshots ?? deviceScreenshotPolicy;
   }
 
   listTools(server: McpServer, signal?: AbortSignal): Promise<ListedTool[]> {
@@ -118,8 +127,14 @@ export class SdkMcpClient extends McpClient {
         timeout: this.remaining(deadline),
         signal: options.signal,
       });
-      if (server.managed?.type === 'device' && tool === 'screenshot_capture') {
-        return this.converter.screenshot(result, server.managed.deviceName, options.conversationId);
+      if (server.managed?.type === 'device' && tool === SCREENSHOT_TOOL) {
+        return this.converter.screenshot(
+          result,
+          server.managed.deviceName,
+          options.conversationId,
+          this.clock.now(),
+          this.screenshots
+        );
       }
       return this.converter.convert(result, options.conversationId);
     });

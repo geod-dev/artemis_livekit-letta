@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { storageContract } from '../../test/storage-contract.ts';
+import { storageContract } from '../../../test/storage-contract.ts';
 import { EphemeralStorage } from './ephemeral-storage.ts';
 
 storageContract('EphemeralStorage', async () => ({

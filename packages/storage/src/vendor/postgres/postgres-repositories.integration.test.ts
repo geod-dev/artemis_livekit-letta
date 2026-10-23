@@ -11,7 +11,7 @@ import type {
 } from '../../domain.ts';
 import type { Storage } from '../../repositories.ts';
 import { PostgresStorage } from './index.ts';
-import { createTestDatabase, dropTestDatabase } from '../../testing/postgres.ts';
+import { createTestDatabase, dropTestDatabase } from './testing.ts';
 
 /**
  * Behaviour only a real Postgres shows: uuid versus text column types, foreign-key actions, unique and check

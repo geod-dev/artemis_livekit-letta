@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { type StorageFixture, storageContract } from '../../../test/storage-contract.ts';
 import { PostgresStorage } from './index.ts';
 import { migrationChecksum } from './migrator.ts';
-import { createTestDatabase, dropTestDatabase } from '../../testing/postgres.ts';
+import { createTestDatabase, dropTestDatabase } from './testing.ts';
 
 /**
  * Runs against a real Postgres when TEST_DATABASE_URL is set, e.g. postgres://user:pass@localhost:5432/postgres.

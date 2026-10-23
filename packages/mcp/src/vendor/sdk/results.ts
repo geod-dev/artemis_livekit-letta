@@ -1,12 +1,12 @@
 import type { ChatAttachment } from '@artemis/contracts/chat-types';
 import { imageType } from '@artemis/workspace';
 import { type ArtifactSink, type InlineImage, type McpCallResult } from '../../client.ts';
+import type { ScreenshotPolicy } from '../../device-screenshot.ts';
 
 /** Per binary result, and per call in total. */
 export const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024;
 /** Images up to this size are also inlined for the model. */
 export const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
-export const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
 
 const EXTENSIONS: Record<string, string> = {
   'image/png': '.png',
@@ -74,12 +74,14 @@ export class McpResultConverter {
 
   /**
    * Device screenshots (`screenshot_capture` on a connected device): exactly one
-   * PNG, saved under the device's name; everything else converts as usual.
+   * image, checked and named by the injected policy; everything else converts as usual.
    */
   async screenshot(
     raw: unknown,
     deviceName: string,
-    conversationId: string
+    conversationId: string,
+    capturedAt: number,
+    policy: ScreenshotPolicy
   ): Promise<McpCallResult> {
     const record = recordOf(raw) ?? {};
     const content: unknown[] = Array.isArray(record.content) ? record.content : [];
@@ -94,15 +96,13 @@ export class McpResultConverter {
     if (shots.length === 0) return this.convert(raw, conversationId);
     if (shots.length > 1) throw new Error('A screenshot result may contain only one image');
     const shot = shots[0]!;
-    const bytes = shot.mimeType === 'image/png' ? decodeBase64(shot.data, 'Screenshot') : null;
-    if (!bytes || bytes.length > MAX_SCREENSHOT_BYTES || imageType(bytes) !== 'image/png') {
-      throw new Error('Screenshot must be a valid PNG of at most 10 MB');
-    }
+    const bytes = policy.checkPng(
+      shot.mimeType === 'image/png' ? decodeBase64(shot.data, 'Screenshot') : null
+    );
 
-    const safeDevice = deviceName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64) || 'device';
     const attachment = await this.sink.save({
       conversationId,
-      name: `${safeDevice}-${new Date().toISOString().replace(/[:.]/g, '-')}.png`,
+      name: policy.fileName(deviceName, capturedAt),
       mimeType: 'image/png',
       bytes,
     });
