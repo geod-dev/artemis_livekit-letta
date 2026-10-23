@@ -1,13 +1,21 @@
 import {
-  type CallToolResult,
-  CallToolResultSchema,
-  type Tool,
-  ToolSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+  type DeviceTool,
+  type DeviceToolResult,
+  parseDeviceTools,
+  parseDeviceToolResult,
+} from '@artemis/mcp/device-server';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { config } from '../assistant/config';
 import { equalSecret } from '../auth';
 import type { McpServer } from '../chat-types';
+
+/**
+ * The one device tool with a file-export flow: the device names a local path and
+ * the gateway receives the file through a separate upload request.
+ */
+const FILE_EXPORT_TOOL = 'filesystem_export';
+/** A device that has not checked in for this long is treated as gone. */
+const LEASE_MS = 75_000;
+const MAX_QUEUED_CALLS_PER_DEVICE = 32;
 
 interface Rpc {
   jsonrpc: '2.0';
@@ -15,11 +23,10 @@ interface Rpc {
   method: 'tools/call';
   params: { name: string; arguments: Record<string, unknown> };
 }
-const MAX_QUEUED_CALLS_PER_DEVICE = 32;
 interface Device {
   session: string;
   key: string;
-  tools: Tool[];
+  tools: DeviceTool[];
   seen: number;
   connectedAt: string;
   queue: Rpc[];
@@ -37,13 +44,13 @@ export class DeviceHub {
       tool: string;
       sourcePath?: string;
       uploadStarted?: boolean;
-      resolve: (value: CallToolResult) => void;
+      resolve: (value: DeviceToolResult) => void;
       timer: ReturnType<typeof setTimeout>;
     }
   >();
-  private changed: () => Promise<void> = async () => {};
+  private listeners: Array<() => Promise<void>> = [];
   private expiry: ReturnType<typeof setInterval> | undefined;
-  constructor(private readonly options: { baseUrl?: () => string; now?: () => number } = {}) {}
+  constructor(private readonly options: { baseUrl: () => string; now?: () => number }) {}
   start() {
     if (this.expiry) return;
     this.expiry = setInterval(() => {
@@ -56,13 +63,17 @@ export class DeviceHub {
   private now() {
     return (this.options.now ?? Date.now)();
   }
-  onChange(listener?: () => Promise<void>) {
-    this.changed = listener ?? (async () => {});
+  /** Adds a listener that runs after every change to the device registry. */
+  onChange(listener: () => Promise<void>) {
+    this.listeners.push(listener);
+  }
+  private async notify(): Promise<void> {
+    for (const listener of this.listeners) await listener();
   }
   private refreshRegistry(name?: string, session?: string, attempt = 0) {
     if (name && this.devices.get(name)?.session !== session) return;
     void Promise.resolve()
-      .then(() => this.changed())
+      .then(() => this.notify())
       .catch((error) => {
         console.error('[devices] registry refresh failed', error);
         if (attempt >= 5) return;
@@ -82,14 +93,14 @@ export class DeviceHub {
   async register(name: string, tools: unknown): Promise<string> {
     if (typeof name !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(name))
       throw new Error('Device name must contain 1–64 letters, digits, underscores or hyphens');
-    const validated = ToolSchema.array().max(100).parse(tools);
-    if (!validated.every((t: Tool) => /^[a-zA-Z0-9_-]{1,128}$/.test(t.name)))
+    const validated = parseDeviceTools(tools);
+    if (!validated.every((t: DeviceTool) => /^[a-zA-Z0-9_-]{1,128}$/.test(t.name)))
       throw new Error('Invalid MCP tool name');
-    if (new Set(validated.map((t: Tool) => t.name)).size !== validated.length)
+    if (new Set(validated.map((t: DeviceTool) => t.name)).size !== validated.length)
       throw new Error('Duplicate tool names');
     let expired = false;
     for (const [deviceName, device] of this.devices)
-      if (this.now() - device.seen > 75_000) expired = this.remove(deviceName) || expired;
+      if (this.now() - device.seen > LEASE_MS) expired = this.remove(deviceName) || expired;
     if (expired) this.refreshRegistry();
     if (!this.devices.has(name) && this.devices.size >= 100) throw new Error('Too many devices');
     this.remove(name);
@@ -130,17 +141,17 @@ export class DeviceHub {
     return true;
   }
   async unregister(name: string, session: string): Promise<void> {
-    if (this.remove(name, session)) await this.changed();
+    if (this.remove(name, session)) await this.notify();
   }
   async expire(): Promise<void> {
     let removed = false;
     for (const [name, d] of this.devices)
-      if (this.now() - d.seen > 75_000) removed = this.remove(name) || removed;
-    if (removed) await this.changed();
+      if (this.now() - d.seen > LEASE_MS) removed = this.remove(name) || removed;
+    if (removed) await this.notify();
   }
   private get(name: string, session: string, touch = false): Device {
     const d = this.devices.get(name);
-    if (!d || d.session !== session || this.now() - d.seen > 75_000)
+    if (!d || d.session !== session || this.now() - d.seen > LEASE_MS)
       throw new Error('Device session expired; register again');
     if (touch) d.seen = this.now();
     return d;
@@ -154,13 +165,9 @@ export class DeviceHub {
     d.streaming = true;
   }
   servers(): McpServer[] {
-    const base = (
-      this.options.baseUrl?.() ??
-      process.env.MCP_DEVICE_BASE_URL ??
-      `http://127.0.0.1:${config.port}`
-    ).replace(/\/$/, '');
+    const base = this.options.baseUrl().replace(/\/$/, '');
     return [...this.devices]
-      .filter(([, d]) => this.now() - d.seen <= 75_000)
+      .filter(([, d]) => this.now() - d.seen <= LEASE_MS)
       .map(([name, d]) => ({
         name: `device_${name}`,
         transport: 'http',
@@ -176,11 +183,11 @@ export class DeviceHub {
   }
   authenticate(name: string, header: string): string | null {
     const d = this.devices.get(name);
-    return d && this.now() - d.seen <= 75_000 && equalSecret(header, `Bearer ${d.key}`)
+    return d && this.now() - d.seen <= LEASE_MS && equalSecret(header, `Bearer ${d.key}`)
       ? d.session
       : null;
   }
-  tools(name: string, session: string): Tool[] {
+  tools(name: string, session: string): DeviceTool[] {
     return this.get(name, session).tools;
   }
   async poll(name: string, session: string, signal: AbortSignal, touch = true): Promise<Rpc[]> {
@@ -205,7 +212,7 @@ export class DeviceHub {
     this.get(name, session, true);
     const p = this.pending.get(id);
     if (!p || p.session !== session) throw new Error('Unknown or expired tool call');
-    const validated = CallToolResultSchema.parse(result);
+    const validated = parseDeviceToolResult(result);
     clearTimeout(p.timer);
     this.pending.delete(id);
     p.resolve(validated);
@@ -220,7 +227,7 @@ export class DeviceHub {
   checkFileUpload(name: string, session: string, id: string) {
     this.get(name, session, true);
     const p = this.pending.get(id);
-    if (!p || p.session !== session || p.tool !== 'filesystem_export' || !p.sourcePath)
+    if (!p || p.session !== session || p.tool !== FILE_EXPORT_TOOL || !p.sourcePath)
       throw new Error('No matching pending file export');
   }
   async call(
@@ -228,14 +235,14 @@ export class DeviceHub {
     session: string,
     tool: string,
     args: Record<string, unknown>
-  ): Promise<CallToolResult> {
+  ): Promise<DeviceToolResult> {
     const d = this.get(name, session);
     if (!d.tools.some((t) => t.name === tool)) throw new Error('Unknown device tool');
     if (d.queue.length >= MAX_QUEUED_CALLS_PER_DEVICE)
       throw new Error('Device request queue is full');
     if (this.pending.size >= 100) throw new Error('Too many pending device calls');
     const id = randomUUID();
-    const result = new Promise<CallToolResult>((resolve) => {
+    const result = new Promise<DeviceToolResult>((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         d.queue = d.queue.filter((r) => r.id !== id);
@@ -267,4 +274,3 @@ export class DeviceHub {
     return result;
   }
 }
-export const deviceHub = new DeviceHub();

@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.19"
+    "node": ">=24.19.0"
   },
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/server.ts",
-    "start": "tsx src/server.ts",
+    "start": "node --experimental-transform-types src/server.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
@@ -17,12 +17,11 @@
   },
   "dependencies": {
     "@artemis/contracts": "workspace:*",
+    "@artemis/mcp": "workspace:*",
     "@artemis/workspace": "workspace:*",
     "@hono/node-server": "^1.19.5",
-    "@modelcontextprotocol/sdk": "1.30.0",
     "hono": "^4.10.1",
-    "livekit-server-sdk": "^2.19.1",
-    "tsx": "^4.20.6"
+    "livekit-server-sdk": "^2.19.1"
   },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
@@ -30,9 +29,8 @@
     "eslint": "^9",
     "eslint-config-prettier": "^10.1.5",
     "prettier": "^3.4.2",
-    "typescript": "^5",
-    "typescript-eslint": "^8",
-    "undici-types": "7.24.6"
-  },
-  "packageManager": "pnpm@10.18.0"
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8"
+  }
 }

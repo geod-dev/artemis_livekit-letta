@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { validateConfig } from './config.ts';
 
-const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
-const appsDir = join(import.meta.dirname, '..', '..', '..');
+const repoRoot = join(import.meta.dirname, '..', '..', '..');
+const appsDir = join(import.meta.dirname, '..', '..');
 
 const productionEnv: NodeJS.ProcessEnv = {
   NODE_ENV: 'production',

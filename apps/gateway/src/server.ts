@@ -1,12 +1,11 @@
 import { serve } from '@hono/node-server';
 import type { Server } from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { loadConfig } from './assistant/config';
-import { createAuth } from './auth';
+import { createGatewayApp } from './app';
 import { composeGateway } from './compose';
-import { errorResponse } from './http';
+import { loadConfig } from './config';
 
-interface BackendApplication {
+export interface GatewayApplication {
   close(): Promise<void>;
 }
 
@@ -14,41 +13,12 @@ interface BackendApplication {
 const DEVICE_SYNC_EVERY_MS = 30_000;
 
 /** Compose, start and own all process resources of the gateway. */
-export async function startBackend(): Promise<BackendApplication> {
+export async function startGateway(): Promise<GatewayApplication> {
   const config = loadConfig();
-  // Import route modules only after .env loading and validation. This keeps
-  // paths and route defaults derived from the resolved application config.
-  const [
-    { deviceHub },
-    { createDeviceRoutes },
-    { createDeviceMcpRoutes },
-    { createConversationRoutes },
-    { createMcpRoutes },
-    { createVoiceRoutes },
-    { createFileRoutes },
-    { utilities },
-  ] = await Promise.all([
-    import('./devices/hub'),
-    import('./devices/api'),
-    import('./devices/mcp'),
-    import('./routes/conversations'),
-    import('./routes/mcp'),
-    import('./routes/voice'),
-    import('./routes/files'),
-    import('./routes/utilities'),
-  ]);
-  const { agentServer, workspace, attachments } = composeGateway(config);
+  const deps = composeGateway(config);
+  const { agentServer, attachments, deviceHub } = deps;
   attachments.registry.startCleanup();
-  const app = createAuth(config.auth.password, config.auth.deviceToken);
-  // The public liveness/readiness endpoints remain outside the /api auth middleware.
-  app.get('/health', (c) => c.json({ status: 'ok' }));
-  app.get('/ready', async (c) => {
-    try {
-      return await agentServer.relay(c.req.raw, '/ready');
-    } catch (error) {
-      return errorResponse(error, 503);
-    }
-  });
+  const app = createGatewayApp(deps);
 
   // Each sync sends the full device list, one at a time, so the last request
   // always carries the current list. Device changes retry through the hub.
@@ -64,16 +34,8 @@ export async function startBackend(): Promise<BackendApplication> {
   const deviceSyncTimer = setInterval(() => void reportDevices(), DEVICE_SYNC_EVERY_MS);
   deviceSyncTimer.unref();
 
-  app.route('/internal/mcp/devices', createDeviceMcpRoutes(deviceHub));
-  app.route('/api/devices', createDeviceRoutes(deviceHub, config.workspace.dir));
-  app.route('/api/conversations', createConversationRoutes(agentServer, attachments));
-  app.route('/api/voice', createVoiceRoutes(agentServer));
-  app.route('/api/mcp', createMcpRoutes(agentServer));
-  app.route('/api', createFileRoutes(attachments, workspace));
-  app.route('/api', utilities);
-
   deviceHub.start();
-  const server = serve({ fetch: app.fetch, hostname: '0.0.0.0', port: config.port }, ({ port }) => {
+  const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, ({ port }) => {
     console.info(`[gateway] listening on port ${port}`);
   }) as Server;
   let closing: Promise<void> | undefined;
@@ -93,19 +55,19 @@ export async function startBackend(): Promise<BackendApplication> {
     })();
     return closing;
   };
-  const onSigint = () => void close().then(() => process.exit(0));
-  const onSigterm = () => void close().then(() => process.exit(0));
-  process.once('SIGINT', onSigint);
-  process.once('SIGTERM', onSigterm);
+  // One shutdown path for both signals: close the server, then exit.
+  const shutdown = () => void close().then(() => process.exit(0));
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
   return {
     close: async () => {
-      process.off('SIGINT', onSigint);
-      process.off('SIGTERM', onSigterm);
+      process.off('SIGINT', shutdown);
+      process.off('SIGTERM', shutdown);
       await close();
     },
   };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await startBackend();
+  await startGateway();
 }
