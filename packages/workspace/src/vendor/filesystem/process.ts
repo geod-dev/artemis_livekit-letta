@@ -1,6 +1,6 @@
+import { type Clock, prefixedId, systemClock } from '@artemis/core';
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
-import { prefixedId } from '@artemis/core';
 import { type ProcessExit, type ProcessOutputChunk, WorkspaceProcess } from '../../transport.ts';
 
 const DEFAULT_TAIL_BYTES = 64 * 1024;
@@ -28,6 +28,8 @@ export interface StartProcessOptions {
   /** Retained output per stream. Default `MAX_OUTPUT_BYTES`. */
   maxOutputBytes?: number;
   runAs?: { uid: number; gid: number };
+  /** Time source for `startedAt`. Default `systemClock`. */
+  clock?: Clock;
 }
 
 /**
@@ -35,20 +37,27 @@ export interface StartProcessOptions {
  * Resolves once the shell has started; rejects when it cannot be started.
  * Every process is killed once its lifetime (`timeoutMs`, else `maxLifetimeMs`) elapses.
  */
-export async function startProcess(options: StartProcessOptions): Promise<FilesystemProcess> {
+export async function startProcess(options: StartProcessOptions): Promise<WorkspaceProcess> {
   const child = spawn(options.shell, ['-lc', options.command], {
     cwd: options.cwd,
     env: options.env,
     detached: true,
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
-    ...(process.platform !== 'win32' && options.runAs ? { uid: options.runAs.uid, gid: options.runAs.gid } : {}),
+    ...(process.platform !== 'win32' && options.runAs
+      ? { uid: options.runAs.uid, gid: options.runAs.gid }
+      : {}),
   });
   await new Promise<void>((resolve, reject) => {
     child.once('spawn', resolve);
     child.once('error', reject);
   });
-  const handle = new FilesystemProcess(child, options.command, options.maxOutputBytes);
+  const handle = new FilesystemProcess(
+    child,
+    options.command,
+    options.maxOutputBytes,
+    options.clock
+  );
   handle.armTimeout(options.timeoutMs ?? options.maxLifetimeMs ?? DEFAULT_MAX_LIFETIME_MS);
   return handle;
 }
@@ -58,11 +67,13 @@ export async function startProcess(options: StartProcessOptions): Promise<Filesy
  * on Windows (which has no graceful group signal, so it always forces). Resolves
  * once the tree has been signalled (on Windows: once `taskkill` has finished).
  */
-export function signalTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): Promise<void> {
+function signalTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): Promise<void> {
   const pid = child.pid;
   if (pid === undefined) return Promise.resolve();
   if (process.platform === 'win32') {
-    return new Promise((resolve) => execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => resolve()));
+    return new Promise((resolve) =>
+      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => resolve())
+    );
   }
   try {
     process.kill(-pid, signal);
@@ -77,13 +88,16 @@ export function signalTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): 
 }
 
 /** A command running in the workspace. Output is buffered from spawn, so a later owner can replay it. */
-export class FilesystemProcess extends WorkspaceProcess {
+class FilesystemProcess extends WorkspaceProcess {
   readonly id = prefixedId('proc');
-  readonly startedAt = new Date().toISOString();
+  readonly startedAt: string;
   readonly exited: Promise<ProcessExit>;
 
   private readonly log: OutputLog;
-  private readonly decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') };
+  private readonly decoders = {
+    stdout: new StringDecoder('utf8'),
+    stderr: new StringDecoder('utf8'),
+  };
   private resolveExit!: (exit: ProcessExit) => void;
   private finished = false;
   private timedOut = false;
@@ -94,13 +108,19 @@ export class FilesystemProcess extends WorkspaceProcess {
   constructor(
     private readonly child: ChildProcess,
     readonly command: string,
-    maxOutputBytes = MAX_OUTPUT_BYTES
+    maxOutputBytes = MAX_OUTPUT_BYTES,
+    clock: Clock = systemClock
   ) {
     super();
+    this.startedAt = new Date(clock.now()).toISOString();
     this.log = new OutputLog(maxOutputBytes);
     this.exited = new Promise<ProcessExit>((resolve) => (this.resolveExit = resolve));
-    child.stdout?.on('data', (data: Buffer) => this.append('stdout', this.decoders.stdout.write(data)));
-    child.stderr?.on('data', (data: Buffer) => this.append('stderr', this.decoders.stderr.write(data)));
+    child.stdout?.on('data', (data: Buffer) =>
+      this.append('stdout', this.decoders.stdout.write(data))
+    );
+    child.stderr?.on('data', (data: Buffer) =>
+      this.append('stderr', this.decoders.stderr.write(data))
+    );
     child.on('exit', (exitCode, signal) => {
       this.shellExit ??= { exitCode, signal };
       // Background children may keep the pipes open; do not wait for them.
@@ -140,8 +160,11 @@ export class FilesystemProcess extends WorkspaceProcess {
 
   async writeStdin(text: string): Promise<void> {
     const stdin = this.child.stdin;
-    if (this.finished || !stdin || !stdin.writable) throw new Error(`${this.id} is not accepting input`);
-    await new Promise<void>((resolve, reject) => stdin.write(text, (error) => (error ? reject(error) : resolve())));
+    if (this.finished || !stdin || !stdin.writable)
+      throw new Error(`${this.id} is not accepting input`);
+    await new Promise<void>((resolve, reject) =>
+      stdin.write(text, (error) => (error ? reject(error) : resolve()))
+    );
   }
 
   /** Kill the process tree after `ms` (lifetime limit, or the synchronous timeout). */
@@ -248,7 +271,8 @@ class StreamBuffer {
     }
     const text = pieces.join('');
     const buffer = Buffer.from(text);
-    const body = buffer.length > maxBytes ? buffer.subarray(buffer.length - maxBytes).toString('utf8') : text;
+    const body =
+      buffer.length > maxBytes ? buffer.subarray(buffer.length - maxBytes).toString('utf8') : text;
     return this.dropped > 0 ? truncationNotice(this.dropped) + body : body;
   }
 }
@@ -268,7 +292,8 @@ export class OutputLog {
   private readonly waiters = new Set<() => void>();
 
   constructor(private readonly maxBytes = MAX_OUTPUT_BYTES) {
-    if (!Number.isInteger(maxBytes) || maxBytes < 1) throw new RangeError('maxBytes must be a positive integer');
+    if (!Number.isInteger(maxBytes) || maxBytes < 1)
+      throw new RangeError('maxBytes must be a positive integer');
   }
 
   append(chunk: ProcessOutputChunk): void {

@@ -1,9 +1,9 @@
+import type { Logger } from '@artemis/core';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Logger } from '@artemis/core';
-import { Tool } from './tool.ts';
 import type { ToolContext } from './context.ts';
-import { errorResult, textResult, type ToolResult } from './result.ts';
+import { type ToolResult, errorResult, textResult } from './result.ts';
+import { Tool } from './tool.ts';
 import { Toolset } from './toolset.ts';
 
 const silent: Logger = {

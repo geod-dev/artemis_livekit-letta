@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
-import { readdir, readFile, stat } from 'node:fs/promises';
-import { createInterface } from 'node:readline';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import type { GrepMatch } from '../../transport.ts';
 import { toPosix } from './paths.ts';
 
@@ -46,13 +46,28 @@ export class TextSearch {
   }
 
   private async runRipgrep(request: TextSearchRequest): Promise<GrepMatch[]> {
-    const args = ['--json', '--no-config', '--color', 'never', '--glob', '!.git', '--glob', '!node_modules'];
+    const args = [
+      '--json',
+      '--no-config',
+      '--color',
+      'never',
+      '--glob',
+      '!.git',
+      '--glob',
+      '!node_modules',
+    ];
     if (request.caseInsensitive) args.push('--ignore-case');
     if (request.include) args.push('--glob', request.include);
     args.push('-e', request.pattern, '--', request.dir);
 
-    const child = spawn('rg', args, { cwd: request.root, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-    const exit = new Promise<number | null>((resolve) => child.on('close', (code) => resolve(code)));
+    const child = spawn('rg', args, {
+      cwd: request.root,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const exit = new Promise<number | null>((resolve) =>
+      child.on('close', (code) => resolve(code))
+    );
     let stderr = '';
     child.stderr.on('data', (data: Buffer) => {
       if (stderr.length < 4_000) stderr += data.toString('utf8');
@@ -84,11 +99,15 @@ export class TextSearch {
 
   private async walk(request: TextSearchRequest): Promise<GrepMatch[]> {
     const regex = new RegExp(request.pattern, request.caseInsensitive ? 'i' : '');
-    const include = request.include ? { glob: request.include, regex: globToRegExp(request.include) } : null;
+    const include = request.include
+      ? { glob: request.include, regex: globToRegExp(request.include) }
+      : null;
     const matches: GrepMatch[] = [];
 
     const visit = async (dir: string): Promise<void> => {
-      const entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : 1));
+      const entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
+        a.name < b.name ? -1 : 1
+      );
       for (const entry of entries) {
         if (matches.length >= request.limit) return;
         const path = join(dir, entry.name);
@@ -126,12 +145,22 @@ function parseRipgrepLine(line: string, root: string): GrepMatch | null {
 }
 
 /** A pattern with a slash matches the path below the search directory; one without matches the file name. */
-function matchesInclude(include: { glob: string; regex: RegExp } | null, name: string, path: string, dir: string): boolean {
+function matchesInclude(
+  include: { glob: string; regex: RegExp } | null,
+  name: string,
+  path: string,
+  dir: string
+): boolean {
   if (!include) return true;
   return include.regex.test(include.glob.includes('/') ? toPosix(relative(dir, path)) : name);
 }
 
-async function searchFile(path: string, request: TextSearchRequest, regex: RegExp, matches: GrepMatch[]): Promise<void> {
+async function searchFile(
+  path: string,
+  request: TextSearchRequest,
+  regex: RegExp,
+  matches: GrepMatch[]
+): Promise<void> {
   let bytes: Buffer;
   try {
     if ((await stat(path)).size > MAX_FALLBACK_FILE_BYTES) return;

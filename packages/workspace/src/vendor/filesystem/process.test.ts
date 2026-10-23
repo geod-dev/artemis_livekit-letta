@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { DEFAULT_MAX_LIFETIME_MS, MAX_OUTPUT_BYTES, OutputLog } from './process.ts';
 import { FilesystemWorkspaceTransport } from './index.ts';
+import { DEFAULT_MAX_LIFETIME_MS, MAX_OUTPUT_BYTES, OutputLog } from './process.ts';
 
 let root: string;
 
@@ -30,12 +30,16 @@ describe('OutputLog', () => {
 
   test('keeps the tail of a stream that exceeds the cap and drops the head', () => {
     const log = new OutputLog(100);
-    for (let i = 0; i < 50; i++) log.append({ stream: 'stdout', text: `line-${String(i).padStart(3, '0')}\n` });
+    for (let i = 0; i < 50; i++)
+      log.append({ stream: 'stdout', text: `line-${String(i).padStart(3, '0')}\n` });
     const tail = log.tail('stdout', 1_000);
     assert.match(tail, /^\[output truncated: \d+ bytes omitted\]\n/);
     assert.ok(tail.endsWith('line-049\n'), 'the newest output is kept');
     assert.ok(!tail.includes('line-000'), 'the oldest output is dropped');
-    assert.ok(Buffer.byteLength(tail.slice(tail.indexOf('\n') + 1)) <= 100, 'the retained body respects the cap');
+    assert.ok(
+      Buffer.byteLength(tail.slice(tail.indexOf('\n') + 1)) <= 100,
+      'the retained body respects the cap'
+    );
   });
 
   test('a single chunk larger than the cap keeps only its last bytes', () => {
@@ -97,7 +101,11 @@ describe('OutputLog', () => {
 
 describe('command lifetime', () => {
   test('a command that outlives its lifetime is killed and reported as timed out', async () => {
-    const transport = new FilesystemWorkspaceTransport({ root, displayRoot: '/workspace', commandLifetimeMs: 300 });
+    const transport = new FilesystemWorkspaceTransport({
+      root,
+      displayRoot: '/workspace',
+      commandLifetimeMs: 300,
+    });
     const started = Date.now();
     const process = await transport.spawn({ command: 'sleep 30' });
     const exit = await process.exited;
@@ -107,7 +115,11 @@ describe('command lifetime', () => {
   });
 
   test('a command that finishes within its lifetime is not marked timed out', async () => {
-    const transport = new FilesystemWorkspaceTransport({ root, displayRoot: '/workspace', commandLifetimeMs: 60_000 });
+    const transport = new FilesystemWorkspaceTransport({
+      root,
+      displayRoot: '/workspace',
+      commandLifetimeMs: 60_000,
+    });
     const process = await transport.spawn({ command: 'echo quick' });
     const exit = await process.exited;
     assert.equal(exit.timedOut, false);

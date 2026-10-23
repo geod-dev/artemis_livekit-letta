@@ -16,7 +16,10 @@ export function toRelativePath(input: string, displayRoot: string): string {
     path = path.slice(prefix.length).replace(/^\/+/, '');
   }
   if (path.startsWith('/') || isAbsolute(path)) {
-    throw new WorkspacePathError(input, 'absolute paths are not allowed; use a path relative to the workspace');
+    throw new WorkspacePathError(
+      input,
+      'absolute paths are not allowed; use a path relative to the workspace'
+    );
   }
   const normalized = posix.normalize(path === '' ? '.' : path);
   if (normalized === '..' || normalized.startsWith('../')) {
@@ -64,7 +67,8 @@ export class WorkspaceContainment {
   /** Canonical host path of an existing directory. */
   async directory(rel: string): Promise<string> {
     const real = await this.existing(rel);
-    if (!(await stat(real)).isDirectory()) throw new WorkspacePathError(rel || '.', 'not a directory');
+    if (!(await stat(real)).isDirectory())
+      throw new WorkspacePathError(rel || '.', 'not a directory');
     return real;
   }
 

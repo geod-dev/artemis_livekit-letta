@@ -16,11 +16,17 @@ export interface ToolResult {
   backgrounded?: boolean;
 }
 
-export function textResult(text: string, extra: Omit<ToolResult, 'content' | 'isError'> = {}): ToolResult {
+export function textResult(
+  text: string,
+  extra: Omit<ToolResult, 'content' | 'isError'> = {}
+): ToolResult {
   return { content: [{ type: 'text', text }], isError: false, ...extra };
 }
 
-export function errorResult(text: string, extra: Omit<ToolResult, 'content' | 'isError'> = {}): ToolResult {
+export function errorResult(
+  text: string,
+  extra: Omit<ToolResult, 'content' | 'isError'> = {}
+): ToolResult {
   return { content: [{ type: 'text', text }], isError: true, ...extra };
 }
 

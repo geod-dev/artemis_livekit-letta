@@ -92,6 +92,18 @@ export abstract class WorkspaceProcess {
   abstract writeStdin(text: string): Promise<void>;
 }
 
+/**
+ * A file being written in chunks. Bytes go to a temporary file beside the
+ * target; `commit` renames it into place, `abort` removes it. A handle is used once.
+ */
+export interface WriteHandle {
+  write(chunk: Uint8Array): Promise<void>;
+  /** Moves the temporary file to `finalPath` (workspace-relative, must resolve inside the root). */
+  commit(finalPath: string): Promise<void>;
+  /** Discards the temporary file; safe to call after a failed `commit`. */
+  abort(): Promise<void>;
+}
+
 export abstract class WorkspaceTransport {
   /** Path agents see as their working directory, for prompts (e.g. `/workspace`). */
   abstract readonly displayRoot: string;
@@ -104,6 +116,8 @@ export abstract class WorkspaceTransport {
   abstract readText(path: string, options?: { offset?: number; limit?: number }): Promise<string>;
   /** Atomic (tmp + rename); creates parent directories. */
   abstract writeFile(path: string, data: Uint8Array | string): Promise<void>;
+  /** Opens a chunked write to `path`; the target is only replaced by `WriteHandle.commit`. Rejects when `path` is not contained. */
+  abstract openWrite(path: string): Promise<WriteHandle>;
   /** Streams the whole file, or the inclusive `range` of it. Rejects before streaming when the path is not a contained regular file. */
   abstract readStream(path: string, range?: ByteRange): Promise<ReadableStream<Uint8Array>>;
   abstract deleteFile(path: string): Promise<void>;

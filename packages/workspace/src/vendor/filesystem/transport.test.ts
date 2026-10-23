@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -23,7 +23,10 @@ before(async () => {
   await writeFile(join(root, 'notes.md'), 'needle in notes\n');
   await writeFile(join(root, 'node_modules', 'pkg', 'c.ts'), 'needle in deps\n');
   await writeFile(join(root, '.git', 'config.ts'), 'needle in git\n');
-  await writeFile(join(root, 'image.bin'), Buffer.from([0x00, 0x01, 0x6e, 0x65, 0x65, 0x64, 0x6c, 0x65]));
+  await writeFile(
+    join(root, 'image.bin'),
+    Buffer.from([0x00, 0x01, 0x6e, 0x65, 0x65, 0x64, 0x6c, 0x65])
+  );
   // Windows without symlink privilege cannot create file symlinks (directory junctions still work): such tests are skipped.
   try {
     await symlink(join(outside, 'secret.txt'), join(root, 'escape.txt'), 'file');
@@ -45,8 +48,10 @@ after(async () => {
   await rm(outside, { recursive: true, force: true });
 });
 
-const transport = (ripgrep: 'auto' | 'off' = 'off', extra: { shell?: string; env?: Record<string, string> } = {}) =>
-  new FilesystemWorkspaceTransport({ root, displayRoot: '/workspace', ripgrep, ...extra });
+const transport = (
+  ripgrep: 'auto' | 'off' = 'off',
+  extra: { shell?: string; env?: Record<string, string> } = {}
+) => new FilesystemWorkspaceTransport({ root, displayRoot: '/workspace', ripgrep, ...extra });
 
 describe('files', () => {
   test('writes are atomic, create parents and leave no temporary file', async () => {
@@ -128,20 +133,32 @@ describe('files', () => {
 describe('search', () => {
   test('glob returns workspace-relative files and skips default ignores', async () => {
     const found = await transport().glob('**/*.ts');
-    assert.deepEqual(found.filter((path) => path.startsWith('src/')), ['src/a.ts', 'src/deep/b.ts']);
+    assert.deepEqual(
+      found.filter((path) => path.startsWith('src/')),
+      ['src/a.ts', 'src/deep/b.ts']
+    );
     assert.ok(!found.some((path) => path.includes('node_modules') || path.includes('.git/')));
   });
 
   for (const ripgrep of ['off', 'auto'] as const) {
     test(`grep finds matches (ripgrep: ${ripgrep})`, async () => {
-      const matches = await transport(ripgrep).grep('needle', { include: '*.ts', caseInsensitive: false });
+      const matches = await transport(ripgrep).grep('needle', {
+        include: '*.ts',
+        caseInsensitive: false,
+      });
       assert.deepEqual(
         matches.map((m) => `${m.path}:${m.line}`).sort(),
         ['src/a.ts:1'],
         'case-sensitive match only in src/a.ts; node_modules and .git are skipped'
       );
-      const insensitive = await transport(ripgrep).grep('needle', { include: '*.ts', caseInsensitive: true });
-      assert.deepEqual(insensitive.map((m) => `${m.path}:${m.line}`).sort(), ['src/a.ts:1', 'src/deep/b.ts:1']);
+      const insensitive = await transport(ripgrep).grep('needle', {
+        include: '*.ts',
+        caseInsensitive: true,
+      });
+      assert.deepEqual(insensitive.map((m) => `${m.path}:${m.line}`).sort(), [
+        'src/a.ts:1',
+        'src/deep/b.ts:1',
+      ]);
     });
   }
 
@@ -187,7 +204,10 @@ describe('processes', () => {
     const pwd = await transport().spawn({ command: 'pwd', cwd: 'src' });
     await pwd.exited;
     assert.match(pwd.tail().stdout.trim(), /src$/);
-    await assert.rejects(() => transport().spawn({ command: 'pwd', cwd: '..' }), WorkspacePathError);
+    await assert.rejects(
+      () => transport().spawn({ command: 'pwd', cwd: '..' }),
+      WorkspacePathError
+    );
   });
 
   test('timeoutMs kills the process tree and reports timedOut', async () => {

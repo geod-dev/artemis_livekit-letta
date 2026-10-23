@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { createReadStream, type Stats } from 'node:fs';
+import { type Stats, createReadStream } from 'node:fs';
 import {
+  type FileHandle,
   glob as globFiles,
   lstat,
   mkdir,
-  readdir,
+  open,
   readFile,
+  readdir,
   realpath,
   rename,
   rm,
@@ -27,8 +29,9 @@ import {
   WorkspacePathError,
   type WorkspaceProcess,
   WorkspaceTransport,
+  type WriteHandle,
 } from '../../transport.ts';
-import { isWithin, lstatOrNull, toPosix, toRelativePath, WorkspaceContainment } from './paths.ts';
+import { WorkspaceContainment, isWithin, lstatOrNull, toPosix, toRelativePath } from './paths.ts';
 import { startProcess } from './process.ts';
 import { TextSearch } from './search.ts';
 
@@ -135,6 +138,16 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
     }
   }
 
+  async openWrite(path: string): Promise<WriteHandle> {
+    const target = await this.containment.forWrite(this.rel(path));
+    await mkdir(dirname(target), { recursive: true });
+    const temporary = join(dirname(target), `.${randomUUID()}.tmp`);
+    const file = await open(temporary, 'wx');
+    return new FilesystemWriteHandle(file, temporary, (finalPath) =>
+      this.containment.forWrite(this.rel(finalPath))
+    );
+  }
+
   async deleteFile(path: string): Promise<void> {
     const rel = this.rel(path);
     if (rel === '') throw new WorkspacePathError('.', 'the workspace root cannot be deleted');
@@ -147,7 +160,9 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
   async readStream(path: string, range?: ByteRange): Promise<ReadableStream<Uint8Array>> {
     const real = await this.containment.existing(this.rel(path));
     if (!(await stat(real)).isFile()) throw new Error(`${path}: not a regular file`);
-    return Readable.toWeb(createReadStream(real, range ? { start: range.start, end: range.end } : {})) as ReadableStream<Uint8Array>;
+    return Readable.toWeb(
+      createReadStream(real, range ? { start: range.start, end: range.end } : {})
+    ) as ReadableStream<Uint8Array>;
   }
 
   async makeDirectory(path: string): Promise<void> {
@@ -167,9 +182,13 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
   async list(path: string): Promise<FileStat[]> {
     const rel = this.rel(path);
     const dir = await this.containment.directory(rel);
-    const entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : 1));
+    const entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
+      a.name < b.name ? -1 : 1
+    );
     return Promise.all(
-      entries.map(async (entry) => fileStat(joinRel(rel, entry.name), await lstat(join(dir, entry.name))))
+      entries.map(async (entry) =>
+        fileStat(joinRel(rel, entry.name), await lstat(join(dir, entry.name)))
+      )
     );
   }
 
@@ -179,7 +198,10 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
     const root = await this.containment.realRoot();
     const limit = options.limit ?? DEFAULT_GLOB_LIMIT;
     const found: string[] = [];
-    for await (const match of globFiles(pattern, { cwd: dir, exclude: options.ignore ?? DEFAULT_GLOB_IGNORE })) {
+    for await (const match of globFiles(pattern, {
+      cwd: dir,
+      exclude: options.ignore ?? DEFAULT_GLOB_IGNORE,
+    })) {
       if (found.length >= limit) break;
       // Results outside the root (through a symlink) are dropped.
       const real = await realpath(join(dir, match)).catch(() => null);
@@ -239,10 +261,58 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
   }
 }
 
+/** A chunked write: bytes go to a temporary file that `commit` renames into place. */
+class FilesystemWriteHandle implements WriteHandle {
+  private state: 'open' | 'closed' = 'open';
+
+  constructor(
+    private readonly file: FileHandle,
+    private readonly temporary: string,
+    private readonly resolveTarget: (finalPath: string) => Promise<string>
+  ) {}
+
+  async write(chunk: Uint8Array): Promise<void> {
+    if (this.state !== 'open') throw new Error('write handle is already committed or aborted');
+    let offset = 0;
+    while (offset < chunk.byteLength) {
+      const { bytesWritten } = await this.file.write(chunk, offset, chunk.byteLength - offset);
+      offset += bytesWritten;
+    }
+  }
+
+  async commit(finalPath: string): Promise<void> {
+    if (this.state !== 'open') throw new Error('write handle is already committed or aborted');
+    // A path outside the root throws here, leaving the handle open for `abort`.
+    const target = await this.resolveTarget(finalPath);
+    this.state = 'closed';
+    try {
+      await this.file.close();
+      await mkdir(dirname(target), { recursive: true });
+      await rename(this.temporary, target);
+    } catch (error) {
+      await rm(this.temporary, { force: true });
+      throw error;
+    }
+  }
+
+  async abort(): Promise<void> {
+    if (this.state !== 'open') return;
+    this.state = 'closed';
+    await this.file.close().catch(() => {});
+    await rm(this.temporary, { force: true });
+  }
+}
+
 function fileStat(path: string, info: Stats): FileStat {
   return {
     path,
-    type: info.isFile() ? 'file' : info.isDirectory() ? 'directory' : info.isSymbolicLink() ? 'symlink' : 'other',
+    type: info.isFile()
+      ? 'file'
+      : info.isDirectory()
+        ? 'directory'
+        : info.isSymbolicLink()
+          ? 'symlink'
+          : 'other',
     size: info.size,
     modifiedAt: info.mtime.toISOString(),
   };

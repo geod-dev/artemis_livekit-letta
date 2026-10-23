@@ -1,6 +1,6 @@
 import type { ToolDefinition } from '@artemis/llm';
 import type { ToolContext } from './context.ts';
-import { errorResult, type ToolResult } from './result.ts';
+import { type ToolResult, errorResult } from './result.ts';
 import { type AnyTool, ToolInputError } from './tool.ts';
 
 /**

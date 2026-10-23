@@ -1,8 +1,8 @@
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { ProcessExit, WorkspaceProcess } from '@artemis/workspace';
 import type { ToolContext } from '../context.ts';
-import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { DEFAULT_BASH_TIMEOUT_MS, MAX_BASH_TIMEOUT_MS } from '../names.ts';
-import { errorResult, MAX_TOOL_TEXT, type ToolResult } from '../result.ts';
+import { MAX_TOOL_TEXT, type ToolResult, errorResult } from '../result.ts';
 import { Tool } from '../tool.ts';
 import type { CommandHandoff } from './types.ts';
 
@@ -42,14 +42,21 @@ export class BashTool extends Tool<BashInput> {
     type: 'object',
     properties: {
       command: { type: 'string', minLength: 1, description: 'Shell command line.' },
-      description: { type: 'string', minLength: 1, description: 'Short description shown in the UI.' },
+      description: {
+        type: 'string',
+        minLength: 1,
+        description: 'Short description shown in the UI.',
+      },
       timeout_ms: {
         type: 'integer',
         minimum: 1_000,
         maximum: MAX_BASH_TIMEOUT_MS,
         description: 'Synchronous runs only: kill after this many milliseconds.',
       },
-      run_in_background: { type: 'boolean', description: 'Start in the background now (main agent only).' },
+      run_in_background: {
+        type: 'boolean',
+        description: 'Start in the background now (main agent only).',
+      },
     },
     required: ['command', 'description'],
     additionalProperties: false,
@@ -62,19 +69,29 @@ export class BashTool extends Tool<BashInput> {
   async execute(input: BashInput, ctx: ToolContext): Promise<ToolResult> {
     const synchronous = ctx.policy === 'synchronous';
     if (synchronous && input.run_in_background) {
-      return errorResult('run_in_background is not available inside a subagent; run the command in the foreground.');
+      return errorResult(
+        'run_in_background is not available inside a subagent; run the command in the foreground.'
+      );
     }
-    const timeoutMs = synchronous ? Math.min(input.timeout_ms ?? DEFAULT_BASH_TIMEOUT_MS, MAX_BASH_TIMEOUT_MS) : undefined;
+    const timeoutMs = synchronous
+      ? Math.min(input.timeout_ms ?? DEFAULT_BASH_TIMEOUT_MS, MAX_BASH_TIMEOUT_MS)
+      : undefined;
 
     let handle: WorkspaceProcess;
     try {
       handle = await ctx.workspace.spawn({ command: input.command, timeoutMs });
     } catch (error) {
-      return errorResult(`Could not start the command: ${messageOf(error)}`, { display: commandDisplay(input) });
+      return errorResult(`Could not start the command: ${messageOf(error)}`, {
+        display: commandDisplay(input),
+      });
     }
     if (input.run_in_background) return this.hand(handle, input, ctx, 'requested');
 
-    const outcome = await settleOrTimeout(handle, synchronous ? null : this.options.backgroundAfterMs, ctx.signal);
+    const outcome = await settleOrTimeout(
+      handle,
+      synchronous ? null : this.options.backgroundAfterMs,
+      ctx.signal
+    );
     if (outcome.kind === 'exit') return this.finished(handle, outcome.exit, input, ctx);
     if (outcome.kind === 'abort') {
       const exit = await handle.kill();
@@ -118,7 +135,12 @@ export class BashTool extends Tool<BashInput> {
       ],
       isError: false,
       display: { ...commandDisplay(input), background: { taskId, reason }, outputPath },
-      task: { taskId, kind: 'command', relation: reason === 'requested' ? 'started' : 'backgrounded', title: input.description },
+      task: {
+        taskId,
+        kind: 'command',
+        relation: reason === 'requested' ? 'started' : 'backgrounded',
+        title: input.description,
+      },
       backgrounded: reason === 'handoff',
     };
   }
@@ -182,7 +204,11 @@ export class BashTool extends Tool<BashInput> {
 }
 
 /** Resolves on the first of: exit, the timer (`ms`, null for none), or an abort of `signal`. */
-function settleOrTimeout(handle: WorkspaceProcess, ms: number | null, signal: AbortSignal): Promise<Outcome> {
+function settleOrTimeout(
+  handle: WorkspaceProcess,
+  ms: number | null,
+  signal: AbortSignal
+): Promise<Outcome> {
   return new Promise<Outcome>((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const settle = (outcome: Outcome) => {
@@ -198,7 +224,11 @@ function settleOrTimeout(handle: WorkspaceProcess, ms: number | null, signal: Ab
   });
 }
 
-function commandDisplay(input: BashInput): { type: 'command'; command: string; description: string } {
+function commandDisplay(input: BashInput): {
+  type: 'command';
+  command: string;
+  description: string;
+} {
   return { type: 'command', command: input.command, description: input.description };
 }
 

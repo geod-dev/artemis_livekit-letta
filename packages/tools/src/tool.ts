@@ -1,12 +1,13 @@
-import Ajv from 'ajv';
+import { AppError } from '@artemis/core';
 import type { JsonSchema, ToolDefinition } from '@artemis/llm';
+import Ajv from 'ajv';
 import type { ToolContext } from './context.ts';
 import type { ToolResult } from './result.ts';
 
 /** Validation failure of a model-supplied input; becomes an `isError` tool result. */
-export class ToolInputError extends Error {
+export class ToolInputError extends AppError {
   constructor(message: string) {
-    super(message);
+    super('invalid_tool_input', message, 400);
     this.name = 'ToolInputError';
   }
 }
@@ -38,7 +39,9 @@ export abstract class Tool<I = Record<string, unknown>, C extends ToolContext = 
   parse(input: unknown): I {
     const validate = ajv.compile(this.inputSchema);
     if (!validate(input)) {
-      throw new ToolInputError(`${this.name}: ${ajv.errorsText(validate.errors, { dataVar: 'input' })}`);
+      throw new ToolInputError(
+        `${this.name}: ${ajv.errorsText(validate.errors, { dataVar: 'input' })}`
+      );
     }
     return input as I;
   }
