@@ -8,7 +8,7 @@ and the list at the end names what is still unverified.
 
 | File | Use it for | Notes |
 |---|---|---|
-| `docker-compose.yml` | The base stack: `postgres`, `hindsight`, `livekit`, `agent-server`, `gateway`, `frontend` (the web app behind nginx), and `voice-agent`. | Builds from the repository root. Host roots default to `./data/workspace` and `./data/gateway`. The web app is published on `FRONTEND_BIND:FRONTEND_PORT` (default `127.0.0.1:5180`). |
+| `docker-compose.yml` | The base stack: `postgres`, `hindsight`, `livekit`, `agent-server`, `gateway`, `web` (the web app behind nginx), and `voice-agent`. | Builds from the repository root. Host roots default to `./data/workspace` and `./data/gateway`. The web app is published on `WEB_BIND:WEB_PORT` (default `127.0.0.1:5180`). |
 | `docker-compose.dev.yml` | Host development. | Publishes Postgres (5432) and Hindsight (8888) on loopback. Use it with the base file and start only `postgres hindsight livekit`. |
 | `docker-compose.prod.yml` | Production override for a standalone Compose host. | Layered over the base file. Requires `WORKSPACE_PATH` and `ARTEMIS_DATA_DIR`, mounts them, and sets `NODE_ENV=production` on the gateway. Not a standalone file. |
 | `docker-compose.coolify.yml` | Coolify. Select this one file as the application's Compose file. | A complete stack with fixed host paths (`/data/artemis/workspace`, `/data/artemis/data/gateway`). Builds Postgres from `deploy/postgres`. Uses the volume `postgres-pg18`. Publishes no loopback ports. |
@@ -41,7 +41,7 @@ ones for a deployment are:
 
 - `IP_ADDRESS`: the address clients use to reach the host.
 - `LIVEKIT_PUBLIC_URL`: the browser-facing LiveKit URL when HTTPS is in front of it.
-- `FRONTEND_BIND`, `FRONTEND_PORT`, `LIVEKIT_SIGNAL_BIND`: host bind addresses.
+- `WEB_BIND`, `WEB_PORT`, `LIVEKIT_SIGNAL_BIND`: host bind addresses.
 - Model and speech keys: `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_API_KEY` for
   workers, `GROQ_API_KEY` for transcription, `DEEPGRAM_API_KEY` for speech output, and
   `HINDSIGHT_API_KEY` only if the Hindsight deployment requires one. See
@@ -60,21 +60,21 @@ Standalone production (`docker-compose.prod.yml`):
 | Host path | Container path |
 |---|---|
 | `WORKSPACE_PATH` | `/workspace` in `agent-server` and `gateway` |
-| `ARTEMIS_DATA_DIR` | `/workspace/data` in `agent-server` and `gateway`, and `/data/gateway` in `gateway` |
+| `ARTEMIS_DATA_DIR` | `/data/gateway` in `gateway` only. The agent-server does not mount it. |
 
 Coolify (`docker-compose.coolify.yml`):
 
 | Host path | Container path |
 |---|---|
 | `/data/artemis/workspace` | `/workspace` in `agent-server` and `gateway` |
-| `/data/artemis/data/gateway` | `/workspace/data` in `agent-server` and `gateway`, and `/data/gateway` in `gateway` |
+| `/data/artemis/data/gateway` | `/data/gateway` in `gateway` only |
 
 Agent commands run as uid 1001 (`WORKSPACE_RUN_AS=1001:1001`). The host workspace
 directory must be writable by that uid. This was not checked on the server.
 
-Postgres keeps its data in a named volume: `postgres-data` in the base file and
-`postgres-pg18` in the Coolify file. The Coolify name was changed on purpose, so that the
-init script runs on a fresh volume.
+Postgres keeps its data in the named volume `postgres-pg18` in both the base file and the
+Coolify file. The name was changed from `postgres-data` on purpose, so that the init script
+runs on a fresh volume.
 
 Do not run `docker compose down -v` unless you intend to delete the Postgres volume.
 
@@ -106,7 +106,7 @@ Prerequisites on the Coolify host, before the first deploy of this layout:
    fixes the host mounts, and the gateway's container environment sets
    `ARTEMIS_DATA_DIR=/data/gateway` and `WORKSPACE_PATH=/workspace`.
 4. Set the required settings above and the other values you need in Coolify.
-5. Set the Coolify domain to the `frontend` service on port 80, and set the LiveKit
+5. Set the Coolify domain to the `web` service on port 80, and set the LiveKit
    service on port 7880 for WebSocket signaling. The comment at the top of
    `docker-compose.coolify.yml` gives both.
 6. Open TCP 7881 and UDP 7882 on the host firewall for LiveKit media.
@@ -148,9 +148,9 @@ What the script does, from its source:
 - Obtains a Let's Encrypt certificate for the IP address with `certbot certonly`.
 - Writes the nginx site `/etc/nginx/sites-available/assistant` from
   `deploy/https/nginx.conf.template`.
-- Rewrites `FRONTEND_BIND=127.0.0.1`, `FRONTEND_PORT=5180`, and
+- Rewrites `WEB_BIND=127.0.0.1`, `WEB_PORT=5180`, and
   `LIVEKIT_PUBLIC_URL=wss://<ip>/livekit` in `.env`.
-- Rebuilds and restarts `gateway`, `frontend`, and `voice-agent` with the base and
+- Rebuilds and restarts `gateway`, `web`, and `voice-agent` with the base and
   production files, then checks the public health endpoint.
 - Restores the previous `.env` and nginx site if any step fails.
 - Installs `assistant-certbot.timer`, which runs `certbot renew` every six hours. A renewal

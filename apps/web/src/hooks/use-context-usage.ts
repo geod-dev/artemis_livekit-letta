@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import type { ConversationContextUsage } from '@artemis/contracts/chat-types';
 import { conversationRoute, isRecord, requestJson } from '@/lib/api';
 
@@ -33,7 +34,7 @@ export function useContextUsage(id: string | null, revision: number) {
       inFlight = true;
       try {
         const usage = await requestJson(
-          conversationRoute(id, '/context-usage'),
+          conversationRoute(id, CHAT_HTTP.conversationContextUsage),
           { signal: controller.signal, cache: 'no-store' },
           isContextUsage,
           'Could not load context usage'

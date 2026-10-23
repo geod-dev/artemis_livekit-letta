@@ -13,4 +13,6 @@ export const CHAT_HTTP = {
   conversations: '/api/conversations',
   mcp: '/api/mcp',
   devices: '/api/devices',
+  /** A sub-route of one conversation: pass it as the suffix of `conversationRoute(id, ...)`. */
+  conversationContextUsage: '/context-usage',
 } as const;

@@ -15,8 +15,6 @@ jobs:
     env:
       # Postgres service below. Tests create their own tables in this database.
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
-      # The voice-agent and deploy groups run Python 3.13, matching apps/voice-agent/Dockerfile.
-      UV_PYTHON: "3.13"
     services:
       postgres:
         image: pgvector/pgvector:pg18
@@ -31,10 +29,10 @@ jobs:
           --health-retries 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Node.js from .node-version
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .node-version
 
@@ -45,8 +43,19 @@ jobs:
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm --version
 
-      - name: Set up uv with Python 3.13
-        uses: astral-sh/setup-uv@v6
+      - name: Set up uv (same line as the voice-agent image) and Python from .python-version
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          version: "0.7.22"
+
+      - name: Read the Python version pin
+        run: echo "UV_PYTHON=$(cat apps/voice-agent/.python-version)" >> "$GITHUB_ENV"
+
+      - name: Set up Java 17 for the mobile group
+        uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -66,15 +75,23 @@ jobs:
       ANTHROPIC_API_KEY: ci-placeholder
       LIVEKIT_API_KEY: ci-placeholder
       LIVEKIT_API_SECRET: ci-placeholder
+      IP_ADDRESS: 127.0.0.1
+      # Production overlay paths: placeholders, must be absolute and separate.
+      WORKSPACE_PATH: /ci/workspace
+      ARTEMIS_DATA_DIR: /ci/gateway-data
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7.0.1
 
       - name: Validate compose files
         run: |
           docker compose -f docker-compose.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.dev.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
           docker compose -f docker-compose.coolify.yml config -q
 
       - name: Build images
-        run: docker compose -f docker-compose.yml build gateway agent-server frontend voice-agent
+        run: docker compose -f docker-compose.yml build gateway agent-server web voice-agent
+
+      - name: Build the Coolify Postgres image
+        run: docker build -t artemis-postgres deploy/postgres

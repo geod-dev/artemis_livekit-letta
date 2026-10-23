@@ -4,7 +4,7 @@
 
 Each directory under `apps/` is a deployable entry point. Apps never import each other.
 
-- **`apps/web`** (`@artemis/frontend`) is a Vite React single-page app. The production
+- **`apps/web`** (`@artemis/web`) is a Vite React single-page app. The production
   build is static files served by nginx (`apps/web/nginx.conf`). nginx sends `/api` and
   `/health` to the gateway, `/livekit/` to LiveKit, and returns 404 for `/internal/`.
 - **`apps/gateway`** (`@artemis/gateway`) is the public HTTP edge, on `GATEWAY_PORT`
@@ -115,7 +115,7 @@ be an absolute path. The gateway validates them at startup.
 | Setting | Host (Compose default) | Mounted in containers | Contents |
 |---|---|---|---|
 | `WORKSPACE_PATH` | `./data/workspace` | `/workspace` in `agent-server` and `gateway` | The agent's workspace files. Commands run as `WORKSPACE_RUN_AS` (uid 1001). |
-| `ARTEMIS_DATA_DIR` | `./data/gateway` | `/data/gateway` and `/workspace/data` in `gateway`; `/workspace/data` in `agent-server` | Gateway state under the workspace-relative `data/` path: `data/attachments/`, `data/attachment-retention.json`, and `data/device-files/`. |
+| `ARTEMIS_DATA_DIR` | `./data/gateway` | `/data/gateway` in `gateway` only | Gateway state under the workspace-relative `data/` path: `data/attachments/`, `data/attachment-retention.json`, and `data/device-files/`. |
 
 In production the two roots must be set explicitly, must not be inside `apps/`, must be
 separate and non-overlapping, and `ARTEMIS_DATA_DIR` must not be the default workspace

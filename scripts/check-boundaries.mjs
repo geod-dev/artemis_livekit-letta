@@ -407,7 +407,7 @@ function baselineFixture() {
       "import { anthropic } from '@artemis/llm/anthropic';\nimport { llm } from '@artemis/llm';\nexport const compose = [anthropic, llm];\n",
     'apps/gateway/src/server.ts':
       "import { compose } from './compose.ts';\nimport { contract } from '@artemis/contracts';\nexport const server = [compose, contract];\n",
-    'apps/web/package.json': manifest('@artemis/frontend', {
+    'apps/web/package.json': manifest('@artemis/web', {
       '@artemis/contracts': 'link:../../packages/contracts',
       '@artemis/core': 'link:../../packages/core',
       react: '^19.1.1',

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import { PromptRenderer } from './renderer.ts';
 
-const REAL_PROMPTS = fileURLToPath(new URL('../../prompts', import.meta.url));
+const REAL_PROMPTS = fileURLToPath(new URL('../../templates', import.meta.url));
 const KNOWN_PLACEHOLDERS = new Set(['name', 'workspace', 'conversation_id', 'timezone', 'task_id', 'mcp_tools']);
 
 let dir: string;

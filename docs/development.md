@@ -51,8 +51,8 @@ Run each app in its own terminal:
 |---|---|---|
 | Agent server | `pnpm --filter @artemis/agent-server dev` | port 4000 |
 | Gateway | `pnpm --filter @artemis/gateway dev` | port 3000 |
-| Web | `pnpm --filter @artemis/frontend dev` | http://127.0.0.1:5173 |
-| Voice agent | `cd apps/voice-agent && uv run agent dev` | LiveKit worker |
+| Web | `pnpm --filter @artemis/web dev` | http://127.0.0.1:5173 |
+| Voice agent | `cd apps/voice-agent && uv run voice-agent dev` | LiveKit worker |
 | Device client | `python apps/device-client/artemis-device.py <device-name>` | see its [README](../apps/device-client/README.md) |
 
 The agent server applies its database migrations at startup. Use `start` instead of `dev`
@@ -91,7 +91,7 @@ Notes:
   service container sets `TEST_DATABASE_URL`, so the Postgres integration tests run.
 - `compose` validates `docker-compose.yml`, `docker-compose.dev.yml` and
   `docker-compose.coolify.yml` with placeholder values, then builds the `gateway`,
-  `agent-server`, `frontend` and `voice-agent` images.
+  `agent-server`, `web` and `voice-agent` images.
 
 CI does not need Java. The Android build (Java 17) is not part of CI. CI does not deploy or
 publish anything.
@@ -113,7 +113,7 @@ publish anything.
 Build the debug APK from the repository root. Every build needs an HTTPS origin:
 
 ```powershell
-.\apps\mobile\gradlew.bat -p apps\mobile -PartemisUrl=https://your-host assembleDebug
+.\apps\mobile\gradlew.bat -p apps\mobile -PartemisMobileUrl=https://your-host assembleDebug
 ```
 
 The output is `apps/mobile/app/build/outputs/apk/debug/app-debug.apk`.
