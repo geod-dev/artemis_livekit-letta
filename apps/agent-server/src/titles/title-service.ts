@@ -1,4 +1,4 @@
-import { oneShot } from '@artemis/agent';
+import { oneShot } from '@artemis/agent-loop';
 import { consoleLogger, type Logger } from '@artemis/core';
 import type { Storage } from '@artemis/storage';
 import { DEFAULT_TITLE } from '../conversations/service.ts';

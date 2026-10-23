@@ -1,4 +1,4 @@
-import { AgentLoop, type LoopOutcome } from '@artemis/agent';
+import { AgentLoop, type LoopOutcome } from '@artemis/agent-loop';
 import { AppError, BusyError, NotFoundError, SerialScheduler, uuid } from '@artemis/core';
 import type { ChatAttachment, ChatMessage } from '@artemis/contracts/chat-types';
 import type { ImageBlock, ToolDefinition, ToolUseBlock, UserContent } from '@artemis/llm';

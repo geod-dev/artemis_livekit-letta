@@ -21,7 +21,7 @@
     "@artemis/memory": "workspace:*",
     "@artemis/tools": "workspace:*",
     "@artemis/mcp": "workspace:*",
-    "@artemis/agent": "workspace:*",
+    "@artemis/agent-loop": "workspace:*",
     "@hono/node-server": "^1.19.5",
     "ajv": "^8.20.0",
     "hono": "^4.10.1",

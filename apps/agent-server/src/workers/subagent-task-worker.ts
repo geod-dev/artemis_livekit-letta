@@ -1,4 +1,4 @@
-import { AgentLoop, type LoopOutcome } from '@artemis/agent';
+import { AgentLoop, type LoopOutcome } from '@artemis/agent-loop';
 import { AppError, uuid } from '@artemis/core';
 import type { LlmMessage, ToolDefinition, ToolUseBlock } from '@artemis/llm';
 import { mcpToolsSection } from '@artemis/mcp';

@@ -1,4 +1,4 @@
-import type { LoopEvent, LoopOutcome } from '@artemis/agent';
+import type { LoopEvent, LoopOutcome } from '@artemis/agent-loop';
 import type { Clock } from '@artemis/core';
 import type { ConversationEvent } from '@artemis/contracts/chat-types';
 import type { ToolResult } from '@artemis/tools';

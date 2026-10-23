@@ -14,7 +14,7 @@ RUN groupadd --gid 1001 workspace && useradd --uid 1001 --gid 1001 --no-create-h
 FROM base AS build
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY packages/agent/package.json packages/agent/
+COPY packages/agent-loop/package.json packages/agent-loop/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/core/package.json packages/core/
 COPY packages/http/package.json packages/http/

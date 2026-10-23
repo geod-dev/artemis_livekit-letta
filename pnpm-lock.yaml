@@ -20,9 +20,9 @@ importers:
 
   apps/agent-server:
     dependencies:
-      '@artemis/agent':
+      '@artemis/agent-loop':
         specifier: workspace:*
-        version: link:../../packages/agent
+        version: link:../../packages/agent-loop
       '@artemis/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -252,7 +252,7 @@ importers:
         specifier: ^7
         version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)
 
-  packages/agent:
+  packages/agent-loop:
     dependencies:
       '@artemis/core':
         specifier: workspace:*

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { LoopEvent } from '@artemis/agent';
+import type { LoopEvent } from '@artemis/agent-loop';
 import type { ConversationEvent } from '@artemis/contracts/chat-types';
 import { InMemoryStorage } from '@artemis/storage';
 import { projectHistory } from '../conversations/history.ts';
