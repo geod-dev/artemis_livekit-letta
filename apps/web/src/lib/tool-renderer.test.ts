@@ -22,7 +22,10 @@ test('a web search shows its query while it runs and its results once done', () 
   const result = 'Title: News\nURL: https://news.example/a\nHighlights:\nA story.';
   const done = selectToolRenderer(search, result, false);
   assert.equal(done.kind, 'web-search');
-  assert.equal(done.kind === 'web-search' && done.output?.results[0].url, 'https://news.example/a');
+  assert.equal(
+    done.kind === 'web-search' && done.output?.results[0]?.url,
+    'https://news.example/a'
+  );
 });
 
 test('a command shows its output and exit status from its display', () => {

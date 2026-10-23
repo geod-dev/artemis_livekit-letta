@@ -44,13 +44,15 @@ function parseBlock(block: string): WebResult | null {
   const lines = block.trim().split('\n');
   let index = 0;
   for (; index < lines.length; index++) {
-    const line = lines[index];
+    const line = lines[index] ?? '';
     if (/^Highlights:/.test(line)) {
       index++;
       break;
     }
     const field = FIELD.exec(line);
-    if (field) fields[field[1]] = field[2].trim();
+    const name = field?.[1];
+    const value = field?.[2];
+    if (name !== undefined && value !== undefined) fields[name] = value.trim();
   }
   const url = fields.URL;
   if (!url || !/^https?:\/\//.test(url)) return null;

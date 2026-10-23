@@ -19,7 +19,7 @@ test('reads every result of a complete MCP result', () => {
     published: '2026-10-07T06:44:48.000Z',
     snippet: 'Budget debate opens The Assembly opens the budget file.',
   });
-  assert.equal(output?.results[1].author, 'Lucie R.');
+  assert.equal(output?.results[1]?.author, 'Lucie R.');
   assert.equal(output?.results[1].published, undefined);
   assert.equal(output?.results[1].snippet, 'A movement against austerity.');
 });

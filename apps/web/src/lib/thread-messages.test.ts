@@ -3,6 +3,13 @@ import { test } from 'node:test';
 import type { ChatMessage } from '@artemis/contracts/chat-types';
 import { toThreadMessages } from './thread-messages.ts';
 
+/** The element at `index`; a fixture that lacks it fails the test here. */
+function at<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) throw new Error(`no element at index ${index}`);
+  return item;
+}
+
 const user = (id: string, text: string, modality: 'text' | 'voice' = 'text'): ChatMessage => ({
   id,
   role: 'user',
@@ -30,7 +37,7 @@ test('completion notices separate the resumed answer and retain the task-panel i
     messages.map((message) => message.role),
     ['assistant', 'system', 'assistant']
   );
-  assert.deepEqual(messages[1].metadata?.custom, {
+  assert.deepEqual(at(messages, 1).metadata?.custom, {
     kind: 'task_result',
     taskId: 'task_7',
     updateId: 'update-7',
@@ -46,7 +53,7 @@ test('keeps reasoning separate from answer text within the same response', () =>
     assistant('a', 'Hello'),
   ]);
   assert.equal(messages.length, 2);
-  assert.deepEqual(messages[1].content, [
+  assert.deepEqual(at(messages, 1).content, [
     { type: 'reasoning', text: 'Considering the request' },
     { type: 'text', text: 'Hello' },
   ]);
@@ -67,9 +74,9 @@ test('merges consecutive assistant and tool rows into one assistant message', ()
     assistant('a1', 'Here you go'),
   ]);
   assert.equal(messages.length, 2);
-  assert.equal(messages[1].id, 't1');
-  assert.equal(messages[1].role, 'assistant');
-  assert.deepEqual(messages[1].content, [
+  assert.equal(at(messages, 1).id, 't1');
+  assert.equal(at(messages, 1).role, 'assistant');
+  assert.deepEqual(at(messages, 1).content, [
     {
       type: 'tool-call',
       toolCallId: 't1',
@@ -100,8 +107,8 @@ test('events become system messages that keep their kind', () => {
   const { messages } = toThreadMessages([
     { id: 'e1', role: 'event', kind: 'task_result', text: 'Task done' },
   ]);
-  assert.equal(messages[0].role, 'system');
-  assert.deepEqual(messages[0].metadata, { custom: { kind: 'task_result' } });
+  assert.equal(at(messages, 0).role, 'system');
+  assert.deepEqual(at(messages, 0).metadata, { custom: { kind: 'task_result' } });
 });
 
 test('reuses converted messages whose sources did not change', () => {
@@ -116,8 +123,8 @@ test('reuses converted messages whose sources did not change', () => {
 test('marks the reply of a stopped turn as cancelled', () => {
   const rows = [user('u1', 'hi'), assistant('a1', 'Hel'), user('u2', 'again')];
   const { messages } = toThreadMessages(rows, new Map(), new Set(['a1']));
-  assert.deepEqual(messages[1].status, { type: 'incomplete', reason: 'cancelled' });
-  assert.equal(messages[2].status, undefined);
+  assert.deepEqual(at(messages, 1).status, { type: 'incomplete', reason: 'cancelled' });
+  assert.equal(at(messages, 2).status, undefined);
 });
 
 test('adds an empty cancelled reply when a stopped turn left none', () => {
@@ -125,15 +132,15 @@ test('adds an empty cancelled reply when a stopped turn left none', () => {
   const first = toThreadMessages(rows);
   const stopped = toThreadMessages(rows, first.cache, new Set(['u1']));
   assert.equal(stopped.messages.length, 2);
-  assert.equal(stopped.messages[1].role, 'assistant');
-  assert.deepEqual(stopped.messages[1].content, []);
-  assert.deepEqual(stopped.messages[1].status, { type: 'incomplete', reason: 'cancelled' });
+  assert.equal(at(stopped.messages, 1).role, 'assistant');
+  assert.deepEqual(at(stopped.messages, 1).content, []);
+  assert.deepEqual(at(stopped.messages, 1).status, { type: 'incomplete', reason: 'cancelled' });
 });
 
 test('tolerates missing or invalid tool arguments', () => {
   const { messages } = toThreadMessages([
     { id: 't1', role: 'tool', toolCallId: 't1', name: 'x', args: 'not json' },
   ]);
-  const part = (messages[0].content as readonly { args?: unknown }[])[0];
+  const part = at(at(messages, 0).content as readonly { args?: unknown }[], 0);
   assert.deepEqual(part.args, {});
 });

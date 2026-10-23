@@ -47,7 +47,8 @@ function markCitations(node: HastNode): void {
   for (let i = 0; i < children.length; i++) {
     const end = citationEnd(children, i);
     if (end === null) {
-      markCitations(children[i]);
+      const child = children[i];
+      if (child) markCitations(child);
       continue;
     }
     // children[i - 1] opens the group, children[end + 1] closes it.

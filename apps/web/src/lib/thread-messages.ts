@@ -1,5 +1,5 @@
-import type { ThreadMessageLike } from '@assistant-ui/react';
 import type { ChatAttachment, ChatMessage } from '@artemis/contracts/chat-types';
+import type { ThreadMessageLike } from '@assistant-ui/react';
 import { workspaceUrl } from './attachments.ts';
 
 type AssistantPart = Extract<ThreadMessageLike['content'], readonly unknown[]>[number];
@@ -47,8 +47,11 @@ export function toThreadMessages(
     inputs: readonly ChatMessage[],
     build: (isStopped: boolean) => ThreadMessageLike | ThreadMessageLike[]
   ) => {
-    const key = inputs[0].id;
-    const isStopped = stopped.has(inputs[inputs.length - 1].id);
+    const first = inputs[0];
+    const last = inputs[inputs.length - 1];
+    if (!first || !last) throw new Error('A message group holds at least one message');
+    const key = first.id;
+    const isStopped = stopped.has(last.id);
     const hit = previous.get(key);
     const reuse =
       hit &&
@@ -63,6 +66,7 @@ export function toThreadMessages(
 
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i];
+    if (!message) continue;
     switch (message.role) {
       case 'user':
         voice = message.modality === 'voice';
@@ -153,8 +157,8 @@ export function toThreadAttachment(a: ChatAttachment) {
   };
 }
 
-function isAssistantSide(message: ChatMessage) {
-  return message.role === 'assistant' || message.role === 'reasoning' || message.role === 'tool';
+function isAssistantSide(message: ChatMessage | undefined) {
+  return message?.role === 'assistant' || message?.role === 'reasoning' || message?.role === 'tool';
 }
 
 function toAssistantPart(message: ChatMessage): AssistantPart {

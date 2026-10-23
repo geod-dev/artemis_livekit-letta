@@ -32,8 +32,6 @@ import {
 } from '@/lib/conversation-state';
 
 type LiveItem = LiveConversationItem;
-/** A background task that is running in this conversation. */
-export type TaskStatus = RunningTask;
 
 type UserMessage = Extract<ChatMessage, { role: 'user' }>;
 
@@ -85,7 +83,7 @@ export function useConversation(
     (value) => patchState({ activeTurns: value }),
     [patchState]
   );
-  const setTasks = useCallback<Dispatch<SetStateAction<TaskStatus[]>>>(
+  const setTasks = useCallback<Dispatch<SetStateAction<RunningTask[]>>>(
     (value) => patchState({ tasks: value }),
     [patchState]
   );
@@ -340,10 +338,10 @@ export function useConversation(
           const id = role === 'reasoning' ? `reasoning:${event.messageId}` : event.messageId;
           setLive((items) => {
             const index = items.findIndex((i) => i.message.id === id && i.message.role === role);
-            if (index < 0) {
+            const item = items[index];
+            if (!item) {
               return [...items, { turnId: event.turnId, message: { id, role, text: event.text } }];
             }
-            const item = items[index];
             const next = [...items];
             next[index] = {
               ...item,

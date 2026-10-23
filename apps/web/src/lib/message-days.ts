@@ -9,7 +9,8 @@ export function dayKey(date: Date): string {
  * last week, then the date (with the year when it is not this year's).
  */
 export function dayLabel(key: string, now = new Date()): string {
-  const [year, month, day] = key.split('-').map(Number);
+  // A key without all three parts gives NaN, which makes an invalid date, as before.
+  const [year = NaN, month = NaN, day = NaN] = key.split('-').map(Number);
   const date = new Date(year, month - 1, day);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const daysAgo = Math.round((today.getTime() - date.getTime()) / 86_400_000);

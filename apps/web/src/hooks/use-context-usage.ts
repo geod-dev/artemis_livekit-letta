@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ConversationContextUsage } from '@artemis/contracts/chat-types';
-import { isRecord, requestJson } from '@/lib/api';
+import { conversationRoute, isRecord, requestJson } from '@/lib/api';
 
 function isContextUsage(value: unknown): value is ConversationContextUsage | null {
   return (
@@ -33,7 +33,7 @@ export function useContextUsage(id: string | null, revision: number) {
       inFlight = true;
       try {
         const usage = await requestJson(
-          `/api/conversations/${encodeURIComponent(id)}/context-usage`,
+          conversationRoute(id, '/context-usage'),
           { signal: controller.signal, cache: 'no-store' },
           isContextUsage,
           'Could not load context usage'

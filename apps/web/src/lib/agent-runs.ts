@@ -89,22 +89,25 @@ export function groupAgentRuns(runs: AgentRun[]): AgentHistory[] {
     group.push(run);
     groups.set(key, group);
   }
-  return [...groups.values()].map((history) => {
+  return [...groups.values()].flatMap((history) => {
     const first = history[0];
+    if (!first) return [];
     const latest = history.at(-1)!;
     const running = history.find((run) => run.status === 'running');
     const durations = history.flatMap((run) =>
       run.durationMs === undefined ? [] : [run.durationMs]
     );
-    return {
-      ...latest,
-      id: first.id,
-      title: first.agentTitle ?? first.title,
-      agentTitle: first.agentTitle ?? first.title,
-      status: running ? 'running' : latest.status,
-      durationMs: durations.length ? durations.reduce((sum, ms) => sum + ms, 0) : undefined,
-      runs: history,
-    };
+    return [
+      {
+        ...latest,
+        id: first.id,
+        title: first.agentTitle ?? first.title,
+        agentTitle: first.agentTitle ?? first.title,
+        status: running ? 'running' : latest.status,
+        durationMs: durations.length ? durations.reduce((sum, ms) => sum + ms, 0) : undefined,
+        runs: history,
+      },
+    ];
   });
 }
 

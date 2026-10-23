@@ -10,6 +10,13 @@ import {
   taskRuns,
 } from './agent-runs.ts';
 
+/** The element at `index`; a fixture that lacks it fails the test here. */
+function at<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) throw new Error(`no element at index ${index}`);
+  return item;
+}
+
 const agent = (
   id: string,
   title: string,
@@ -80,7 +87,7 @@ test('two agents stay distinct while follow-ups keep their agent name and per-ru
     [2, 2]
   );
   assert.deepEqual(
-    agents[1].runs.map((run) => [run.title, run.prompt, run.report]),
+    at(agents, 1).runs.map((run) => [run.title, run.prompt, run.report]),
     [
       ['🔢 Power', 'Compute power', 'Power answer'],
       ['🔢 Explain power', 'Which tool did you use?', 'Also Python'],
@@ -99,14 +106,14 @@ test('a follow-up of a running task keeps one agent row, and its completion even
   });
   let agents = groupAgentRuns(taskRuns([first, follow], [result('1', 2000, 'Done')]));
   assert.equal(agents.length, 1);
-  assert.equal(agents[0].status, 'running');
-  assert.equal(agents[0].title, 'Original');
-  assert.equal(agents[0].durationMs, 2000);
+  assert.equal(at(agents, 0).status, 'running');
+  assert.equal(at(agents, 0).title, 'Original');
+  assert.equal(at(agents, 0).durationMs, 2000);
   agents = groupAgentRuns(
     taskRuns([first, { ...follow, status: 'completed' }], [result('2', 500, 'Again')])
   );
-  assert.equal(agents[0].status, 'completed');
-  assert.equal(agents[0].durationMs, 2500);
+  assert.equal(at(agents, 0).status, 'completed');
+  assert.equal(at(agents, 0).durationMs, 2500);
 });
 
 test('an update event refreshes the task it names by update identity', () => {
@@ -125,8 +132,8 @@ test('an update event refreshes the task it names by update identity', () => {
     ]
   );
   assert.equal(runs.length, 1);
-  assert.equal(runs[0].durationMs, 4060);
-  assert.equal(runs[0].report, 'Response');
+  assert.equal(at(runs, 0).durationMs, 4060);
+  assert.equal(at(runs, 0).report, 'Response');
 });
 
 test('commands stay distinct tasks, outside any agent group', () => {
@@ -140,8 +147,8 @@ test('commands stay distinct tasks, outside any agent group', () => {
     )
   );
   assert.equal(commands.length, 2);
-  assert.equal(commands[0].kind, 'command');
-  assert.equal(commands[0].durationMs, undefined);
+  assert.equal(at(commands, 0).kind, 'command');
+  assert.equal(at(commands, 0).durationMs, undefined);
 });
 
 test('tasks without a known kind are not runs', () => {
@@ -178,7 +185,7 @@ test('the recorded prompt of a worker is kept', () => {
     [agent('x', 'Worker', '2026-10-20T10:00:00Z', { prompt: 'Original assignment' })],
     []
   );
-  assert.equal(runs[0].prompt, 'Original assignment');
+  assert.equal(at(runs, 0).prompt, 'Original assignment');
 });
 
 test('a background command keeps its command, output and tool call', () => {
@@ -198,8 +205,8 @@ test('a background command keeps its command, output and tool call', () => {
     []
   );
   assert.equal(runs.length, 1);
-  assert.equal(runs[0].toolCallId, 'bash-call');
-  assert.deepEqual(commandOutput(runs[0]), {
+  assert.equal(at(runs, 0).toolCallId, 'bash-call');
+  assert.deepEqual(commandOutput(at(runs, 0)), {
     command: 'sleep 5; date',
     output: 'Current time',
     exitCode: 0,
@@ -241,14 +248,14 @@ test('live run durations advance independently while recorded completed duration
     ],
     []
   );
-  assert.equal(runs[0].rerunName, undefined);
-  assert.equal(runs[1].rerunName, 'Follow-up');
+  assert.equal(at(runs, 0).rerunName, undefined);
+  assert.equal(at(runs, 1).rerunName, 'Follow-up');
   const total = groupAgentRuns(
     runs.map((run) =>
       run.id === '2' ? { ...run, durationMs: runDuration(running, start + 3000) } : run
     )
   );
-  assert.equal(total[0].durationMs, 14082);
+  assert.equal(at(total, 0).durationMs, 14082);
 });
 
 test('emoji are stripped from the start of rerun labels', () => {
