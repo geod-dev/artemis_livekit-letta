@@ -6,6 +6,8 @@ and clay in light mode. Conversation content stays quiet and readable.
 
 ## Styling ownership
 
+Paths in this section are relative to `apps/web/src/`.
+
 - `styles/tokens.css`: palette primitives, semantic colors, typography, geometry,
   and shared motion curves. Theme previews use the same palette primitives.
 - `styles/app-shell.css`: application, navigation, authentication, settings, and

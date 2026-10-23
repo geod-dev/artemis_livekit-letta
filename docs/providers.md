@@ -31,4 +31,4 @@ VOICE_STT=groq/whisper-large-v3-turbo transcribes voice calls through Groq using
 
 VOICE_TTS=deepgram/flux-hannah-en generates speech using DEEPGRAM_API_KEY. Deepgram Aura voices are supported too. VOICE_LANGUAGE selects the transcription language. Voice and text turns share the same conversation.
 
-The LiveKit OpenAI plugin is retained only as a protocol client for Groq transcription and the backend's internal voice gateway. No OpenAI platform key is used.
+The LiveKit OpenAI plugin is retained only as a protocol client for Groq transcription and the gateway's internal voice routes. No OpenAI platform key is used.

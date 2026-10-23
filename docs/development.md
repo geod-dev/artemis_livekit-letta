@@ -1,68 +1,111 @@
 # Development
 
-## Requirements
+## Prerequisites
 
-- Node.js 24.19.0 and pnpm 10.18.0 for the JavaScript projects.
-- Python 3.13 and `uv` for the pinned checks; the voice agent supports Python 3.11–3.14.
-- Docker Compose for Postgres, Hindsight, and LiveKit.
-- Java 17 and Android SDK 35 for Android builds.
+- **Node.js 24.19.0** (`.node-version`, `engines` in the root `package.json`).
+- **pnpm 10.18.0** (`packageManager` in the root `package.json`; use Corepack or install it directly).
+- **uv** for the Python apps and checks. The device client and deployment tests run on
+  Python 3.13 through `uv run --python 3.13`. The voice agent pins 3.13 in
+  `apps/voice-agent/.python-version` and supports `>=3.11, <3.15`.
+- **Docker with Compose v2** for Postgres, Hindsight, and LiveKit.
+- **Java 17 and Android SDK 35**, only for building the Android app.
 
-Copy `.env.example` to `.env`. For host-based development, use loopback URLs and
-local credentials. Start the supporting services from the repository root:
+## Install
+
+From the repository root:
+
+```sh
+pnpm install            # one workspace and one lockfile for every Node package, including apps/web
+cd apps/voice-agent && uv sync && cd -
+cp .env.example .env    # then set real local values
+```
+
+The device client has no dependencies to install. Keep `.env` local; it is gitignored.
+
+## Supporting services
+
+Postgres, Hindsight, and LiveKit run in Docker, and the apps run on the host. Start the
+three services with the base and dev Compose files:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres hindsight livekit
 ```
 
-Install the workspace dependencies once from the repository root, then run each
-application in a separate terminal:
+The dev override publishes Postgres on `127.0.0.1:5432` and Hindsight on
+`127.0.0.1:8888`. Compose refuses to start without the required passwords and keys (see
+[Deployment](deployment.md#required-settings)).
 
-```sh
-pnpm install
-pnpm --filter ./services/agent-server start
-cd backend && pnpm install && pnpm dev
-cd frontend && pnpm install && pnpm dev
-cd apps/voice-agent && uv sync && uv run agent dev
-```
+## Running the apps on the host
 
-The agent server applies its database migrations at startup. For host-based runs,
-set these values in `.env`: `DATABASE_URL` (the loopback Postgres port, database
-`artemis`), `HINDSIGHT_URL=http://127.0.0.1:8888`, and `AGENT_SERVER_TOKEN`. Also set
-`AGENT_SERVER_URL=http://127.0.0.1:4000` for the backend and
-`MCP_DEVICE_BASE_URL=http://127.0.0.1:3000`.
+Set these in `.env` for host runs:
 
-The frontend is available at `http://127.0.0.1:5173`. Vite proxies API traffic
-to the backend. When testing from another device, set `IP_ADDRESS` and
-`LIVEKIT_SIGNAL_BIND` in `.env` to the host's LAN address and bind address.
+- `DATABASE_URL` pointing at `127.0.0.1:5432`, database `artemis`, with the same
+  `ARTEMIS_DB_PASSWORD` used by Compose.
+- `HINDSIGHT_URL=http://127.0.0.1:8888`.
+- `AGENT_SERVER_TOKEN`, `AGENT_SERVER_URL=http://127.0.0.1:4000`.
+- `GATEWAY_URL` and `MCP_DEVICE_BASE_URL=http://127.0.0.1:3000`.
+
+Run each app in its own terminal:
+
+| App | Command | Address |
+|---|---|---|
+| Agent server | `pnpm --filter @artemis/agent-server dev` | port 4000 |
+| Gateway | `pnpm --filter @artemis/gateway dev` | port 3000 |
+| Web | `pnpm --filter @artemis/frontend dev` | http://127.0.0.1:5173 |
+| Voice agent | `cd apps/voice-agent && uv run agent dev` | LiveKit worker |
+| Device client | `python apps/device-client/artemis-device.py <device-name>` | see its [README](../apps/device-client/README.md) |
+
+The agent server applies its database migrations at startup. Use `start` instead of `dev`
+for a single run without watch mode. The web dev server proxies `/api` to `GATEWAY_URL`
+(or `http://$IP_ADDRESS:3000`). To test from another device, set `IP_ADDRESS` to the
+host's LAN address and `LIVEKIT_SIGNAL_BIND` to a matching bind address.
 
 ## Checks
 
-Run the project checks from the repository root:
+Run every check group from the repository root:
 
 ```sh
 pnpm check
 ```
 
-Useful focused commands include `pnpm check:backend`, `pnpm check:frontend`,
-`pnpm check:voice`, `pnpm check:devices`, `pnpm check:packages` (typecheck and tests
-for `shared/`, `packages/`, and `services/`), and `pnpm check:operations` (mocked
-deployment and token-rotation tests). `pnpm smoke:agent-server` runs a live smoke turn against an already-running agent server.
+Run one group with `pnpm check:<group>`. The groups are `gateway`, `agent-server`, `web`,
+`voice`, `device`, `packages`, `deploy`, `schema`, and `boundaries`. Their contents are
+listed in the [README](../README.md#checks).
+
+Notes:
+
+- The `packages` group runs typecheck and tests for every `packages/*` workspace package.
+- The `schema` group fails if `packages/contracts/generated/present-tool.json` has drifted
+  from its generator. Regenerate it with `pnpm generate:present-tool`.
+- Postgres integration tests run only when `TEST_DATABASE_URL` is set to a database the
+  tests may create tables in. Without it, `pnpm check` prints a warning and skips them.
+- `pnpm smoke:agent-server` runs a live turn against an already-running agent server. It is
+  not part of `pnpm check`.
+
+## Where tests live
+
+- `apps/gateway/src/**/*.test.ts`, `apps/agent-server/src/**/*.test.ts`, and
+  `apps/web/src/**/*.test.ts`, run by their app's check group.
+- `packages/*/src/**/*.test.ts`, run by the `packages` group. Postgres tests are in
+  `packages/storage/src/vendor/postgres/`.
+- `apps/voice-agent/tests/`, run with pytest through `uv`.
+- `apps/device-client/tests/test_device.py`, run by the `device` group.
+- `deploy/coolify/test_*.py`, run by the `deploy` group with mocked API responses. They do
+  not contact Coolify.
+- `scripts/check-boundaries.mjs --self-test`, run by the `boundaries` group.
 
 ## Android build
 
-Build the current debug APK with:
+Build the debug APK from the repository root. Every build needs an HTTPS origin:
 
 ```powershell
 .\apps\mobile\gradlew.bat -p apps\mobile -PartemisUrl=https://your-host assembleDebug
 ```
 
-The output is `apps/mobile/app/build/outputs/apk/debug/app-debug.apk`. The installer,
-`apps/mobile/scripts/install-android.ps1`, defaults to that current build. Pass `-ApkPath` to install a different artifact.
-Every build requires an HTTPS origin through `-PartemisUrl` or the
-`ARTEMIS_URL` environment variable. The matching origin is
-used for microphone permissions, authenticated downloads, and same-site previews.
+The output is `apps/mobile/app/build/outputs/apk/debug/app-debug.apk`.
+`apps/mobile/scripts/install-android.ps1` installs that APK by default; pass `-ApkPath` to
+install another file. The app's microphone permission, authenticated downloads, and
+same-site previews all depend on this origin. See [its README](../apps/mobile/README.md).
 
-Keep a personal debug signing key under `apps/mobile/.signing/` between builds if
-you need to install updates without uninstalling the app. Build outputs, APKs,
-local Gradle state, signing files, and local SDK paths are ignored by Git and
-excluded from Docker build contexts.
+Signing keys under `apps/mobile/.signing/` and build outputs are gitignored. Keep your
+debug keystore between builds if you want to install updates without uninstalling.

@@ -3,7 +3,7 @@
 Use `docker-compose.coolify.yml` as the application's Compose file and set the
 production environment values in Coolify. The application requires unique
 secrets, persistent workspace and data host roots (`/data/artemis/workspace` and
-`/data/artemis/data/gateway`), and the Compose-managed `postgres-data` volume.
+`/data/artemis/data/gateway`), and the Compose-managed `postgres-pg18` volume.
 See [deployment](../../docs/deployment.md) for storage and recovery instructions.
 
 ## Deployment poller
@@ -22,10 +22,11 @@ against the configured application, then atomically replaces the local token
 file and revokes previous tokens. Validation failure revokes only the newly
 issued token and leaves the prior token file unchanged.
 
-These local tests use fake API responses and do not need Coolify credentials:
+These local tests use fake API responses and do not need Coolify credentials. They run
+as part of `pnpm check:deploy`, or on their own from the repository root:
 
 ```sh
-python -m unittest deploy/coolify/test_poll_deploy.py deploy/coolify/test_rotate_token.py
+uv run --python 3.13 --no-project --no-sync python -m unittest discover -s deploy/coolify -p "test_*.py"
 ```
 
 Install the scripts and systemd units using the deployment instructions for the
