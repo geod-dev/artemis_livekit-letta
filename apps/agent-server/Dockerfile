@@ -1,6 +1,7 @@
 # Build from the repository root: docker compose sets `context: .` and `dockerfile: apps/agent-server/Dockerfile`.
 
-# Stage 1: Node, pnpm, the agent's Python tooling, and the unprivileged workspace user.
+# Stage 1: Node, pnpm, the Python data stack for the run_bash tool, and the unprivileged workspace user.
+# The Python tooling is a deliberate dependency of the run_bash tool, not of the server itself.
 FROM node:24.19-bookworm-slim AS base
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -10,7 +11,7 @@ RUN corepack enable && corepack prepare pnpm@10.18.0 --activate
 RUN groupadd --gid 1001 workspace && useradd --uid 1001 --gid 1001 --no-create-home --shell /usr/sbin/nologin workspace
 
 # Stage 2: production dependencies. Manifests first so this layer is reused until a lockfile or manifest changes.
-# Runs as root (it must switch to uid 1001 for commands).
+# The manifest list mirrors pnpm-workspace.yaml: a new workspace package must be added here too.
 FROM base AS build
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
@@ -31,10 +32,16 @@ COPY apps/agent-server apps/agent-server
 
 # Stage 3: runtime. Only the agent-server app, its workspace packages and production dependencies.
 # The app sits at /app/apps/agent-server so the working directory and its relative paths are unchanged.
+# The packages export TypeScript source, so the server runs the source with Node's transform mode
+# (no tsx and no build step in the image). Test files and test helpers are removed from the copy.
 FROM base AS runtime
 WORKDIR /app/apps/agent-server
 COPY --from=build /repo/node_modules /app/node_modules
 COPY --from=build /repo/packages /app/packages
 COPY --from=build /repo/apps/agent-server /app/apps/agent-server
+RUN find src \( -name '*.test.ts' -o -name 'test-support.ts' \) -delete && rm -rf test
+# Agent-writable state lives in the mounted /workspace; the directory is owned by the runtime user.
+RUN mkdir -p /workspace && chown 1001:1001 /workspace
+USER 1001:1001
 EXPOSE 4000
-CMD ["./node_modules/.bin/tsx", "src/main.ts"]
+CMD ["node", "--experimental-transform-types", "src/main.ts"]

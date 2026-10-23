@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { loadConfig } from './config.ts';
 
-const base = { DATABASE_URL: 'postgresql://artemis:secret@localhost:5432/artemis' };
+/** The task model defaults to an OpenAI-compatible provider; the base uses Anthropic so tests need no second key. */
+const base = {
+  DATABASE_URL: 'postgresql://artemis:secret@localhost:5432/artemis',
+  ASSISTANT_TASK_MODEL: 'anthropic/claude-haiku-5-5',
+};
+const openAi = { OPENAI_COMPATIBLE_BASE_URL: 'https://api.telnyx.com/v2/ai/openai', OPENAI_COMPATIBLE_API_KEY: 'key' };
 
 describe('loadConfig', () => {
   it('requires DATABASE_URL', () => {
@@ -10,10 +15,13 @@ describe('loadConfig', () => {
   });
 
   it('applies the documented defaults', () => {
-    const config = loadConfig({ ...base, WORKSPACE_PATH: '/tmp/ws' });
+    const config = loadConfig({
+      DATABASE_URL: base.DATABASE_URL,
+      WORKSPACE_PATH: '/tmp/ws',
+      ...openAi,
+    });
     assert.equal(config.port, 4000);
     assert.equal(config.token, 'dev-agent-server-token-change-me');
-    assert.equal(config.production, false);
     assert.equal(config.assistant.name, 'Artemis');
     assert.equal(config.assistant.timezone, 'UTC');
     assert.equal(config.assistant.presentTool, false);
@@ -22,10 +30,12 @@ describe('loadConfig', () => {
     assert.equal(config.models.title, config.models.assistant);
     assert.equal(config.workers.idleTimeoutMs, 120_000);
     assert.equal(config.workers.backgroundAfterMs, 10_000);
+    assert.equal(config.workers.maxPendingTurns, 32);
+    assert.equal(config.workers.maxSubagents, 4);
     assert.equal(config.memory.enabled, false);
     assert.equal(config.memory.retainEvery, 3);
     assert.deepEqual(config.workspace.readOnlyPrefixes, ['data/']);
-    assert.equal(config.providers.openAiCompatible, undefined);
+    assert.deepEqual(config.providers.openAiCompatible, { baseUrl: openAi.OPENAI_COMPATIBLE_BASE_URL, apiKey: 'key' });
   });
 
   it('reads the gateway port and token from the same variables the gateway uses', () => {
@@ -37,19 +47,19 @@ describe('loadConfig', () => {
   it('refuses the development token in production', () => {
     assert.throws(() => loadConfig({ ...base, NODE_ENV: 'production' }), /AGENT_SERVER_TOKEN/);
     const config = loadConfig({ ...base, NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret' });
-    assert.equal(config.production, true);
+    assert.equal(config.token, 'real-secret');
   });
 
   it('refuses placeholder database passwords in production', () => {
     const prod = { NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret' };
     const placeholderUrl = 'postgresql://artemis:dev-artemis-db-password-change-me@localhost:5432/artemis';
-    assert.throws(() => loadConfig({ ...prod, DATABASE_URL: placeholderUrl }), /DATABASE_URL password/);
+    assert.throws(() => loadConfig({ ...prod, ...base, DATABASE_URL: placeholderUrl }), /DATABASE_URL password/);
     assert.throws(
       () => loadConfig({ ...prod, ...base, HINDSIGHT_DB_PASSWORD: 'dev-hindsight-db-password-change-me' }),
       /HINDSIGHT_DB_PASSWORD/
     );
-    assert.equal(loadConfig({ ...prod, ...base }).production, true);
-    assert.equal(loadConfig({ ...base, HINDSIGHT_DB_PASSWORD: 'dev-hindsight-db-password-change-me' }).production, false);
+    assert.doesNotThrow(() => loadConfig({ ...prod, ...base }));
+    assert.doesNotThrow(() => loadConfig({ ...base, HINDSIGHT_DB_PASSWORD: 'dev-hindsight-db-password-change-me' }));
   });
 
   it('routes the title model to ASSISTANT_TITLE_MODEL when set', () => {
@@ -67,12 +77,19 @@ describe('loadConfig', () => {
 
   it('requires a key with the OpenAI-compatible base URL', () => {
     assert.throws(() => loadConfig({ ...base, OPENAI_COMPATIBLE_BASE_URL: 'https://api.telnyx.com/v2/ai/openai' }), /OPENAI_COMPATIBLE_API_KEY/);
-    const config = loadConfig({
-      ...base,
-      OPENAI_COMPATIBLE_BASE_URL: 'https://api.telnyx.com/v2/ai/openai',
-      OPENAI_COMPATIBLE_API_KEY: 'key',
-    });
+    const config = loadConfig({ ...base, ...openAi });
     assert.deepEqual(config.providers.openAiCompatible, { baseUrl: 'https://api.telnyx.com/v2/ai/openai', apiKey: 'key' });
+  });
+
+  it('names the variables to set when a model uses an unconfigured provider', () => {
+    assert.throws(
+      () => loadConfig({ DATABASE_URL: base.DATABASE_URL }),
+      /ASSISTANT_TASK_MODEL uses provider openai-compatible.*OPENAI_COMPATIBLE_BASE_URL/
+    );
+    assert.throws(
+      () => loadConfig({ ...base, ASSISTANT_MODEL: 'mystery/model' }),
+      /ASSISTANT_MODEL uses unknown provider "mystery"/
+    );
   });
 
   it('rejects malformed values', () => {

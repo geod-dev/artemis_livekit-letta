@@ -186,9 +186,8 @@ export function testConfig(workspaceRoot: string, overrides: Partial<AgentServer
   return {
     port: 0,
     token: 'test',
-    production: false,
     databaseUrl: '',
-    assistant: { name: 'Test', timezone: 'Europe/Paris' },
+    assistant: { name: 'Test', timezone: 'Europe/Paris', presentTool: false },
     models: { assistant: 'anthropic/test-model', task: 'openai-compatible/test', title: 'anthropic/test-model' },
     providers: {},
     workspace: { root: workspaceRoot, displayRoot: '/workspace', readOnlyPrefixes: ['data/'] },
@@ -201,7 +200,6 @@ export function testConfig(workspaceRoot: string, overrides: Partial<AgentServer
       recallTimeoutMs: { voice: 1500, text: 4000 },
       recallMaxTokens: { low: 800, mid: 1500, high: 3000 },
     },
-    mcp: { deviceBaseUrl: '' },
   };
 }
 

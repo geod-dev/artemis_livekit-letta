@@ -1,19 +1,19 @@
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseModelHandle } from '@artemis/llm';
 
-/** Validated agent-server configuration (env, see architecture.md#environment-variables). */
+/** Validated agent-server configuration (env, see the variable list in `.env.example`). */
 export interface AgentServerConfig {
   port: number;
   /** Bearer token the gateway presents (`AGENT_SERVER_TOKEN`). */
   token: string;
-  production: boolean;
   databaseUrl: string;
   assistant: {
     name: string;
     timezone: string;
-    /** `ASSISTANT_PRESENT_TOOL`: the `present` tool is offered to new conversations (default off; `loadConfig` always sets it). */
-    presentTool?: boolean;
+    /** `ASSISTANT_PRESENT_TOOL`: the `present` tool is offered to new conversations (default off). */
+    presentTool: boolean;
   };
   models: {
     /** `ASSISTANT_MODEL`, e.g. `anthropic/claude-haiku-5-5`. */
@@ -42,8 +42,9 @@ export interface AgentServerConfig {
     idleTimeoutMs: number;
     /** Foreground bash -> background (`BASH_BACKGROUND_AFTER_MS`, default 10 000). */
     backgroundAfterMs: number;
+    /** Fixed at 32 (not read from the environment). */
     maxPendingTurns: number;
-    /** Max concurrently running subagent tasks (default 4). */
+    /** Max concurrently running subagent tasks, fixed at 4 (not read from the environment). */
     maxSubagents: number;
   };
   memory: {
@@ -56,10 +57,6 @@ export interface AgentServerConfig {
     recallTimeoutMs: { voice: number; text: number };
     recallMaxTokens: { low: number; mid: number; high: number };
   };
-  mcp: {
-    /** Where device MCP endpoints live (`MCP_DEVICE_BASE_URL`, gateway). */
-    deviceBaseUrl: string;
-  };
 }
 
 const DEV_AGENT_SERVER_TOKEN = 'dev-agent-server-token-change-me';
@@ -71,6 +68,15 @@ const DEV_DB_PASSWORDS = [
 ];
 const DEFAULT_ASSISTANT_MODEL = 'anthropic/claude-haiku-5-5';
 const DEFAULT_TASK_MODEL = 'openai-compatible/zai-org/GLM-5.3-Flash';
+
+/** Fixed limits and workspace settings: not read from the environment. */
+const MAX_PENDING_TURNS = 32;
+const MAX_SUBAGENTS = 4;
+const READ_ONLY_PREFIXES = ['data/'];
+const RECALL_TIMEOUT_MS = { voice: 1_500, text: 4_000 };
+const RECALL_MAX_TOKENS = { low: 800, mid: 1_500, high: 3_000 };
+/** Workspace file search: `rg` when it is on the PATH, otherwise a JavaScript walk. */
+export const WORKSPACE_RIPGREP = 'auto' as const;
 
 /**
  * `WORKSPACE_RUN_AS=uid:gid`: agent commands run as this unprivileged user (Docker:
@@ -113,6 +119,30 @@ function modelHandle(env: NodeJS.ProcessEnv, name: string, fallback: string): st
   return handle;
 }
 
+/** A model handle must name a provider that is configured; the error names the variable to set. */
+function requireConfiguredProvider(name: string, handle: string, openAiCompatibleConfigured: boolean): void {
+  const { provider } = parseModelHandle(handle);
+  if (provider === 'anthropic') return;
+  if (provider === 'openai-compatible') {
+    if (!openAiCompatibleConfigured) {
+      throw new Error(
+        `${name} uses provider openai-compatible, which is not configured: set OPENAI_COMPATIBLE_BASE_URL and OPENAI_COMPATIBLE_API_KEY (or choose another ${name})`
+      );
+    }
+    return;
+  }
+  throw new Error(`${name} uses unknown provider "${provider}" (expected anthropic or openai-compatible)`);
+}
+
+/**
+ * Loads the repository-root `.env` for host runs (Docker passes it through `env_file`).
+ * Variables already set in the process win over the file.
+ */
+export function loadRootEnv(): void {
+  const file = fileURLToPath(new URL('../../../.env', import.meta.url));
+  if (existsSync(file)) process.loadEnvFile(file);
+}
+
 /**
  * Reads and validates the agent-server environment. Throws on missing or
  * invalid values; production refuses the development token.
@@ -151,6 +181,17 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
   if (openAiBaseUrl && !openAiApiKey) {
     throw new Error('OPENAI_COMPATIBLE_API_KEY is required when OPENAI_COMPATIBLE_BASE_URL is set');
   }
+  const openAiCompatible =
+    openAiBaseUrl && openAiApiKey ? { baseUrl: openAiBaseUrl, apiKey: openAiApiKey } : undefined;
+
+  const models = {
+    assistant: assistantModel,
+    task: modelHandle(env, 'ASSISTANT_TASK_MODEL', DEFAULT_TASK_MODEL),
+    title: modelHandle(env, 'ASSISTANT_TITLE_MODEL', assistantModel),
+  };
+  requireConfiguredProvider('ASSISTANT_MODEL', models.assistant, openAiCompatible !== undefined);
+  requireConfiguredProvider('ASSISTANT_TASK_MODEL', models.task, openAiCompatible !== undefined);
+  requireConfiguredProvider('ASSISTANT_TITLE_MODEL', models.title, openAiCompatible !== undefined);
 
   const hindsightUrl = text(env, 'HINDSIGHT_URL') ?? '';
   const workspaceRoot = resolve(
@@ -161,34 +202,28 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
   return {
     port: integer(env, 'AGENT_SERVER_PORT', 4000, 1),
     token,
-    production,
     databaseUrl,
     assistant: {
       name: text(env, 'ASSISTANT_NAME') ?? 'Artemis',
       timezone,
       presentTool: text(env, 'ASSISTANT_PRESENT_TOOL') === 'true',
     },
-    models: {
-      assistant: assistantModel,
-      task: modelHandle(env, 'ASSISTANT_TASK_MODEL', DEFAULT_TASK_MODEL),
-      title: modelHandle(env, 'ASSISTANT_TITLE_MODEL', assistantModel),
-    },
+    models,
     providers: {
       anthropicApiKey: text(env, 'ANTHROPIC_API_KEY'),
-      openAiCompatible:
-        openAiBaseUrl && openAiApiKey ? { baseUrl: openAiBaseUrl, apiKey: openAiApiKey } : undefined,
+      openAiCompatible,
     },
     workspace: {
       root: workspaceRoot,
       displayRoot: workspaceRoot,
-      readOnlyPrefixes: ['data/'],
+      readOnlyPrefixes: [...READ_ONLY_PREFIXES],
       ...(runAs ? { runAs } : {}),
     },
     workers: {
       idleTimeoutMs: integer(env, 'WORKER_IDLE_TIMEOUT_MS', 120_000, 1_000),
       backgroundAfterMs: integer(env, 'BASH_BACKGROUND_AFTER_MS', 10_000, 0),
-      maxPendingTurns: 32,
-      maxSubagents: 4,
+      maxPendingTurns: MAX_PENDING_TURNS,
+      maxSubagents: MAX_SUBAGENTS,
     },
     memory: {
       enabled: hindsightUrl !== '',
@@ -196,11 +231,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
       hindsightApiKey: text(env, 'HINDSIGHT_API_KEY'),
       bankId: text(env, 'HINDSIGHT_BANK_ID') ?? 'artemis',
       retainEvery: integer(env, 'MEMORY_RETAIN_EVERY', 3, 1),
-      recallTimeoutMs: { voice: 1_500, text: 4_000 },
-      recallMaxTokens: { low: 800, mid: 1_500, high: 3_000 },
-    },
-    mcp: {
-      deviceBaseUrl: (text(env, 'MCP_DEVICE_BASE_URL') ?? 'http://gateway:3000').replace(/\/$/, ''),
+      recallTimeoutMs: { ...RECALL_TIMEOUT_MS },
+      recallMaxTokens: { ...RECALL_MAX_TOKENS },
     },
   };
 }

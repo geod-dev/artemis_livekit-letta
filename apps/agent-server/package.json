@@ -5,11 +5,11 @@
   "type": "module",
   "description": "Agent server: conversations, workers (main agent, subagent and command tasks), tools, MCP, memory and storage.",
   "scripts": {
-    "dev": "tsx watch --clear-screen=false --include \"prompts/**/*.md\" src/main.ts",
-    "start": "tsx src/main.ts",
+    "dev": "tsx watch --clear-screen=false --include \"templates/**/*.md\" src/main.ts",
+    "start": "node --experimental-transform-types src/main.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "migrate": "tsx src/migrate.ts"
+    "migrate": "node --experimental-transform-types src/migrate.ts"
   },
   "dependencies": {
     "@artemis/contracts": "workspace:*",
@@ -24,11 +24,11 @@
     "@artemis/agent-loop": "workspace:*",
     "@hono/node-server": "^1.19.5",
     "ajv": "^8.20.0",
-    "hono": "^4.10.1",
-    "tsx": "^4.20.6"
+    "hono": "^4.10.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }
 }

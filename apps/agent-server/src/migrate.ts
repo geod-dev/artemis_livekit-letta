@@ -1,12 +1,12 @@
-/** `pnpm --filter @artemis/agent-server migrate`: apply storage migrations and exit. */
-import { consoleLogger } from '@artemis/core';
+/** `pnpm --filter @artemis/agent-server migrate`: apply storage migrations and exit. main.ts runs the same function at startup. */
+import { pathToFileURL } from 'node:url';
+import { consoleLogger, errorMessage } from '@artemis/core';
 import { compose } from './compose.ts';
-import { loadConfig } from './config.ts';
+import { type AgentServerConfig, loadConfig, loadRootEnv } from './config.ts';
 
-export async function migrate(env: NodeJS.ProcessEnv = process.env): Promise<string[]> {
+export async function migrate(config: AgentServerConfig = loadConfig(process.env)): Promise<string[]> {
   const logger = consoleLogger('migrate');
-  const config = loadConfig(env);
-  const storage = compose.postgresStorage({ connectionString: config.databaseUrl });
+  const { storage } = compose(config);
   try {
     const applied = await storage.migrate();
     logger.info(applied.length ? 'migrations applied' : 'database is up to date', { applied });
@@ -16,9 +16,10 @@ export async function migrate(env: NodeJS.ProcessEnv = process.env): Promise<str
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('migrate.ts')) {
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  loadRootEnv();
   migrate().catch((error: unknown) => {
-    console.error('[migrate] failed', error);
+    consoleLogger('migrate').error('migration failed', { error: errorMessage(error) });
     process.exit(1);
   });
 }
