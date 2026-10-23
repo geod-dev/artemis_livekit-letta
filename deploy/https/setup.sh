@@ -1,5 +1,6 @@
 #!/bin/sh
 # Debian/Ubuntu host, run as root from a checkout with a configured .env.
+# CERTBOT_EMAIL (required) is the ACME account contact for expiry and revocation notices.
 set -eu
 ip=${1:?Usage: sh deploy/https/setup.sh PUBLIC_IPV4}
 
@@ -23,6 +24,30 @@ done
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$repo"
 test -f .env
+
+# Validate every input before any file or service changes. The production overlay needs
+# both host roots, and the gateway rejects roots inside apps/ or roots that overlap.
+env_value() { sed -n "s/^$1=//p" .env | tail -n 1; }
+require_root() {
+  case "$2" in
+    '') echo "$1 must be set in .env" >&2; exit 1 ;;
+    /*) ;;
+    *) echo "$1 must be an absolute path" >&2; exit 1 ;;
+  esac
+  case "$2" in
+    "$repo"/apps|"$repo"/apps/*) echo "$1 must not be inside apps/" >&2; exit 1 ;;
+  esac
+}
+workspace_path=$(env_value WORKSPACE_PATH)
+data_dir=$(env_value ARTEMIS_DATA_DIR)
+require_root WORKSPACE_PATH "$workspace_path"
+require_root ARTEMIS_DATA_DIR "$data_dir"
+if [ "$workspace_path" = "$data_dir" ]; then
+  echo 'WORKSPACE_PATH and ARTEMIS_DATA_DIR must be separate folders' >&2
+  exit 1
+fi
+: "${CERTBOT_EMAIL:?Set CERTBOT_EMAIL to the address for certificate notices}"
+
 if [ -n "${CERTBOT:-}" ]; then
   certbot=$CERTBOT
 else
@@ -53,6 +78,8 @@ if [ -e "$site" ]; then cp -p "$site" "$nginx_backup"; had_site=1; fi
 committed=0
 rollback() {
   result=$?
+  # Only the host files are restored. Containers that compose already recreated keep the
+  # new configuration until the next successful deploy.
   if [ "$committed" -ne 1 ]; then
     cp -p "$env_backup" .env
     if [ "$had_site" -eq 1 ]; then cp -p "$nginx_backup" "$site"; else rm -f "$site"; fi
@@ -79,14 +106,14 @@ server {
   listen 80;
   server_name $ip;
   location /.well-known/acme-challenge/ { root /var/www/assistant-acme; }
-  location / { proxy_pass http://127.0.0.1:5173; }
+  location / { proxy_pass http://127.0.0.1:5180; }
 }
 EOF
   mv "$bootstrap" "$site"
   ln -sf "$site" "$enabled"
   nginx -t
   systemctl reload nginx
-  "$certbot" certonly --non-interactive --agree-tos --register-unsafely-without-email \
+  "$certbot" certonly --non-interactive --agree-tos --email "$CERTBOT_EMAIL" \
     --preferred-profile shortlived --webroot --webroot-path /var/www/assistant-acme \
     --cert-name "$ip" --ip-address "$ip"
 fi
@@ -94,11 +121,11 @@ fi
 # Atomically update the host settings; the EXIT handler restores the prior file
 # if Compose, nginx validation, or post-start health checks fail.
 env_new=$(mktemp .env.https.XXXXXX)
-awk '!/^FRONTEND_BIND=/ && !/^FRONTEND_PORT=/ && !/^LIVEKIT_PUBLIC_URL=/' .env > "$env_new"
-printf '\nFRONTEND_BIND=127.0.0.1\nFRONTEND_PORT=5180\nLIVEKIT_PUBLIC_URL=wss://%s/livekit\n' "$ip" >> "$env_new"
+awk '!/^FRONTEND_BIND=/ && !/^FRONTEND_PORT=/ && !/^WEB_BIND=/ && !/^WEB_PORT=/ && !/^LIVEKIT_PUBLIC_URL=/' .env > "$env_new"
+printf '\nWEB_BIND=127.0.0.1\nWEB_PORT=5180\nLIVEKIT_PUBLIC_URL=wss://%s/livekit\n' "$ip" >> "$env_new"
 chmod --reference=.env "$env_new"
 mv "$env_new" .env
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build gateway frontend voice-agent
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build gateway web voice-agent
 
 nginx_new=$(mktemp "${site}.XXXXXX")
 sed "s/@IP@/$ip/g" deploy/https/nginx.conf.template > "$nginx_new"
@@ -130,13 +157,13 @@ EOF
 systemctl daemon-reload
 systemctl enable --now assistant-certbot.timer
 
-# Backend liveness is unauthenticated. Check it inside the service, then verify
+# Gateway liveness is unauthenticated. Check it inside the service, then verify
 # that the public TLS route serves the application without an authenticated API.
 attempt=0
 until docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T gateway node -e \
   "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; do
   attempt=$((attempt + 1))
-  if [ "$attempt" -ge 15 ]; then echo 'Backend health check failed' >&2; exit 1; fi
+  if [ "$attempt" -ge 15 ]; then echo 'gateway health check failed' >&2; exit 1; fi
   sleep 2
 done
 curl --fail --silent --show-error --retry 15 --retry-delay 2 --retry-connrefused \

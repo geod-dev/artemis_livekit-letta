@@ -76,6 +76,21 @@ class RotateTokenTests(unittest.TestCase):
         if os.name != 'nt':
             self.assertEqual(self.destination.stat().st_mode & 0o777, 0o600)
 
+    def test_first_renewal_without_previous_tokens_revokes_nothing(self):
+        def console(code):
+            self.commands.append(code)
+            return {'token': 'new-secret-token', 'id': 42, 'previous': []}
+
+        def accept(request, timeout):
+            return FakeResponse(json.dumps({'uuid': 'app-uuid'}).encode())
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            rotate_token.rotate(self.config, console, accept)
+        self.assertEqual(output.getvalue().strip(), RENEWED_MESSAGE)
+        self.assertEqual(self.destination.read_text(), 'new-secret-token')
+        self.assertEqual(len(self.commands), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

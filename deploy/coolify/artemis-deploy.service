@@ -5,6 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=artemis-deploy
+Group=artemis-deploy
 ExecStart=/usr/bin/python3 /usr/local/lib/artemis/poll_deploy.py
 TimeoutStartSec=120
 UMask=0077

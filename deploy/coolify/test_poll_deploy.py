@@ -71,6 +71,13 @@ class PollDeployTests(unittest.TestCase):
         self.assertEqual(result['pending'], pending)
         self.assertEqual(len(api.calls), 1)
 
+    def test_active_deployment_in_history_blocks_a_new_request(self):
+        api = FakeCoolify(history={'deployments': [{'status': 'in_progress'}]})
+        result = poll_deploy.poll({}, REQUESTED, APP, api)
+        self.assertNotIn('pending', result)
+        self.assertEqual([call[0:2] for call in api.calls],
+                         [('GET', '/deployments/applications/' + APP + '?skip=0&take=5')])
+
 
 if __name__ == '__main__':
     unittest.main()

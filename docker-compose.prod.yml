@@ -1,14 +1,11 @@
-# Production requirements layered over the shared service definition.
+# Production requirements layered over the shared service definition. Both host roots are
+# required and must be separate absolute paths outside apps/ (the gateway checks this at start).
 services:
   agent-server:
     volumes:
       - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}:/workspace
-      - ${ARTEMIS_DATA_DIR:?set ARTEMIS_DATA_DIR in the production environment}:/workspace/data
 
   gateway:
-    environment:
-      NODE_ENV: production
     volumes:
       - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}:/workspace
       - ${ARTEMIS_DATA_DIR:?set ARTEMIS_DATA_DIR in the production environment}:/data/gateway
-      - ${ARTEMIS_DATA_DIR:?set ARTEMIS_DATA_DIR in the production environment}:/workspace/data

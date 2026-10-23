@@ -1,17 +1,19 @@
-# Coolify deployment stack. Set the Coolify domain to the frontend service on
-# port 80 and to the LiveKit service on port 7880 for WebSocket signaling.
-# Persistent workspace files use the host directory previously used by Coolify.
+# Coolify deployment stack: the same services as docker-compose.yml, with fixed host paths.
+# Select this one file as the application's Compose file. The differences from the base file
+# are listed in deploy/coolify/README.md.
 #
-# REQUIRED SERVER-SIDE CHANGE (outside this repository, before the first deploy of this
-# layout): the gateway data folder moves from /data/artemis/workspace/data to
-# /data/artemis/data/gateway. Create /data/artemis/data/gateway on the host. It starts
-# empty, because there is no user data to copy. /data/artemis/workspace stays the workspace.
-# The gateway also mounts it at /workspace/data, so its attachments stay visible to agent-server.
+# Routing: set the Coolify domain to the `web` service on port 8080. Its nginx serves the app
+# and proxies /api and /livekit/ to the internal services. LiveKit's signal port (7880) is not
+# published; it is reached only through that proxy.
+#
+# Host folders (create before the first deploy, owned by uid 1001):
+#   /data/artemis/workspace       agent workspace; uploads and device files under data/
+#   /data/artemis/data/gateway    gateway state only (attachment and retention records)
 name: artemis
 
 services:
   postgres:
-    # Init script is baked into the image: Coolify resolves file bind mounts on the
+    # The init script is baked into the image: Coolify resolves file bind mounts on the
     # host, where the checkout does not exist, so a ./path mount becomes an empty dir.
     build:
       context: ./deploy/postgres
@@ -36,7 +38,7 @@ services:
     environment:
       HINDSIGHT_API_DATABASE_URL: postgresql://hindsight:${HINDSIGHT_DB_PASSWORD:?set HINDSIGHT_DB_PASSWORD in .env}@postgres:5432/hindsight
       HINDSIGHT_API_LLM_PROVIDER: anthropic
-      HINDSIGHT_API_LLM_MODEL: claude-haiku-5-5
+      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_LLM_MODEL:-claude-haiku-5-5}
       HINDSIGHT_API_LLM_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
       HINDSIGHT_API_LLM_EXTRA_BODY: '{"output_config":{"effort":"medium"}}'
     depends_on:
@@ -54,7 +56,9 @@ services:
     build:
       context: .
       dockerfile: apps/agent-server/Dockerfile
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       AGENT_SERVER_PORT: 4000
@@ -67,10 +71,9 @@ services:
       postgres:
         condition: service_healthy
       hindsight:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - /data/artemis/workspace:/workspace
-      - /data/artemis/data/gateway:/workspace/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -83,10 +86,11 @@ services:
     image: livekit/livekit-server:v1.13.7
     # Production leaves signal routing to the reverse proxy and publishes media
     # only. A loopback signal port remains available for the standalone HTTPS host.
-    command: --bind 0.0.0.0 --node-ip ${IP_ADDRESS:-127.0.0.1} --udp-port 7882
+    command: --bind 0.0.0.0 --node-ip ${IP_ADDRESS:?set IP_ADDRESS in .env} --udp-port 7882
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
     ports:
+      # WebRTC media: published on all interfaces on purpose. Signaling (7880) is not published.
       - "7881:7881"
       - "7882:7882/udp"
     restart: unless-stopped
@@ -95,13 +99,16 @@ services:
     build:
       context: .
       dockerfile: apps/gateway/Dockerfile
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       GATEWAY_PORT: 3000
+      GATEWAY_HOST: 0.0.0.0
       MCP_DEVICE_BASE_URL: http://gateway:3000
       AGENT_SERVER_URL: http://agent-server:4000
-      LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:-127.0.0.1}:7880}
+      LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:?set IP_ADDRESS in .env}:7880}
       WORKSPACE_PATH: /workspace
       ARTEMIS_DATA_DIR: /data/gateway
     depends_on:
@@ -110,10 +117,9 @@ services:
     volumes:
       - /data/artemis/workspace:/workspace
       - /data/artemis/data/gateway:/data/gateway
-      - /data/artemis/data/gateway:/workspace/data
     healthcheck:
-      # `/ready` waits for asynchronous agent-server/MCP setup. Compose uses this
-      # process health check so that initialization does not block deployment.
+      # Liveness only. /ready reports the asynchronous agent-server and MCP setup and is
+      # for diagnostics; it is not a deployment gate here.
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
@@ -121,18 +127,18 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  frontend:
+  web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        IP_ADDRESS: ${IP_ADDRESS:-127.0.0.1}
-        ASSISTANT_NAME: ${ASSISTANT_NAME:-Artemis}
+        # Empty means the default in apps/web/vite.config.ts.
+        ASSISTANT_NAME: ${ASSISTANT_NAME:-}
     depends_on:
       gateway:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -142,7 +148,9 @@ services:
     build:
       context: .
       dockerfile: apps/voice-agent/Dockerfile
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       LIVEKIT_URL: ws://livekit:7880
       GATEWAY_URL: http://gateway:3000
@@ -154,6 +162,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  # Renamed from postgres-data: that volume was initialized before the init script
-  # could run, so it has no artemis/hindsight roles. A new name forces a fresh init.
+  # Same name as docker-compose.yml. Existing Coolify data stays in this volume.
   postgres-pg18:

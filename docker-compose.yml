@@ -1,18 +1,21 @@
 # The full application stack. Host-facing URLs use IP_ADDRESS; containers use
 # Compose service names for traffic that stays inside the Docker network.
+# `env_file: .env` is optional, so this file validates on a fresh clone. The `:?`
+# variables below must still be set (in .env or the shell) before the stack starts.
 name: artemis
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18
+    # The init script is baked into the image (deploy/postgres/Dockerfile), as on Coolify.
+    build:
+      context: ./deploy/postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       ARTEMIS_DB_PASSWORD: ${ARTEMIS_DB_PASSWORD:?set ARTEMIS_DB_PASSWORD in .env}
       HINDSIGHT_DB_PASSWORD: ${HINDSIGHT_DB_PASSWORD:?set HINDSIGHT_DB_PASSWORD in .env}
     volumes:
-      - postgres-data:/var/lib/postgresql   # PG18 image VOLUME is /var/lib/postgresql (verified)
-      - ./deploy/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+      - postgres-pg18:/var/lib/postgresql   # PG18 image VOLUME is /var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
@@ -27,7 +30,7 @@ services:
     environment:
       HINDSIGHT_API_DATABASE_URL: postgresql://hindsight:${HINDSIGHT_DB_PASSWORD:?set HINDSIGHT_DB_PASSWORD in .env}@postgres:5432/hindsight
       HINDSIGHT_API_LLM_PROVIDER: anthropic
-      HINDSIGHT_API_LLM_MODEL: claude-haiku-5-5
+      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_LLM_MODEL:-claude-haiku-5-5}
       HINDSIGHT_API_LLM_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
       HINDSIGHT_API_LLM_EXTRA_BODY: '{"output_config":{"effort":"medium"}}'
     depends_on:
@@ -45,11 +48,15 @@ services:
     build:
       context: .
       dockerfile: apps/agent-server/Dockerfile
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       AGENT_SERVER_PORT: 4000
       DATABASE_URL: postgresql://artemis:${ARTEMIS_DB_PASSWORD:?set ARTEMIS_DB_PASSWORD in .env}@postgres:5432/artemis
+      # Literal on purpose: containers always use the in-network Hindsight service. HINDSIGHT_URL
+      # in .env is for host runs and must not leak into the containers through interpolation.
       HINDSIGHT_URL: http://hindsight:8888
       MCP_DEVICE_BASE_URL: http://gateway:3000
       WORKSPACE_PATH: /workspace
@@ -58,10 +65,10 @@ services:
       postgres:
         condition: service_healthy
       hindsight:
-        condition: service_started
+        condition: service_healthy
     volumes:
+      # The workspace holds the agent's files and, under data/, the uploads and device files.
       - ${WORKSPACE_PATH:-./data/workspace}:/workspace
-      - ${ARTEMIS_DATA_DIR:-./data/gateway}:/workspace/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -74,11 +81,12 @@ services:
     image: livekit/livekit-server:v1.13.7
     # Production leaves signal routing to the reverse proxy and publishes media
     # only. A loopback signal port remains available for the standalone HTTPS host.
-    command: --bind 0.0.0.0 --node-ip ${IP_ADDRESS:-127.0.0.1} --udp-port 7882
+    command: --bind 0.0.0.0 --node-ip ${IP_ADDRESS:?set IP_ADDRESS in .env} --udp-port 7882
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
     ports:
       - "${LIVEKIT_SIGNAL_BIND:-127.0.0.1}:7880:7880"
+      # WebRTC media: 7881/tcp and 7882/udp are published on all interfaces on purpose.
       - "7881:7881"
       - "7882:7882/udp"
     restart: unless-stopped
@@ -87,12 +95,17 @@ services:
     build:
       context: .
       dockerfile: apps/gateway/Dockerfile
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
+      NODE_ENV: production
       GATEWAY_PORT: 3000
+      # The gateway binds all container interfaces; it is reached only through the web service.
+      GATEWAY_HOST: 0.0.0.0
       MCP_DEVICE_BASE_URL: http://gateway:3000
       AGENT_SERVER_URL: http://agent-server:4000
-      LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:-127.0.0.1}:7880}
+      LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:?set IP_ADDRESS in .env}:7880}
       WORKSPACE_PATH: /workspace
       ARTEMIS_DATA_DIR: /data/gateway
     depends_on:
@@ -100,30 +113,30 @@ services:
         condition: service_healthy
     volumes:
       - ${WORKSPACE_PATH:-./data/workspace}:/workspace
+      # Gateway state only (attachment and retention records). Not visible to the agent.
       - ${ARTEMIS_DATA_DIR:-./data/gateway}:/data/gateway
-      - ${ARTEMIS_DATA_DIR:-./data/gateway}:/workspace/data
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 30s
     restart: unless-stopped
 
-  frontend:
+  web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        IP_ADDRESS: ${IP_ADDRESS:-127.0.0.1}
-        ASSISTANT_NAME: ${ASSISTANT_NAME:-Artemis}
+        # Empty means the default in apps/web/vite.config.ts.
+        ASSISTANT_NAME: ${ASSISTANT_NAME:-}
     depends_on:
       gateway:
         condition: service_healthy
     ports:
-      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-5180}:80"
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-5180}:8080"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -133,7 +146,9 @@ services:
     build:
       context: .
       dockerfile: apps/voice-agent/Dockerfile
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       LIVEKIT_URL: ws://livekit:7880
       GATEWAY_URL: http://gateway:3000
@@ -145,4 +160,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres-data:
+  # Same name as docker-compose.coolify.yml. It was renamed from postgres-data so that a
+  # volume initialized before the init script ran (no artemis or hindsight roles) is not reused.
+  postgres-pg18:
