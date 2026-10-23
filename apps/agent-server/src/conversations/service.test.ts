@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { type LlmRequest, LlmProvider, type LlmStreamEvent, type ModelInfo, ProviderRegistry, type ToolDefinition } from '@artemis/llm';
 import { NotFoundError } from '@artemis/core';
-import { InMemoryStorage } from '@artemis/storage';
+import { EphemeralStorage } from '@artemis/storage/testing';
 import { loadConfig } from '../config.ts';
 import { ConversationEventHub } from '../events/hub.ts';
 import { createModelRouter } from '../models/routing.ts';
@@ -32,7 +32,7 @@ const TOOLS: ToolDefinition[] = [{ name: 'bash', description: 'Run a command', i
 const TEMPLATE = 'You are {{name}} in {{workspace}}, conversation {{conversation_id}}, time zone {{timezone}}.';
 
 let dir: string;
-let storage: InMemoryStorage;
+let storage: EphemeralStorage;
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), 'conv-prompts-'));
@@ -46,7 +46,7 @@ after(async () => {
 });
 
 function service(events = new ConversationEventHub()) {
-  storage = new InMemoryStorage();
+  storage = new EphemeralStorage();
   const config = loadConfig({
     DATABASE_URL: 'postgresql://x',
     ASSISTANT_NAME: 'Artemis',

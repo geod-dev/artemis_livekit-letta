@@ -114,7 +114,7 @@ test('retain rejects when Hindsight does not accept the batch', async (t) => {
       context: 'ctx',
       timestamp: '2026-10-22T09:00:00Z',
     }),
-    /rejected retain operation op-2/,
+    /rejected retain operation op-2/
   );
 });
 
@@ -127,7 +127,7 @@ test('retain surfaces HTTP errors so the outbox can retry', async (t) => {
       turns: [{ speaker: 'User', at: '2026-10-22T09:00:00Z', text: 'hi' }],
       context: 'ctx',
       timestamp: '2026-10-22T09:00:00Z',
-    }),
+    })
   );
 });
 

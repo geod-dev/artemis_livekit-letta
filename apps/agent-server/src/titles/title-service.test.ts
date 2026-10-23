@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { type LlmRequest, LlmError, LlmProvider, type LlmStreamEvent, type ModelInfo, ProviderRegistry } from '@artemis/llm';
-import { InMemoryStorage } from '@artemis/storage';
+import { EphemeralStorage } from '@artemis/storage/testing';
 import { loadConfig } from '../config.ts';
 import { ConversationEventHub } from '../events/hub.ts';
 import { createModelRouter } from '../models/routing.ts';
@@ -95,7 +95,7 @@ describe('TitleService', () => {
   });
 
   async function setup(provider: TitleProvider) {
-    const storage = new InMemoryStorage();
+    const storage = new EphemeralStorage();
     const config = loadConfig({ DATABASE_URL: 'postgresql://x' });
     const router = createModelRouter(config, new ProviderRegistry([provider, new IdleProvider()]));
     const events = new ConversationEventHub();

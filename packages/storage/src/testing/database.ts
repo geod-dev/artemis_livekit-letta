@@ -13,7 +13,7 @@ import type {
 } from '../domain.ts';
 
 /** One map per table, keyed by primary key (conversation_recalls: conversation -> memory -> turn). */
-export interface MemoryState {
+export interface EphemeralState {
   conversations: Map<string, ConversationRecord>;
   promptSnapshots: Map<string, PromptSnapshotRecord>;
   turns: Map<string, TurnRecord>;
@@ -27,7 +27,7 @@ export interface MemoryState {
   recalls: Map<string, Map<string, string | null>>;
 }
 
-export function emptyMemoryState(): MemoryState {
+export function emptyEphemeralState(): EphemeralState {
   return {
     conversations: new Map(),
     promptSnapshots: new Map(),
@@ -46,12 +46,12 @@ export function emptyMemoryState(): MemoryState {
 const settled = (): undefined => undefined;
 
 /**
- * Holds the state of an {@link InMemoryStorage}. Operations are serialized: a transaction holds the queue
+ * Holds the state of an {@link EphemeralStorage}. Operations are serialized: a transaction holds the queue
  * for its whole duration, so no outside operation observes its partial writes. A transaction that throws
  * restores the state it started from (all-or-nothing, like Postgres).
  */
-export class MemoryDatabase {
-  state: MemoryState = emptyMemoryState();
+export class EphemeralDatabase {
+  state: EphemeralState = emptyEphemeralState();
   private tail: Promise<void> = Promise.resolve();
 
   locked<T>(body: () => T | Promise<T>): Promise<T> {
@@ -79,9 +79,9 @@ export class MemoryDatabase {
  * mutate stored records. Repository bodies validate before they write, because a root call is not rolled
  * back on error.
  */
-export class MemoryAccess {
+export class EphemeralAccess {
   constructor(
-    readonly db: MemoryDatabase,
+    readonly db: EphemeralDatabase,
     readonly clock: Clock,
     readonly transactional: boolean
   ) {}
@@ -90,7 +90,7 @@ export class MemoryAccess {
     return new Date(this.clock.now()).toISOString();
   }
 
-  run<T>(body: (state: MemoryState) => T): Promise<T> {
+  run<T>(body: (state: EphemeralState) => T): Promise<T> {
     const work = () => structuredClone(body(this.db.state));
     return this.transactional ? Promise.resolve().then(work) : this.db.locked(work);
   }

@@ -1,7 +1,7 @@
 /**
  * Repository interfaces. Business logic depends only on these; the Postgres
  * implementation lives in `@artemis/storage/postgres`; the test fake is
- * `InMemoryStorage` (`src/memory/`).
+ * `EphemeralStorage` (`@artemis/storage/testing`).
  */
 import type {
   AppStateKey,
@@ -42,12 +42,17 @@ export abstract class ConversationRepository {
 
 export abstract class PromptSnapshotRepository {
   abstract create(snapshot: Omit<PromptSnapshotRecord, 'id' | 'createdAt'>): Promise<PromptSnapshotRecord>;
-  abstract getForOwner(ownerKind: PromptSnapshotRecord['ownerKind'], ownerId: string): Promise<PromptSnapshotRecord | null>;
+  abstract getForOwner(
+    ownerKind: PromptSnapshotRecord['ownerKind'],
+    ownerId: string
+  ): Promise<PromptSnapshotRecord | null>;
 }
 
 export abstract class TurnRepository {
   /** Allocates `seq`. */
-  abstract create(turn: Omit<TurnRecord, 'seq' | 'endedAt' | 'memoryRetentionId' | 'usage' | 'recall' | 'error'>): Promise<TurnRecord>;
+  abstract create(
+    turn: Omit<TurnRecord, 'seq' | 'endedAt' | 'memoryRetentionId' | 'usage' | 'recall' | 'error'>
+  ): Promise<TurnRecord>;
   abstract get(id: string): Promise<TurnRecord | null>;
   abstract finish(
     id: string,
@@ -76,10 +81,14 @@ export abstract class MessageRepository {
 }
 
 export abstract class ToolCallRepository {
-  abstract start(call: Omit<ToolCallRecord, 'status' | 'resultText' | 'isError' | 'display' | 'taskRef' | 'endedAt'>): Promise<void>;
+  abstract start(
+    call: Omit<ToolCallRecord, 'status' | 'resultText' | 'isError' | 'display' | 'taskRef' | 'endedAt'>
+  ): Promise<void>;
   abstract finish(
     id: string,
-    patch: Pick<ToolCallRecord, 'status' | 'resultText' | 'isError' | 'display' | 'taskRef'> & { endedAt: string | null }
+    patch: Pick<ToolCallRecord, 'status' | 'resultText' | 'isError' | 'display' | 'taskRef'> & {
+      endedAt: string | null;
+    }
   ): Promise<void>;
   abstract listForMessages(messageIds: string[]): Promise<ToolCallRecord[]>;
   /** Boot recovery: `running` calls become `cancelled`. */
@@ -87,24 +96,42 @@ export abstract class ToolCallRepository {
 }
 
 export abstract class TaskRepository {
-  abstract create(task: Omit<TaskRecord, 'endedAt' | 'stopRequestedAt' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'report' | 'usage'>): Promise<TaskRecord>;
+  abstract create(
+    task: Omit<
+      TaskRecord,
+      'endedAt' | 'stopRequestedAt' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'report' | 'usage'
+    >
+  ): Promise<TaskRecord>;
   abstract get(id: string): Promise<TaskRecord | null>;
   abstract listByConversation(conversationId: string, options?: { limit?: number }): Promise<TaskRecord[]>;
   abstract listRunning(conversationId?: string): Promise<TaskRecord[]>;
   /** Periodic output/progress persistence of a running task. */
-  abstract updateProgress(id: string, patch: Partial<Pick<TaskRecord, 'stdoutTail' | 'stderrTail' | 'usage' | 'outputPath'>>): Promise<void>;
+  abstract updateProgress(
+    id: string,
+    patch: Partial<Pick<TaskRecord, 'stdoutTail' | 'stderrTail' | 'usage' | 'outputPath'>>
+  ): Promise<void>;
   abstract requestStop(id: string, at: string): Promise<void>;
   /** Terminal transition; no-op (returns null) if the task already finished. */
   abstract finish(
     id: string,
-    patch: Pick<TaskRecord, 'status' | 'report' | 'needsInput' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'usage'> & { endedAt: string }
+    patch: Pick<TaskRecord, 'status' | 'report' | 'needsInput' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'usage'> & {
+      endedAt: string;
+    }
   ): Promise<TaskRecord | null>;
 }
 
 export abstract class BackgroundUpdateRepository {
-  abstract create(update: Omit<BackgroundUpdateRecord, 'deliveryToken' | 'deliveryFrom' | 'deliveredTurnId' | 'deliveredAt' | 'readAt'>): Promise<BackgroundUpdateRecord>;
+  abstract create(
+    update: Omit<
+      BackgroundUpdateRecord,
+      'deliveryToken' | 'deliveryFrom' | 'deliveredTurnId' | 'deliveredAt' | 'readAt'
+    >
+  ): Promise<BackgroundUpdateRecord>;
   abstract get(id: string): Promise<BackgroundUpdateRecord | null>;
-  abstract listByConversation(conversationId: string, options?: { delivery?: DeliveryState[] }): Promise<BackgroundUpdateRecord[]>;
+  abstract listByConversation(
+    conversationId: string,
+    options?: { delivery?: DeliveryState[] }
+  ): Promise<BackgroundUpdateRecord[]>;
   /** held -> queued (spoken in a call). */
   abstract queue(id: string): Promise<boolean>;
   /** Claims every `held` update of the conversation for a text turn: held -> inflight with `token`. */
@@ -127,7 +154,10 @@ export abstract class McpSettingsRepository {
   /** Null before the first save (empty list). */
   abstract get(): Promise<McpSettingsRecord | null>;
   /** Compare-and-set on `expectedRevision` (null = no settings yet). Throws `ConflictError('revision_conflict')`. */
-  abstract save(record: Omit<McpSettingsRecord, 'updatedAt'>, expectedRevision: string | null): Promise<McpSettingsRecord>;
+  abstract save(
+    record: Omit<McpSettingsRecord, 'updatedAt'>,
+    expectedRevision: string | null
+  ): Promise<McpSettingsRecord>;
 }
 
 export abstract class AppStateRepository {
@@ -137,9 +167,11 @@ export abstract class AppStateRepository {
   abstract swap<T>(key: AppStateKey, value: T): Promise<T | null>;
 }
 
-export abstract class MemoryRetentionRepository {
+export abstract class RetentionRepository {
   /** Creates the retention and marks its turns analyzed in one transaction. */
-  abstract createForTurns(record: Omit<MemoryRetentionRecord, 'status' | 'attempts' | 'error' | 'submittedAt' | 'createdAt'>): Promise<MemoryRetentionRecord>;
+  abstract createForTurns(
+    record: Omit<MemoryRetentionRecord, 'status' | 'attempts' | 'error' | 'submittedAt' | 'createdAt'>
+  ): Promise<MemoryRetentionRecord>;
   abstract listPending(limit: number): Promise<MemoryRetentionRecord[]>;
   abstract markSubmitted(id: string, at: string): Promise<void>;
   abstract markAttemptFailed(id: string, error: string, terminal: boolean): Promise<void>;
@@ -162,7 +194,7 @@ export interface Repositories {
   updates: BackgroundUpdateRepository;
   mcpSettings: McpSettingsRepository;
   appState: AppStateRepository;
-  memoryRetentions: MemoryRetentionRepository;
+  memoryRetentions: RetentionRepository;
   recallLedger: RecallLedgerRepository;
 }
 
@@ -177,7 +209,7 @@ export abstract class Storage implements Repositories {
   abstract readonly updates: BackgroundUpdateRepository;
   abstract readonly mcpSettings: McpSettingsRepository;
   abstract readonly appState: AppStateRepository;
-  abstract readonly memoryRetentions: MemoryRetentionRepository;
+  abstract readonly memoryRetentions: RetentionRepository;
   abstract readonly recallLedger: RecallLedgerRepository;
 
   /** Run `fn` in one transaction (serializable where state machines need it). */

@@ -17,7 +17,7 @@ import {
   BackgroundUpdateRepository,
   ConversationRepository,
   McpSettingsRepository,
-  MemoryRetentionRepository,
+  RetentionRepository,
   MessageRepository,
   type Page,
   PromptSnapshotRepository,
@@ -27,7 +27,7 @@ import {
   ToolCallRepository,
   TurnRepository,
 } from '../repositories.ts';
-import { type MemoryAccess, type MemoryState } from './database.ts';
+import { type EphemeralAccess, type EphemeralState } from './database.ts';
 
 const copy = <T>(value: T): T => structuredClone(value);
 
@@ -72,21 +72,22 @@ function compareByCreated<T extends { createdAt: string; id: string }>(a: T, b: 
 }
 
 function insertSnapshot(
-  state: MemoryState,
+  state: EphemeralState,
   snapshot: Omit<PromptSnapshotRecord, 'id' | 'createdAt'>,
   createdAt: string
 ): PromptSnapshotRecord {
   const duplicate = [...state.promptSnapshots.values()].some(
     (row) => row.ownerKind === snapshot.ownerKind && row.ownerId === snapshot.ownerId
   );
-  if (duplicate) throw new ConflictError('duplicate_key', `prompt snapshot for ${snapshot.ownerKind} ${snapshot.ownerId} exists`);
+  if (duplicate)
+    throw new ConflictError('duplicate_key', `prompt snapshot for ${snapshot.ownerKind} ${snapshot.ownerId} exists`);
   const record: PromptSnapshotRecord = { ...copy(snapshot), id: uuid(), createdAt };
   state.promptSnapshots.set(record.id, record);
   return record;
 }
 
-export class MemoryConversationRepository extends ConversationRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralConversationRepository extends ConversationRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
@@ -125,9 +126,7 @@ export class MemoryConversationRepository extends ConversationRepository {
 
   list(options: { limit: number; after?: string }): Promise<Page<ConversationRecord>> {
     return this.access.run((state) => {
-      const visible = [...state.conversations.values()]
-        .filter((row) => row.archivedAt === null)
-        .sort(compareRecent);
+      const visible = [...state.conversations.values()].filter((row) => row.archivedAt === null).sort(compareRecent);
       let rest = visible;
       if (options.after !== undefined) {
         const cursor = state.conversations.get(options.after);
@@ -180,8 +179,8 @@ export class MemoryConversationRepository extends ConversationRepository {
   }
 }
 
-export class MemoryPromptSnapshotRepository extends PromptSnapshotRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralPromptSnapshotRepository extends PromptSnapshotRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
@@ -191,20 +190,29 @@ export class MemoryPromptSnapshotRepository extends PromptSnapshotRepository {
 
   getForOwner(ownerKind: PromptSnapshotRecord['ownerKind'], ownerId: string): Promise<PromptSnapshotRecord | null> {
     return this.access.run((state) => {
-      return [...state.promptSnapshots.values()].find((row) => row.ownerKind === ownerKind && row.ownerId === ownerId) ?? null;
+      return (
+        [...state.promptSnapshots.values()].find((row) => row.ownerKind === ownerKind && row.ownerId === ownerId) ??
+        null
+      );
     });
   }
 }
 
-export class MemoryTurnRepository extends TurnRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralTurnRepository extends TurnRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
-  create(turn: Omit<TurnRecord, 'seq' | 'endedAt' | 'memoryRetentionId' | 'usage' | 'recall' | 'error'>): Promise<TurnRecord> {
+  create(
+    turn: Omit<TurnRecord, 'seq' | 'endedAt' | 'memoryRetentionId' | 'usage' | 'recall' | 'error'>
+  ): Promise<TurnRecord> {
     return this.access.run((state) => {
       requireRef(state.conversations.has(turn.conversationId), 'conversation');
-      const seq = nextSeq(state.turns.values(), (row) => row.conversationId === turn.conversationId, (row) => row.seq);
+      const seq = nextSeq(
+        state.turns.values(),
+        (row) => row.conversationId === turn.conversationId,
+        (row) => row.seq
+      );
       const record: TurnRecord = {
         ...copy(turn),
         seq,
@@ -239,7 +247,9 @@ export class MemoryTurnRepository extends TurnRepository {
   listUnanalyzed(conversationId: string): Promise<TurnRecord[]> {
     return this.access.run((state) =>
       [...state.turns.values()]
-        .filter((row) => row.conversationId === conversationId && row.memoryRetentionId === null && row.status === 'completed')
+        .filter(
+          (row) => row.conversationId === conversationId && row.memoryRetentionId === null && row.status === 'completed'
+        )
         .sort((a, b) => a.seq - b.seq)
     );
   }
@@ -276,8 +286,8 @@ export class MemoryTurnRepository extends TurnRepository {
   }
 }
 
-export class MemoryMessageRepository extends MessageRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralMessageRepository extends MessageRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
@@ -286,7 +296,8 @@ export class MemoryMessageRepository extends MessageRepository {
       requireRef(state.conversations.has(message.conversationId), 'conversation');
       if (message.taskId !== null) requireRef(state.tasks.has(message.taskId), 'task');
       if (message.turnId !== null) requireRef(state.turns.has(message.turnId), 'turn');
-      const scope = (row: MessageRecord) => row.conversationId === message.conversationId && row.taskId === message.taskId;
+      const scope = (row: MessageRecord) =>
+        row.conversationId === message.conversationId && row.taskId === message.taskId;
       const record: MessageRecord = {
         ...copy(message),
         seq: nextSeq(state.messages.values(), scope, (row) => row.seq),
@@ -316,7 +327,10 @@ export class MemoryMessageRepository extends MessageRepository {
         if (cursor === undefined) return { items: [], nextCursor: null };
         rows = rows.filter((row) => row.seq < cursor.seq);
       }
-      return paginate(rows.sort((a, b) => b.seq - a.seq), options.limit);
+      return paginate(
+        rows.sort((a, b) => b.seq - a.seq),
+        options.limit
+      );
     });
   }
 
@@ -342,12 +356,14 @@ export class MemoryMessageRepository extends MessageRepository {
   }
 }
 
-export class MemoryToolCallRepository extends ToolCallRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralToolCallRepository extends ToolCallRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
-  start(call: Omit<ToolCallRecord, 'status' | 'resultText' | 'isError' | 'display' | 'taskRef' | 'endedAt'>): Promise<void> {
+  start(
+    call: Omit<ToolCallRecord, 'status' | 'resultText' | 'isError' | 'display' | 'taskRef' | 'endedAt'>
+  ): Promise<void> {
     return this.access.run((state) => {
       requireRef(state.conversations.has(call.conversationId), 'conversation');
       requireRef(state.messages.has(call.assistantMessageId), 'message');
@@ -393,12 +409,17 @@ export class MemoryToolCallRepository extends ToolCallRepository {
   }
 }
 
-export class MemoryTaskRepository extends TaskRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralTaskRepository extends TaskRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
-  create(task: Omit<TaskRecord, 'endedAt' | 'stopRequestedAt' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'report' | 'usage'>): Promise<TaskRecord> {
+  create(
+    task: Omit<
+      TaskRecord,
+      'endedAt' | 'stopRequestedAt' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'report' | 'usage'
+    >
+  ): Promise<TaskRecord> {
     return this.access.run((state) => {
       requireRef(state.conversations.has(task.conversationId), 'conversation');
       if (task.originTurnId !== null) requireRef(state.turns.has(task.originTurnId), 'turn');
@@ -435,12 +456,17 @@ export class MemoryTaskRepository extends TaskRepository {
   listRunning(conversationId?: string): Promise<TaskRecord[]> {
     return this.access.run((state) =>
       [...state.tasks.values()]
-        .filter((row) => row.status === 'running' && (conversationId === undefined || row.conversationId === conversationId))
+        .filter(
+          (row) => row.status === 'running' && (conversationId === undefined || row.conversationId === conversationId)
+        )
         .sort((a, b) => compareText(a.startedAt, b.startedAt) || compareText(a.id, b.id))
     );
   }
 
-  updateProgress(id: string, patch: Partial<Pick<TaskRecord, 'stdoutTail' | 'stderrTail' | 'usage' | 'outputPath'>>): Promise<void> {
+  updateProgress(
+    id: string,
+    patch: Partial<Pick<TaskRecord, 'stdoutTail' | 'stderrTail' | 'usage' | 'outputPath'>>
+  ): Promise<void> {
     return this.access.run((state) => {
       const row = requireRow(state.tasks.get(id), 'task');
       for (const key of ['stdoutTail', 'stderrTail', 'usage', 'outputPath'] as const) {
@@ -467,12 +493,17 @@ export class MemoryTaskRepository extends TaskRepository {
   }
 }
 
-export class MemoryBackgroundUpdateRepository extends BackgroundUpdateRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralBackgroundUpdateRepository extends BackgroundUpdateRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
-  create(update: Omit<BackgroundUpdateRecord, 'deliveryToken' | 'deliveryFrom' | 'deliveredTurnId' | 'deliveredAt' | 'readAt'>): Promise<BackgroundUpdateRecord> {
+  create(
+    update: Omit<
+      BackgroundUpdateRecord,
+      'deliveryToken' | 'deliveryFrom' | 'deliveredTurnId' | 'deliveredAt' | 'readAt'
+    >
+  ): Promise<BackgroundUpdateRecord> {
     return this.access.run((state) => {
       requireRef(state.conversations.has(update.conversationId), 'conversation');
       requireRef(state.tasks.has(update.taskId), 'task');
@@ -496,10 +527,17 @@ export class MemoryBackgroundUpdateRepository extends BackgroundUpdateRepository
     return this.access.run((state) => state.updates.get(id) ?? null);
   }
 
-  listByConversation(conversationId: string, options?: { delivery?: DeliveryState[] }): Promise<BackgroundUpdateRecord[]> {
+  listByConversation(
+    conversationId: string,
+    options?: { delivery?: DeliveryState[] }
+  ): Promise<BackgroundUpdateRecord[]> {
     return this.access.run((state) =>
       [...state.updates.values()]
-        .filter((row) => row.conversationId === conversationId && (options?.delivery === undefined || options.delivery.includes(row.delivery)))
+        .filter(
+          (row) =>
+            row.conversationId === conversationId &&
+            (options?.delivery === undefined || options.delivery.includes(row.delivery))
+        )
         .sort(compareByCreated)
     );
   }
@@ -534,10 +572,18 @@ export class MemoryBackgroundUpdateRepository extends BackgroundUpdateRepository
 
   complete(token: string, turnId: string, at: string): Promise<number> {
     return this.access.run((state) => {
-      const rows = [...state.updates.values()].filter((row) => row.delivery === 'inflight' && row.deliveryToken === token);
+      const rows = [...state.updates.values()].filter(
+        (row) => row.delivery === 'inflight' && row.deliveryToken === token
+      );
       if (rows.length > 0) requireRef(state.turns.has(turnId), 'turn');
       for (const row of rows) {
-        Object.assign(row, { delivery: 'delivered', deliveredTurnId: turnId, deliveredAt: at, deliveryToken: null, deliveryFrom: null });
+        Object.assign(row, {
+          delivery: 'delivered',
+          deliveredTurnId: turnId,
+          deliveredAt: at,
+          deliveryToken: null,
+          deliveryFrom: null,
+        });
       }
       return rows.length;
     });
@@ -579,10 +625,12 @@ export class MemoryBackgroundUpdateRepository extends BackgroundUpdateRepository
   }
 
   unreadCount(conversationId: string): Promise<number> {
-    return this.access.run((state) => [...state.updates.values()].filter((row) => row.conversationId === conversationId && row.unread).length);
+    return this.access.run(
+      (state) => [...state.updates.values()].filter((row) => row.conversationId === conversationId && row.unread).length
+    );
   }
 
-  private revert(state: MemoryState, matches: (row: BackgroundUpdateRecord) => boolean): number {
+  private revert(state: EphemeralState, matches: (row: BackgroundUpdateRecord) => boolean): number {
     let count = 0;
     for (const row of state.updates.values()) {
       if (row.delivery !== 'inflight' || !matches(row)) continue;
@@ -593,8 +641,8 @@ export class MemoryBackgroundUpdateRepository extends BackgroundUpdateRepository
   }
 }
 
-export class MemoryMcpSettingsRepository extends McpSettingsRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralMcpSettingsRepository extends McpSettingsRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
@@ -613,8 +661,8 @@ export class MemoryMcpSettingsRepository extends McpSettingsRepository {
   }
 }
 
-export class MemoryAppStateRepository extends AppStateRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralAppStateRepository extends AppStateRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
@@ -637,12 +685,14 @@ export class MemoryAppStateRepository extends AppStateRepository {
   }
 }
 
-export class MemoryMemoryRetentionRepository extends MemoryRetentionRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralRetentionRepository extends RetentionRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
-  createForTurns(record: Omit<MemoryRetentionRecord, 'status' | 'attempts' | 'error' | 'submittedAt' | 'createdAt'>): Promise<MemoryRetentionRecord> {
+  createForTurns(
+    record: Omit<MemoryRetentionRecord, 'status' | 'attempts' | 'error' | 'submittedAt' | 'createdAt'>
+  ): Promise<MemoryRetentionRecord> {
     return this.access.run((state) => {
       requireRef(state.conversations.has(record.conversationId), 'conversation');
       if ([...state.memoryRetentions.values()].some((row) => row.operationId === record.operationId)) {
@@ -676,7 +726,11 @@ export class MemoryMemoryRetentionRepository extends MemoryRetentionRepository {
 
   markSubmitted(id: string, at: string): Promise<void> {
     return this.access.run((state) => {
-      Object.assign(requireRow(state.memoryRetentions.get(id), 'memory retention'), { status: 'submitted', submittedAt: at, error: null });
+      Object.assign(requireRow(state.memoryRetentions.get(id), 'memory retention'), {
+        status: 'submitted',
+        submittedAt: at,
+        error: null,
+      });
     });
   }
 
@@ -690,8 +744,8 @@ export class MemoryMemoryRetentionRepository extends MemoryRetentionRepository {
   }
 }
 
-export class MemoryRecallLedgerRepository extends RecallLedgerRepository {
-  constructor(private readonly access: MemoryAccess) {
+class EphemeralRecallLedgerRepository extends RecallLedgerRepository {
+  constructor(private readonly access: EphemeralAccess) {
     super();
   }
 
@@ -711,7 +765,7 @@ export class MemoryRecallLedgerRepository extends RecallLedgerRepository {
 }
 
 /** All repositories bound to one state (the live database, or a transaction's view of it). */
-export class MemoryRepositories implements Repositories {
+export class EphemeralRepositories implements Repositories {
   readonly conversations: ConversationRepository;
   readonly promptSnapshots: PromptSnapshotRepository;
   readonly turns: TurnRepository;
@@ -721,20 +775,20 @@ export class MemoryRepositories implements Repositories {
   readonly updates: BackgroundUpdateRepository;
   readonly mcpSettings: McpSettingsRepository;
   readonly appState: AppStateRepository;
-  readonly memoryRetentions: MemoryRetentionRepository;
+  readonly memoryRetentions: RetentionRepository;
   readonly recallLedger: RecallLedgerRepository;
 
-  constructor(access: MemoryAccess) {
-    this.conversations = new MemoryConversationRepository(access);
-    this.promptSnapshots = new MemoryPromptSnapshotRepository(access);
-    this.turns = new MemoryTurnRepository(access);
-    this.messages = new MemoryMessageRepository(access);
-    this.toolCalls = new MemoryToolCallRepository(access);
-    this.tasks = new MemoryTaskRepository(access);
-    this.updates = new MemoryBackgroundUpdateRepository(access);
-    this.mcpSettings = new MemoryMcpSettingsRepository(access);
-    this.appState = new MemoryAppStateRepository(access);
-    this.memoryRetentions = new MemoryMemoryRetentionRepository(access);
-    this.recallLedger = new MemoryRecallLedgerRepository(access);
+  constructor(access: EphemeralAccess) {
+    this.conversations = new EphemeralConversationRepository(access);
+    this.promptSnapshots = new EphemeralPromptSnapshotRepository(access);
+    this.turns = new EphemeralTurnRepository(access);
+    this.messages = new EphemeralMessageRepository(access);
+    this.toolCalls = new EphemeralToolCallRepository(access);
+    this.tasks = new EphemeralTaskRepository(access);
+    this.updates = new EphemeralBackgroundUpdateRepository(access);
+    this.mcpSettings = new EphemeralMcpSettingsRepository(access);
+    this.appState = new EphemeralAppStateRepository(access);
+    this.memoryRetentions = new EphemeralRetentionRepository(access);
+    this.recallLedger = new EphemeralRecallLedgerRepository(access);
   }
 }

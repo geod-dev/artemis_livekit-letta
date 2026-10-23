@@ -13,7 +13,7 @@ import {
   type ModelRoute,
   type StopReason,
 } from '@artemis/llm';
-import { InMemoryStorage } from '@artemis/storage';
+import { EphemeralStorage } from '@artemis/storage/testing';
 import type { AgentServerConfig } from '../config.ts';
 import { compose } from '../compose.ts';
 import { ConversationEventHub } from '../events/hub.ts';
@@ -206,7 +206,7 @@ export function testConfig(workspaceRoot: string, overrides: Partial<AgentServer
 }
 
 export interface Harness {
-  storage: InMemoryStorage;
+  storage: EphemeralStorage;
   hub: RecordingHub;
   clock: ManualClock;
   provider: ScriptedProvider;
@@ -219,13 +219,13 @@ export interface Harness {
 export async function createHarness(
   respond: (request: LlmRequest) => Step,
   options: {
-    storage?: InMemoryStorage;
+    storage?: EphemeralStorage;
     workspaceRoot?: string;
     overrides?: Partial<AgentServerConfig['workers']>;
     subagentGate?: Promise<unknown>;
   } = {}
 ): Promise<Harness> {
-  const storage = options.storage ?? new InMemoryStorage();
+  const storage = options.storage ?? new EphemeralStorage();
   const workspaceRoot = options.workspaceRoot ?? mkdtempSync(join(tmpdir(), 'agent-workers-'));
   const config = testConfig(workspaceRoot, options.overrides);
   const clock = new ManualClock();

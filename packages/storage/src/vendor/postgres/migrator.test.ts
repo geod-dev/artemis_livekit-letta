@@ -20,7 +20,10 @@ const file = (id: string, sql: string): MigrationFile => ({ id, sql });
 
 test('applies unapplied files in name order, each in its own transaction, under an advisory lock', async () => {
   const db = recordingDb();
-  const ran = await new Migrator(db.query, async () => [file('0002_next', 'CREATE TABLE b ();'), file('0001_initial', 'CREATE TABLE a ();')]).run();
+  const ran = await new Migrator(db.query, async () => [
+    file('0002_next', 'CREATE TABLE b ();'),
+    file('0001_initial', 'CREATE TABLE a ();'),
+  ]).run();
 
   assert.deepEqual(ran, ['0001_initial', '0002_next']);
   const statements = db.statements;
@@ -52,7 +55,10 @@ test('a changed applied file is an error, and the lock is still released', async
 test('a failing file is rolled back, rethrown, later files are not applied, and the lock is released', async () => {
   const db = recordingDb();
   await assert.rejects(
-    new Migrator(db.query, async () => [file('0001_bad', 'SELECT FAIL;'), file('0002_later', 'CREATE TABLE later ();')]).run(),
+    new Migrator(db.query, async () => [
+      file('0001_bad', 'SELECT FAIL;'),
+      file('0002_later', 'CREATE TABLE later ();'),
+    ]).run(),
     /syntax error/
   );
   assert.ok(db.statements.includes('ROLLBACK'));
@@ -61,5 +67,8 @@ test('a failing file is rolled back, rethrown, later files are not applied, and 
 });
 
 test('checksums ignore Windows line endings', () => {
-  assert.equal(migrationChecksum('CREATE TABLE a ();\r\nSELECT 1;\r\n'), migrationChecksum('CREATE TABLE a ();\nSELECT 1;\n'));
+  assert.equal(
+    migrationChecksum('CREATE TABLE a ();\r\nSELECT 1;\r\n'),
+    migrationChecksum('CREATE TABLE a ();\nSELECT 1;\n')
+  );
 });

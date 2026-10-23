@@ -4,7 +4,7 @@ import {
   type BackgroundUpdateRepository,
   type ConversationRepository,
   type McpSettingsRepository,
-  type MemoryRetentionRepository,
+  type RetentionRepository,
   type MessageRepository,
   type PromptSnapshotRepository,
   type RecallLedgerRepository,
@@ -14,10 +14,10 @@ import {
   type ToolCallRepository,
   type TurnRepository,
 } from '../repositories.ts';
-import { MemoryAccess, MemoryDatabase } from './database.ts';
-import { MemoryRepositories } from './repositories.ts';
+import { EphemeralAccess, EphemeralDatabase } from './database.ts';
+import { EphemeralRepositories } from './repositories.ts';
 
-export interface InMemoryStorageOptions {
+export interface EphemeralStorageOptions {
   /** Time source for `created_at`-style columns (default: system clock). */
   clock?: Clock;
 }
@@ -30,15 +30,15 @@ export interface InMemoryStorageOptions {
  * Do not call the root repositories from inside a `transaction` callback: they queue behind it and would
  * deadlock. Use the `tx` argument instead.
  */
-export class InMemoryStorage extends Storage {
-  private readonly db = new MemoryDatabase();
+export class EphemeralStorage extends Storage {
+  private readonly db = new EphemeralDatabase();
   private readonly clock: Clock;
-  private readonly root: MemoryRepositories;
+  private readonly root: EphemeralRepositories;
 
-  constructor(options: InMemoryStorageOptions = {}) {
+  constructor(options: EphemeralStorageOptions = {}) {
     super();
     this.clock = options.clock ?? systemClock;
-    this.root = new MemoryRepositories(new MemoryAccess(this.db, this.clock, false));
+    this.root = new EphemeralRepositories(new EphemeralAccess(this.db, this.clock, false));
   }
 
   get conversations(): ConversationRepository {
@@ -68,7 +68,7 @@ export class InMemoryStorage extends Storage {
   get appState(): AppStateRepository {
     return this.root.appState;
   }
-  get memoryRetentions(): MemoryRetentionRepository {
+  get memoryRetentions(): RetentionRepository {
     return this.root.memoryRetentions;
   }
   get recallLedger(): RecallLedgerRepository {
@@ -76,7 +76,7 @@ export class InMemoryStorage extends Storage {
   }
 
   transaction<T>(fn: (tx: Repositories) => Promise<T>): Promise<T> {
-    return this.db.transaction(() => fn(new MemoryRepositories(new MemoryAccess(this.db, this.clock, true))));
+    return this.db.transaction(() => fn(new EphemeralRepositories(new EphemeralAccess(this.db, this.clock, true))));
   }
 
   async migrate(): Promise<string[]> {

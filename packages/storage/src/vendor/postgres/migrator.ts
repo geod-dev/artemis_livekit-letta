@@ -57,10 +57,12 @@ export class Migrator {
        )`
     );
     const { rows } = await this.query('SELECT id, checksum FROM schema_migrations');
-    const applied = new Map(rows.map((row) => {
-      const { id, checksum } = row as { id: string; checksum: string };
-      return [id, checksum] as const;
-    }));
+    const applied = new Map(
+      rows.map((row) => {
+        const { id, checksum } = row as { id: string; checksum: string };
+        return [id, checksum] as const;
+      })
+    );
 
     const ran: string[] = [];
     const files = [...(await this.files())].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));

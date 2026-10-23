@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Logger } from '@artemis/core';
-import { InMemoryStorage } from '@artemis/storage';
+import { EphemeralStorage } from '@artemis/storage/testing';
 import type { AgentServerConfig } from '../config.ts';
 import { createMemoryCoordinator } from './coordinator.ts';
 import { FakeClock, FakeMemoryStore, fact, seedConversation, seedTurn, settle } from './test-support.ts';
@@ -18,7 +18,7 @@ const silent: Logger = {
 
 function setup(options: { enabled?: boolean; maxAttempts?: number } = {}) {
   const clock = new FakeClock();
-  const storage = new InMemoryStorage({ clock });
+  const storage = new EphemeralStorage({ clock });
   const store = new FakeMemoryStore();
   const config = {
     assistant: { name: 'Artemis', timezone: 'UTC' },

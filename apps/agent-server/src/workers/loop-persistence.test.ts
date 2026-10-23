@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { LoopEvent } from '@artemis/agent-loop';
 import type { ConversationEvent } from '@artemis/contracts/chat-types';
-import { InMemoryStorage } from '@artemis/storage';
+import { EphemeralStorage } from '@artemis/storage/testing';
 import { projectHistory } from '../conversations/history.ts';
 import { CallStateFilter } from '../turns/envelope.ts';
 import { LoopPersistence } from './loop-persistence.ts';
@@ -14,7 +14,7 @@ const NOW = '2026-10-22T10:00:00.000Z';
 
 /** Streams a voice step: each `[blockIndex, text]` delta, then the assembled assistant message. */
 async function voiceStep(messageId: string, blocks: string[]) {
-  const storage = new InMemoryStorage();
+  const storage = new EphemeralStorage();
   await storage.conversations.create(
     { id: CONVERSATION, title: null, titleSource: null },
     { systemPrompt: 'MAIN-SYSTEM', tools: [], templateId: 'system', templateHash: 'test' }

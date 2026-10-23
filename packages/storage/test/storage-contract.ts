@@ -1,5 +1,5 @@
 /**
- * Behavioural contract every `Storage` implementation must pass. `InMemoryStorage` and `PostgresStorage` run
+ * Behavioural contract every `Storage` implementation must pass. `EphemeralStorage` and `PostgresStorage` run
  * the same suite, so the fake stays a faithful stand-in for other packages' tests.
  */
 import assert from 'node:assert/strict';
@@ -12,8 +12,8 @@ import type {
   TaskRecord,
   ToolCallRecord,
   TurnRecord,
-} from '../domain.ts';
-import type { Storage } from '../repositories.ts';
+} from '../src/domain.ts';
+import type { Storage } from '../src/repositories.ts';
 
 /** `fresh()` returns storage with no data (the same instance may be reset); `dispose()` releases it. */
 export interface StorageFixture {
@@ -32,7 +32,10 @@ const snapshot = (prompt = 'You are the agent.'): SnapshotInput => ({
   templateHash: 'hash-1',
 });
 
-function turnInput(conversationId: string, startedAt = ts(1)): Omit<TurnRecord, 'seq' | 'endedAt' | 'memoryRetentionId' | 'usage' | 'recall' | 'error'> {
+function turnInput(
+  conversationId: string,
+  startedAt = ts(1)
+): Omit<TurnRecord, 'seq' | 'endedAt' | 'memoryRetentionId' | 'usage' | 'recall' | 'error'> {
   return {
     id: uuid(),
     conversationId,
@@ -68,7 +71,10 @@ function messageInput(
   };
 }
 
-function taskInput(conversationId: string, startedAt = ts(1)): Omit<TaskRecord, 'endedAt' | 'stopRequestedAt' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'report' | 'usage'> {
+function taskInput(
+  conversationId: string,
+  startedAt = ts(1)
+): Omit<TaskRecord, 'endedAt' | 'stopRequestedAt' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'report' | 'usage'> {
   return {
     id: prefixedId('task'),
     conversationId,
@@ -127,7 +133,11 @@ async function newTask(storage: Storage, conversationId: string): Promise<TaskRe
   return storage.tasks.create(taskInput(conversationId));
 }
 
-async function newAssistantMessage(storage: Storage, conversationId: string, turnId: string | null = null): Promise<MessageRecord> {
+async function newAssistantMessage(
+  storage: Storage,
+  conversationId: string,
+  turnId: string | null = null
+): Promise<MessageRecord> {
   return storage.messages.append(messageInput(conversationId, { role: 'assistant', turnId, text: 'calling tools' }));
 }
 
@@ -211,7 +221,10 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
         assert.equal(page1.nextCursor, third);
 
         const page2 = await storage.conversations.list({ limit: 2, after: page1.nextCursor ?? undefined });
-        assert.deepEqual(page2.items.map((row) => row.id), [first]);
+        assert.deepEqual(
+          page2.items.map((row) => row.id),
+          [first]
+        );
         assert.equal(page2.nextCursor, null);
       });
 
@@ -267,7 +280,13 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
           lastContextTokens: 10,
         };
 
-        await storage.turns.finish(done.id, { status: 'completed', error: null, usage, model: 'claude-haiku-5-5', endedAt: ts(3) });
+        await storage.turns.finish(done.id, {
+          status: 'completed',
+          error: null,
+          usage,
+          model: 'claude-haiku-5-5',
+          endedAt: ts(3),
+        });
         await storage.turns.setRecall(done.id, { budget: 'mid', query: 'q', memoryIds: ['m1'], durationMs: 4 });
 
         const stored = await storage.turns.get(done.id);
@@ -275,7 +294,10 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
         assert.deepEqual(stored?.usage, usage);
         assert.equal(stored?.recall?.memoryIds[0], 'm1');
 
-        assert.deepEqual((await storage.turns.listUnanalyzed(conversationId)).map((row) => row.id), [done.id]);
+        assert.deepEqual(
+          (await storage.turns.listUnanalyzed(conversationId)).map((row) => row.id),
+          [done.id]
+        );
         assert.equal((await storage.turns.latestWithUsage(conversationId))?.id, done.id);
         assert.equal(running.status, 'running');
       });
@@ -283,7 +305,13 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
       test('createForTurns creates a pending retention and marks its turns analyzed', async () => {
         const conversationId = await newConversation(storage);
         const turn = await newTurn(storage, conversationId);
-        await storage.turns.finish(turn.id, { status: 'completed', error: null, usage: null, model: null, endedAt: ts(2) });
+        await storage.turns.finish(turn.id, {
+          status: 'completed',
+          error: null,
+          usage: null,
+          model: null,
+          endedAt: ts(2),
+        });
 
         const retentionId = uuid();
         const retention = await storage.memoryRetentions.createForTurns({
@@ -299,13 +327,22 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
 
         assert.deepEqual(await storage.turns.listUnanalyzed(conversationId), []);
         assert.equal((await storage.turns.get(turn.id))?.memoryRetentionId, retentionId);
-        assert.deepEqual((await storage.memoryRetentions.listPending(10)).map((row) => row.id), [retentionId]);
+        assert.deepEqual(
+          (await storage.memoryRetentions.listPending(10)).map((row) => row.id),
+          [retentionId]
+        );
       });
 
       test('failed attempts stay pending until terminal; submitted ones leave the outbox', async () => {
         const conversationId = await newConversation(storage);
         const turn = await newTurn(storage, conversationId);
-        await storage.turns.finish(turn.id, { status: 'completed', error: null, usage: null, model: null, endedAt: ts(2) });
+        await storage.turns.finish(turn.id, {
+          status: 'completed',
+          error: null,
+          usage: null,
+          model: null,
+          endedAt: ts(2),
+        });
         const { id } = await storage.memoryRetentions.createForTurns({
           id: uuid(),
           conversationId,
@@ -361,7 +398,10 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
           (await storage.messages.transcript(conversationId, null)).map((row) => row.content),
           [first.content, second.content]
         );
-        assert.deepEqual((await storage.messages.transcript(conversationId, task.id)).map((row) => row.id), [inTask.id]);
+        assert.deepEqual(
+          (await storage.messages.transcript(conversationId, task.id)).map((row) => row.id),
+          [inTask.id]
+        );
       });
 
       test('page returns conversation messages newest first with a message cursor', async () => {
@@ -374,11 +414,17 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
         await storage.messages.append(messageInput(conversationId, { taskId: task.id }));
 
         const page1 = await storage.messages.page(conversationId, { limit: 2 });
-        assert.deepEqual(page1.items.map((row) => row.id), [ids[2], ids[1]]);
+        assert.deepEqual(
+          page1.items.map((row) => row.id),
+          [ids[2], ids[1]]
+        );
         assert.equal(page1.nextCursor, ids[1]);
 
         const page2 = await storage.messages.page(conversationId, { limit: 2, before: page1.nextCursor ?? undefined });
-        assert.deepEqual(page2.items.map((row) => row.id), [ids[0]]);
+        assert.deepEqual(
+          page2.items.map((row) => row.id),
+          [ids[0]]
+        );
         assert.equal(page2.nextCursor, null);
       });
 
@@ -389,7 +435,10 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
         const later = await storage.messages.append(messageInput(conversationId, { role: 'assistant', text: 'later' }));
 
         assert.equal(await storage.messages.softDeleteFrom(conversationId, target.id), 2);
-        assert.deepEqual((await storage.messages.transcript(conversationId, null)).map((row) => row.id), [keep.id]);
+        assert.deepEqual(
+          (await storage.messages.transcript(conversationId, null)).map((row) => row.id),
+          [keep.id]
+        );
         assert.equal((await storage.messages.page(conversationId, { limit: 10 })).items.length, 1);
         assert.notEqual((await storage.messages.get(later.id))?.deletedAt, null);
 
@@ -401,7 +450,14 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
         const conversationId = await newConversation(storage);
         const turn = await newTurn(storage, conversationId);
         const assistant = await newAssistantMessage(storage, conversationId, turn.id);
-        const base = { conversationId, taskId: null, turnId: turn.id, assistantMessageId: assistant.id, input: { path: 'a.txt' }, startedAt: ts(2) };
+        const base = {
+          conversationId,
+          taskId: null,
+          turnId: turn.id,
+          assistantMessageId: assistant.id,
+          input: { path: 'a.txt' },
+          startedAt: ts(2),
+        };
 
         await storage.toolCalls.start({ ...base, id: 'toolu_1', name: 'read_file' });
         await storage.toolCalls.start({ ...base, id: 'toolu_2', name: 'bash', input: { command: 'sleep 1' } });
@@ -433,7 +489,10 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
         const conversationId = await newConversation(storage);
         const task = await newTask(storage, conversationId);
 
-        assert.deepEqual((await storage.tasks.listRunning(conversationId)).map((row) => row.id), [task.id]);
+        assert.deepEqual(
+          (await storage.tasks.listRunning(conversationId)).map((row) => row.id),
+          [task.id]
+        );
         await storage.tasks.updateProgress(task.id, { stdoutTail: 'building', outputPath: '/workspace/data/task.log' });
         await storage.tasks.requestStop(task.id, ts(4));
         await storage.tasks.requestStop(task.id, ts(5));
@@ -451,9 +510,24 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
         assert.equal(finished?.status, 'completed');
         assert.equal(finished?.stopRequestedAt, ts(4));
         assert.equal(finished?.outputPath, '/workspace/data/task.log');
-        assert.equal(await storage.tasks.finish(task.id, { status: 'failed', report: 'late', needsInput: false, exitCode: 1, stdoutTail: null, stderrTail: null, usage: null, endedAt: ts(7) }), null);
+        assert.equal(
+          await storage.tasks.finish(task.id, {
+            status: 'failed',
+            report: 'late',
+            needsInput: false,
+            exitCode: 1,
+            stdoutTail: null,
+            stderrTail: null,
+            usage: null,
+            endedAt: ts(7),
+          }),
+          null
+        );
         assert.deepEqual(await storage.tasks.listRunning(conversationId), []);
-        assert.deepEqual((await storage.tasks.listByConversation(conversationId, { limit: 5 })).map((row) => row.id), [task.id]);
+        assert.deepEqual(
+          (await storage.tasks.listByConversation(conversationId, { limit: 5 })).map((row) => row.id),
+          [task.id]
+        );
       });
 
       test('update delivery: held -> inflight -> delivered, and rollback returns to the origin state', async () => {
@@ -465,7 +539,10 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
         const b = await storage.updates.create(updateInput(conversationId, second.id, { createdAt: ts(3) }));
 
         const claimed = await storage.updates.claimHeld(conversationId, 'token-1');
-        assert.deepEqual(claimed.map((row) => row.id), [a.id, b.id]);
+        assert.deepEqual(
+          claimed.map((row) => row.id),
+          [a.id, b.id]
+        );
         assert.equal(claimed[0]?.delivery, 'inflight');
         assert.equal(await storage.updates.rollback('token-1'), 2);
         assert.equal((await storage.updates.get(a.id))?.delivery, 'held');
@@ -512,10 +589,19 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
 
         const first = await storage.mcpSettings.save({ servers: [], invalidEntries: [], revision: 'r1' }, null);
         assert.equal(first.revision, 'r1');
-        await assert.rejects(storage.mcpSettings.save({ servers: [], invalidEntries: [], revision: 'r2' }, null), ConflictError);
-        await assert.rejects(storage.mcpSettings.save({ servers: [], invalidEntries: [], revision: 'r2' }, 'stale'), ConflictError);
+        await assert.rejects(
+          storage.mcpSettings.save({ servers: [], invalidEntries: [], revision: 'r2' }, null),
+          ConflictError
+        );
+        await assert.rejects(
+          storage.mcpSettings.save({ servers: [], invalidEntries: [], revision: 'r2' }, 'stale'),
+          ConflictError
+        );
 
-        const second = await storage.mcpSettings.save({ servers: [], invalidEntries: [{ bad: true }], revision: 'r2' }, 'r1');
+        const second = await storage.mcpSettings.save(
+          { servers: [], invalidEntries: [{ bad: true }], revision: 'r2' },
+          'r1'
+        );
         assert.equal(second.revision, 'r2');
         assert.deepEqual((await storage.mcpSettings.get())?.invalidEntries, [{ bad: true }]);
       });
@@ -578,11 +664,13 @@ export function storageContract(label: string, fixture: () => Promise<StorageFix
 
       test('missing parents and unknown rows are NotFound', async () => {
         await assert.rejects(newTurn(storage, uuid()), NotFoundError);
-        await assert.rejects(storage.turns.finish(uuid(), { status: 'failed', error: 'x', usage: null, model: null, endedAt: ts(1) }), NotFoundError);
+        await assert.rejects(
+          storage.turns.finish(uuid(), { status: 'failed', error: 'x', usage: null, model: null, endedAt: ts(1) }),
+          NotFoundError
+        );
         await assert.rejects(storage.tasks.updateProgress(prefixedId('task'), { stdoutTail: 'x' }), NotFoundError);
         await assert.rejects(storage.memoryRetentions.markSubmitted(uuid(), ts(1)), NotFoundError);
       });
     });
   });
 }
-

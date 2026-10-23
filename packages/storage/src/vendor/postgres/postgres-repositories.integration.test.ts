@@ -1,24 +1,40 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { ConflictError, NotFoundError, prefixedId, uuid } from '@artemis/core';
 import { Pool } from 'pg';
-import type { BackgroundUpdateRecord, MemoryRetentionRecord, MessageRecord, TaskRecord, TurnRecord } from '../../domain.ts';
+import type {
+  BackgroundUpdateRecord,
+  MemoryRetentionRecord,
+  MessageRecord,
+  TaskRecord,
+  TurnRecord,
+} from '../../domain.ts';
 import type { Storage } from '../../repositories.ts';
 import { PostgresStorage } from './index.ts';
+import { createTestDatabase, dropTestDatabase } from '../../testing/postgres.ts';
 
 /**
  * Behaviour only a real Postgres shows: uuid versus text column types, foreign-key actions, unique and check
  * constraints, rollback after a database error and concurrent sequence allocation. Basic CRUD semantics are
  * already covered by the shared storage contract (postgres-storage.test.ts), so they are not repeated here.
  * Runs when TEST_DATABASE_URL is set, e.g. postgres://user:pass@localhost:5432/postgres; skips otherwise.
+ * TEST_DATABASE_URL is a server-level admin URL: the suite creates and drops its own database on that server.
  */
 const baseUrl = process.env.TEST_DATABASE_URL;
 const skip = baseUrl === undefined ? 'set TEST_DATABASE_URL to run Postgres tests' : false;
 
 const TABLES = [
-  'conversation_recalls', 'memory_retentions', 'app_state', 'mcp_settings', 'background_updates', 'tool_calls',
-  'messages', 'tasks', 'turns', 'prompt_snapshots', 'conversations',
+  'conversation_recalls',
+  'memory_retentions',
+  'app_state',
+  'mcp_settings',
+  'background_updates',
+  'tool_calls',
+  'messages',
+  'tasks',
+  'turns',
+  'prompt_snapshots',
+  'conversations',
 ];
 
 type TurnInput = Parameters<Storage['turns']['create']>[0];
@@ -28,7 +44,12 @@ type RetentionReason = MemoryRetentionRecord['reason'];
 
 const ts = (minute: number): string => `2026-01-01T00:${String(minute).padStart(2, '0')}:00.000Z`;
 
-const SNAPSHOT = { systemPrompt: 'You are the agent.', tools: [{ name: 'read_file' }], templateId: 'system', templateHash: 'hash-1' };
+const SNAPSHOT = {
+  systemPrompt: 'You are the agent.',
+  tools: [{ name: 'read_file' }],
+  templateId: 'system',
+  templateHash: 'hash-1',
+};
 
 /** Matches a raw Postgres error by SQLSTATE, optionally also by message. */
 function pgError(code: string, message?: RegExp): (error: unknown) => boolean {
@@ -41,26 +62,8 @@ function pgError(code: string, message?: RegExp): (error: unknown) => boolean {
 const UUID_SYNTAX = /invalid input syntax for type uuid/;
 
 async function createTempDatabase(serverUrl: string): Promise<{ url: string; drop(): Promise<void> }> {
-  const name = `artemis_test_${randomUUID().replaceAll('-', '')}`;
-  const admin = new Pool({ connectionString: serverUrl });
-  try {
-    await admin.query(`CREATE DATABASE ${name}`);
-  } finally {
-    await admin.end();
-  }
-  const url = new URL(serverUrl);
-  url.pathname = `/${name}`;
-  return {
-    url: url.toString(),
-    drop: async () => {
-      const cleanup = new Pool({ connectionString: serverUrl });
-      try {
-        await cleanup.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
-      } finally {
-        await cleanup.end();
-      }
-    },
-  };
+  const database = await createTestDatabase(serverUrl);
+  return { url: database.url, drop: () => dropTestDatabase(serverUrl, database.name) };
 }
 
 describe('PostgresStorage repositories against real Postgres', { skip }, () => {
@@ -212,17 +215,28 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
   describe('persisted columns', () => {
     test('conversations persist title, title source, archive and MCP tool name columns, and the snapshot row', async () => {
       const id = uuid();
-      await storage.conversations.create({ id, title: 'Hello', titleSource: 'user' }, { ...SNAPSHOT, systemPrompt: 'frozen' });
+      await storage.conversations.create(
+        { id, title: 'Hello', titleSource: 'user' },
+        { ...SNAPSHOT, systemPrompt: 'frozen' }
+      );
       await storage.conversations.setMcpToolNamesShown(id, ['mcp__docs__search']);
 
       const [conversation] = await rowsOf(
         'SELECT title, title_source, archived_at, mcp_tool_names_shown FROM conversations WHERE id = $1',
         [id]
       );
-      assert.deepEqual(conversation, { title: 'Hello', title_source: 'user', archived_at: null, mcp_tool_names_shown: ['mcp__docs__search'] });
+      assert.deepEqual(conversation, {
+        title: 'Hello',
+        title_source: 'user',
+        archived_at: null,
+        mcp_tool_names_shown: ['mcp__docs__search'],
+      });
 
       await storage.conversations.archive(id);
-      assert.notEqual((await rowsOf('SELECT archived_at FROM conversations WHERE id = $1', [id]))[0]?.archived_at, null);
+      assert.notEqual(
+        (await rowsOf('SELECT archived_at FROM conversations WHERE id = $1', [id]))[0]?.archived_at,
+        null
+      );
 
       const [snapshot] = await rowsOf(
         'SELECT owner_kind, owner_id, system_prompt, tools, template_id, template_hash FROM prompt_snapshots WHERE owner_id = $1',
@@ -244,7 +258,15 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       await storage.turns.finish(turn.id, {
         status: 'completed',
         error: null,
-        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, steps: 1, lastContextTokens: 10 },
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          steps: 1,
+          lastContextTokens: 10,
+        },
         model: 'claude-haiku-5-5',
         endedAt: ts(3),
       });
@@ -313,12 +335,31 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       const callId = prefixedId('call');
       await startToolCall(conversationId, message.id, null, null, callId);
 
-      const [started] = await rowsOf('SELECT input, status, is_error, ended_at FROM tool_calls WHERE id = $1', [callId]);
+      const [started] = await rowsOf('SELECT input, status, is_error, ended_at FROM tool_calls WHERE id = $1', [
+        callId,
+      ]);
       assert.deepEqual(started, { input: { path: 'a.txt' }, status: 'running', is_error: false, ended_at: null });
 
-      await storage.toolCalls.finish(callId, { status: 'failed', resultText: 'boom', isError: true, display: null, taskRef: null, endedAt: ts(3) });
-      const [finished] = await rowsOf('SELECT status, result_text, is_error, display, task_ref, ended_at IS NOT NULL AS ended FROM tool_calls WHERE id = $1', [callId]);
-      assert.deepEqual(finished, { status: 'failed', result_text: 'boom', is_error: true, display: null, task_ref: null, ended: true });
+      await storage.toolCalls.finish(callId, {
+        status: 'failed',
+        resultText: 'boom',
+        isError: true,
+        display: null,
+        taskRef: null,
+        endedAt: ts(3),
+      });
+      const [finished] = await rowsOf(
+        'SELECT status, result_text, is_error, display, task_ref, ended_at IS NOT NULL AS ended FROM tool_calls WHERE id = $1',
+        [callId]
+      );
+      assert.deepEqual(finished, {
+        status: 'failed',
+        result_text: 'boom',
+        is_error: true,
+        display: null,
+        task_ref: null,
+        ended: true,
+      });
     });
 
     test('background_updates persist delivery columns through claim and completion', async () => {
@@ -327,11 +368,24 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       const task = await newTask(conversationId);
       const update = await newUpdate(conversationId, task.id);
 
-      const [held] = await rowsOf('SELECT delivery, unread, report, duration_ms, delivery_token, delivery_from FROM background_updates WHERE id = $1', [update.id]);
-      assert.deepEqual(held, { delivery: 'held', unread: true, report: 'Build passed.', duration_ms: 1200, delivery_token: null, delivery_from: null });
+      const [held] = await rowsOf(
+        'SELECT delivery, unread, report, duration_ms, delivery_token, delivery_from FROM background_updates WHERE id = $1',
+        [update.id]
+      );
+      assert.deepEqual(held, {
+        delivery: 'held',
+        unread: true,
+        report: 'Build passed.',
+        duration_ms: 1200,
+        delivery_token: null,
+        delivery_from: null,
+      });
 
       await storage.updates.claimHeld(conversationId, 'tok-1');
-      const [inflight] = await rowsOf('SELECT delivery, delivery_token, delivery_from FROM background_updates WHERE id = $1', [update.id]);
+      const [inflight] = await rowsOf(
+        'SELECT delivery, delivery_token, delivery_from FROM background_updates WHERE id = $1',
+        [update.id]
+      );
       assert.deepEqual(inflight, { delivery: 'inflight', delivery_token: 'tok-1', delivery_from: 'held' });
 
       await storage.updates.complete('tok-1', turn.id, ts(4));
@@ -339,7 +393,13 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
         'SELECT delivery, delivery_token, delivery_from, delivered_turn_id::text AS delivered_turn_id, delivered_at IS NOT NULL AS at FROM background_updates WHERE id = $1',
         [update.id]
       );
-      assert.deepEqual(delivered, { delivery: 'delivered', delivery_token: null, delivery_from: null, delivered_turn_id: turn.id, at: true });
+      assert.deepEqual(delivered, {
+        delivery: 'delivered',
+        delivery_token: null,
+        delivery_from: null,
+        delivered_turn_id: turn.id,
+        at: true,
+      });
     });
 
     test('memory_retentions persist the uuid[] turn ids, document and operation ids, and mark their turns', async () => {
@@ -369,9 +429,10 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       const turn = await completeTurn(conversationId);
       await storage.recallLedger.record(conversationId, turn.id, ['mem_a', 'mem_b']);
 
-      const rows = await rowsOf('SELECT memory_id, turn_id::text AS turn_id FROM conversation_recalls WHERE conversation_id = $1 ORDER BY memory_id', [
-        conversationId,
-      ]);
+      const rows = await rowsOf(
+        'SELECT memory_id, turn_id::text AS turn_id FROM conversation_recalls WHERE conversation_id = $1 ORDER BY memory_id',
+        [conversationId]
+      );
       assert.deepEqual(rows, [
         { memory_id: 'mem_a', turn_id: turn.id },
         { memory_id: 'mem_b', turn_id: turn.id },
@@ -470,7 +531,15 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
 
       await direct.query('DELETE FROM conversations WHERE id = $1', [doomed]);
 
-      for (const table of ['turns', 'tasks', 'messages', 'tool_calls', 'background_updates', 'memory_retentions', 'conversation_recalls']) {
+      for (const table of [
+        'turns',
+        'tasks',
+        'messages',
+        'tool_calls',
+        'background_updates',
+        'memory_retentions',
+        'conversation_recalls',
+      ]) {
         assert.equal(await countRows(table, 'conversation_id = $1', [doomed]), 0, `${table} should cascade`);
       }
       assert.notEqual(await storage.turns.get(kept.id), null);
@@ -508,7 +577,10 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       assert.equal((await storage.toolCalls.listForMessages([message.id]))[0]?.turnId, null);
       assert.equal((await storage.tasks.get(task.id))?.originTurnId, null);
       assert.equal((await storage.updates.get(update.id))?.deliveredTurnId, null);
-      assert.deepEqual(await rowsOf('SELECT turn_id FROM conversation_recalls WHERE conversation_id = $1', [conversationId]), [{ turn_id: null }]);
+      assert.deepEqual(
+        await rowsOf('SELECT turn_id FROM conversation_recalls WHERE conversation_id = $1', [conversationId]),
+        [{ turn_id: null }]
+      );
     });
 
     test('deleting a task removes its transcript, tool calls and update, and detaches child tasks', async () => {
@@ -553,7 +625,10 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       await direct.query('DELETE FROM memory_retentions WHERE id = $1', [retention.id]);
 
       assert.equal((await storage.turns.get(turn.id))?.memoryRetentionId, null);
-      assert.deepEqual((await storage.turns.listUnanalyzed(conversationId)).map((row) => row.id), [turn.id]);
+      assert.deepEqual(
+        (await storage.turns.listUnanalyzed(conversationId)).map((row) => row.id),
+        [turn.id]
+      );
     });
 
     test('a missing parent surfaces as NotFoundError rather than a raw foreign-key error', async () => {
@@ -617,7 +692,10 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       const conversationId = await newConversation();
       const task = await newTask(conversationId);
       await storage.promptSnapshots.create({ ownerKind: 'task', ownerId: task.id, ...SNAPSHOT });
-      await assert.rejects(storage.promptSnapshots.create({ ownerKind: 'task', ownerId: task.id, ...SNAPSHOT }), ConflictError);
+      await assert.rejects(
+        storage.promptSnapshots.create({ ownerKind: 'task', ownerId: task.id, ...SNAPSHOT }),
+        ConflictError
+      );
     });
 
     test('a recall is recorded once per conversation, and the same memory may appear in two conversations', async () => {
@@ -637,7 +715,13 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       const conversationId = await newConversation();
       const turn = await newTurn(conversationId);
       await assert.rejects(
-        storage.turns.finish(turn.id, { status: 'done' as TurnRecord['status'], error: null, usage: null, model: null, endedAt: ts(2) }),
+        storage.turns.finish(turn.id, {
+          status: 'done' as TurnRecord['status'],
+          error: null,
+          usage: null,
+          model: null,
+          endedAt: ts(2),
+        }),
         pgError('23514')
       );
     });
@@ -693,13 +777,19 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
     test('concurrent turn creation allocates unique, gap-free seq numbers', async () => {
       const conversationId = await newConversation();
       const turns = await Promise.all(Array.from({ length: 8 }, () => newTurn(conversationId)));
-      assert.deepEqual(turns.map((turn) => turn.seq).sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8]);
+      assert.deepEqual(
+        turns.map((turn) => turn.seq).sort((a, b) => a - b),
+        [1, 2, 3, 4, 5, 6, 7, 8]
+      );
     });
 
     test('concurrent message appends allocate unique seq numbers within one transcript', async () => {
       const conversationId = await newConversation();
       const messages = await Promise.all(Array.from({ length: 8 }, () => newMessage(conversationId)));
-      assert.deepEqual(messages.map((message) => message.seq).sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8]);
+      assert.deepEqual(
+        messages.map((message) => message.seq).sort((a, b) => a - b),
+        [1, 2, 3, 4, 5, 6, 7, 8]
+      );
     });
   });
 });

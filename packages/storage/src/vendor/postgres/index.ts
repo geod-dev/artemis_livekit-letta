@@ -6,7 +6,7 @@ import {
   type BackgroundUpdateRepository,
   type ConversationRepository,
   type McpSettingsRepository,
-  type MemoryRetentionRepository,
+  type RetentionRepository,
   type MessageRepository,
   type PromptSnapshotRepository,
   type RecallLedgerRepository,
@@ -76,7 +76,7 @@ export class PostgresStorage extends Storage {
   get appState(): AppStateRepository {
     return this.root.appState;
   }
-  get memoryRetentions(): MemoryRetentionRepository {
+  get memoryRetentions(): RetentionRepository {
     return this.root.memoryRetentions;
   }
   get recallLedger(): RecallLedgerRepository {

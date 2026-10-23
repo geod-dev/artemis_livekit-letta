@@ -17,7 +17,7 @@ import {
   BackgroundUpdateRepository,
   ConversationRepository,
   McpSettingsRepository,
-  MemoryRetentionRepository,
+  RetentionRepository,
   MessageRepository,
   type Page,
   PromptSnapshotRepository,
@@ -52,12 +52,22 @@ import type { PgSession } from './session.ts';
 
 /* ---------- helpers ---------- */
 
-async function rowsOf<R extends QueryResultRow, T>(session: PgSession, text: string, values: unknown[], map: (row: R) => T): Promise<T[]> {
+async function rowsOf<R extends QueryResultRow, T>(
+  session: PgSession,
+  text: string,
+  values: unknown[],
+  map: (row: R) => T
+): Promise<T[]> {
   const { rows } = await session.query<R>(text, values);
   return rows.map(map);
 }
 
-async function rowOf<R extends QueryResultRow, T>(session: PgSession, text: string, values: unknown[], map: (row: R) => T): Promise<T | null> {
+async function rowOf<R extends QueryResultRow, T>(
+  session: PgSession,
+  text: string,
+  values: unknown[],
+  map: (row: R) => T
+): Promise<T | null> {
   const [row] = await rowsOf<R, T>(session, text, values, map);
   return row ?? null;
 }
@@ -94,7 +104,10 @@ function byCreated<T extends { createdAt: string; id: string }>(rows: T[]): T[] 
   return rows.sort((a, b) => compare(a.createdAt, b.createdAt) || compare(a.id, b.id));
 }
 
-async function insertSnapshot(session: PgSession, snapshot: Omit<PromptSnapshotRecord, 'id' | 'createdAt'>): Promise<PromptSnapshotRecord> {
+async function insertSnapshot(
+  session: PgSession,
+  snapshot: Omit<PromptSnapshotRecord, 'id' | 'createdAt'>
+): Promise<PromptSnapshotRecord> {
   // The owner id goes to the foreign-key column matching its kind; the other one stays NULL (see migration 0002).
   const conversationId = snapshot.ownerKind === 'conversation' ? snapshot.ownerId : null;
   const taskId = snapshot.ownerKind === 'task' ? snapshot.ownerId : null;
@@ -122,7 +135,7 @@ async function insertSnapshot(session: PgSession, snapshot: Omit<PromptSnapshotR
 
 /* ---------- repositories ---------- */
 
-export class PgConversationRepository extends ConversationRepository {
+class PgConversationRepository extends ConversationRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
@@ -192,7 +205,11 @@ export class PgConversationRepository extends ConversationRepository {
 
   async archive(id: string): Promise<boolean> {
     return (
-      (await affected(this.session, 'UPDATE conversations SET archived_at = now() WHERE id = $1 AND archived_at IS NULL', [id])) > 0
+      (await affected(
+        this.session,
+        'UPDATE conversations SET archived_at = now() WHERE id = $1 AND archived_at IS NULL',
+        [id]
+      )) > 0
     );
   }
 
@@ -206,11 +223,16 @@ export class PgConversationRepository extends ConversationRepository {
   }
 
   async setMcpToolNamesShown(id: string, names: string[]): Promise<void> {
-    await requireAffected(this.session, 'UPDATE conversations SET mcp_tool_names_shown = $2 WHERE id = $1', [id, names], 'conversation');
+    await requireAffected(
+      this.session,
+      'UPDATE conversations SET mcp_tool_names_shown = $2 WHERE id = $1',
+      [id, names],
+      'conversation'
+    );
   }
 }
 
-export class PgPromptSnapshotRepository extends PromptSnapshotRepository {
+class PgPromptSnapshotRepository extends PromptSnapshotRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
@@ -229,12 +251,14 @@ export class PgPromptSnapshotRepository extends PromptSnapshotRepository {
   }
 }
 
-export class PgTurnRepository extends TurnRepository {
+class PgTurnRepository extends TurnRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
 
-  create(turn: Omit<TurnRecord, 'seq' | 'endedAt' | 'memoryRetentionId' | 'usage' | 'recall' | 'error'>): Promise<TurnRecord> {
+  create(
+    turn: Omit<TurnRecord, 'seq' | 'endedAt' | 'memoryRetentionId' | 'usage' | 'recall' | 'error'>
+  ): Promise<TurnRecord> {
     return this.session.transaction(async (tx) => {
       await lockConversation(tx, turn.conversationId);
       return requireOne(
@@ -289,7 +313,10 @@ export class PgTurnRepository extends TurnRepository {
   }
 
   async markAnalyzed(turnIds: string[], retentionId: string): Promise<void> {
-    await this.session.query('UPDATE turns SET memory_retention_id = $2 WHERE id = ANY($1::uuid[])', [turnIds, retentionId]);
+    await this.session.query('UPDATE turns SET memory_retention_id = $2 WHERE id = ANY($1::uuid[])', [
+      turnIds,
+      retentionId,
+    ]);
   }
 
   async failRunning(reason: string): Promise<string[]> {
@@ -310,7 +337,7 @@ export class PgTurnRepository extends TurnRepository {
   }
 }
 
-export class PgMessageRepository extends MessageRepository {
+class PgMessageRepository extends MessageRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
@@ -397,16 +424,27 @@ export class PgMessageRepository extends MessageRepository {
   }
 }
 
-export class PgToolCallRepository extends ToolCallRepository {
+class PgToolCallRepository extends ToolCallRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
 
-  async start(call: Omit<ToolCallRecord, 'status' | 'resultText' | 'isError' | 'display' | 'taskRef' | 'endedAt'>): Promise<void> {
+  async start(
+    call: Omit<ToolCallRecord, 'status' | 'resultText' | 'isError' | 'display' | 'taskRef' | 'endedAt'>
+  ): Promise<void> {
     await this.session.query(
       `INSERT INTO tool_calls (id, conversation_id, task_id, turn_id, assistant_message_id, name, input, status, is_error, started_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'running', false, $8)`,
-      [call.id, call.conversationId, call.taskId, call.turnId, call.assistantMessageId, call.name, jsonParam(call.input), call.startedAt]
+      [
+        call.id,
+        call.conversationId,
+        call.taskId,
+        call.turnId,
+        call.assistantMessageId,
+        call.name,
+        jsonParam(call.input),
+        call.startedAt,
+      ]
     );
   }
 
@@ -415,7 +453,15 @@ export class PgToolCallRepository extends ToolCallRepository {
       this.session,
       `UPDATE tool_calls SET status = $2, result_text = $3, is_error = $4, display = $5::jsonb, task_ref = $6::jsonb, ended_at = $7
        WHERE id = $1`,
-      [id, patch.status, patch.resultText, patch.isError, jsonParam(patch.display), jsonParam(patch.taskRef), patch.endedAt],
+      [
+        id,
+        patch.status,
+        patch.resultText,
+        patch.isError,
+        jsonParam(patch.display),
+        jsonParam(patch.taskRef),
+        patch.endedAt,
+      ],
       'tool call'
     );
   }
@@ -439,12 +485,17 @@ export class PgToolCallRepository extends ToolCallRepository {
   }
 }
 
-export class PgTaskRepository extends TaskRepository {
+class PgTaskRepository extends TaskRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
 
-  create(task: Omit<TaskRecord, 'endedAt' | 'stopRequestedAt' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'report' | 'usage'>): Promise<TaskRecord> {
+  create(
+    task: Omit<
+      TaskRecord,
+      'endedAt' | 'stopRequestedAt' | 'exitCode' | 'stdoutTail' | 'stderrTail' | 'report' | 'usage'
+    >
+  ): Promise<TaskRecord> {
     return rowsOf<TaskRow, TaskRecord>(
       this.session,
       `INSERT INTO tasks (id, conversation_id, kind, status, title, prompt, subagent_type, command, cwd, output_path,
@@ -499,7 +550,10 @@ export class PgTaskRepository extends TaskRepository {
     );
   }
 
-  async updateProgress(id: string, patch: Partial<Pick<TaskRecord, 'stdoutTail' | 'stderrTail' | 'usage' | 'outputPath'>>): Promise<void> {
+  async updateProgress(
+    id: string,
+    patch: Partial<Pick<TaskRecord, 'stdoutTail' | 'stderrTail' | 'usage' | 'outputPath'>>
+  ): Promise<void> {
     const assignments: Array<[string, unknown]> = [];
     if (patch.stdoutTail !== undefined) assignments.push(['stdout_tail', patch.stdoutTail]);
     if (patch.stderrTail !== undefined) assignments.push(['stderr_tail', patch.stderrTail]);
@@ -536,18 +590,33 @@ export class PgTaskRepository extends TaskRepository {
                         usage = $8::jsonb, ended_at = $9
        WHERE id = $1 AND status = 'running'
        RETURNING *`,
-      [id, patch.status, patch.report, patch.needsInput, patch.exitCode, patch.stdoutTail, patch.stderrTail, jsonParam(patch.usage), patch.endedAt],
+      [
+        id,
+        patch.status,
+        patch.report,
+        patch.needsInput,
+        patch.exitCode,
+        patch.stdoutTail,
+        patch.stderrTail,
+        jsonParam(patch.usage),
+        patch.endedAt,
+      ],
       toTask
     );
   }
 }
 
-export class PgBackgroundUpdateRepository extends BackgroundUpdateRepository {
+class PgBackgroundUpdateRepository extends BackgroundUpdateRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
 
-  create(update: Omit<BackgroundUpdateRecord, 'deliveryToken' | 'deliveryFrom' | 'deliveredTurnId' | 'deliveredAt' | 'readAt'>): Promise<BackgroundUpdateRecord> {
+  create(
+    update: Omit<
+      BackgroundUpdateRecord,
+      'deliveryToken' | 'deliveryFrom' | 'deliveredTurnId' | 'deliveredAt' | 'readAt'
+    >
+  ): Promise<BackgroundUpdateRecord> {
     return rowsOf<BackgroundUpdateRow, BackgroundUpdateRecord>(
       this.session,
       `INSERT INTO background_updates (id, conversation_id, task_id, title, status, needs_input, report, duration_ms,
@@ -573,10 +642,18 @@ export class PgBackgroundUpdateRepository extends BackgroundUpdateRepository {
   }
 
   get(id: string): Promise<BackgroundUpdateRecord | null> {
-    return rowOf<BackgroundUpdateRow, BackgroundUpdateRecord>(this.session, 'SELECT * FROM background_updates WHERE id = $1', [id], toBackgroundUpdate);
+    return rowOf<BackgroundUpdateRow, BackgroundUpdateRecord>(
+      this.session,
+      'SELECT * FROM background_updates WHERE id = $1',
+      [id],
+      toBackgroundUpdate
+    );
   }
 
-  async listByConversation(conversationId: string, options?: { delivery?: DeliveryState[] }): Promise<BackgroundUpdateRecord[]> {
+  async listByConversation(
+    conversationId: string,
+    options?: { delivery?: DeliveryState[] }
+  ): Promise<BackgroundUpdateRecord[]> {
     return byCreated(
       await rowsOf<BackgroundUpdateRow, BackgroundUpdateRecord>(
         this.session,
@@ -590,7 +667,13 @@ export class PgBackgroundUpdateRepository extends BackgroundUpdateRepository {
   }
 
   async queue(id: string): Promise<boolean> {
-    return (await affected(this.session, `UPDATE background_updates SET delivery = 'queued' WHERE id = $1 AND delivery = 'held'`, [id])) > 0;
+    return (
+      (await affected(
+        this.session,
+        `UPDATE background_updates SET delivery = 'queued' WHERE id = $1 AND delivery = 'held'`,
+        [id]
+      )) > 0
+    );
   }
 
   async claimHeld(conversationId: string, token: string): Promise<BackgroundUpdateRecord[]> {
@@ -673,16 +756,24 @@ export class PgBackgroundUpdateRepository extends BackgroundUpdateRepository {
   }
 }
 
-export class PgMcpSettingsRepository extends McpSettingsRepository {
+class PgMcpSettingsRepository extends McpSettingsRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
 
   get(): Promise<McpSettingsRecord | null> {
-    return rowOf<McpSettingsRow, McpSettingsRecord>(this.session, 'SELECT * FROM mcp_settings WHERE id = 1', [], toMcpSettings);
+    return rowOf<McpSettingsRow, McpSettingsRecord>(
+      this.session,
+      'SELECT * FROM mcp_settings WHERE id = 1',
+      [],
+      toMcpSettings
+    );
   }
 
-  async save(record: Omit<McpSettingsRecord, 'updatedAt'>, expectedRevision: string | null): Promise<McpSettingsRecord> {
+  async save(
+    record: Omit<McpSettingsRecord, 'updatedAt'>,
+    expectedRevision: string | null
+  ): Promise<McpSettingsRecord> {
     const values = [jsonParam(record.servers), jsonParam(record.invalidEntries), record.revision];
     const saved =
       expectedRevision === null
@@ -707,7 +798,7 @@ export class PgMcpSettingsRepository extends McpSettingsRepository {
   }
 }
 
-export class PgAppStateRepository extends AppStateRepository {
+class PgAppStateRepository extends AppStateRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
@@ -735,12 +826,14 @@ export class PgAppStateRepository extends AppStateRepository {
   }
 }
 
-export class PgMemoryRetentionRepository extends MemoryRetentionRepository {
+class PgRetentionRepository extends RetentionRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
 
-  createForTurns(record: Omit<MemoryRetentionRecord, 'status' | 'attempts' | 'error' | 'submittedAt' | 'createdAt'>): Promise<MemoryRetentionRecord> {
+  createForTurns(
+    record: Omit<MemoryRetentionRecord, 'status' | 'attempts' | 'error' | 'submittedAt' | 'createdAt'>
+  ): Promise<MemoryRetentionRecord> {
     return this.session.transaction(async (tx) => {
       const row = requireOne(
         await rowsOf<MemoryRetentionRow, MemoryRetentionRecord>(
@@ -753,10 +846,11 @@ export class PgMemoryRetentionRepository extends MemoryRetentionRepository {
         ),
         'memory retention'
       );
-      await tx.query(
-        'UPDATE turns SET memory_retention_id = $1 WHERE conversation_id = $2 AND id = ANY($3::uuid[])',
-        [row.id, record.conversationId, record.turnIds]
-      );
+      await tx.query('UPDATE turns SET memory_retention_id = $1 WHERE conversation_id = $2 AND id = ANY($3::uuid[])', [
+        row.id,
+        record.conversationId,
+        record.turnIds,
+      ]);
       return row;
     });
   }
@@ -791,7 +885,7 @@ export class PgMemoryRetentionRepository extends MemoryRetentionRepository {
   }
 }
 
-export class PgRecallLedgerRepository extends RecallLedgerRepository {
+class PgRecallLedgerRepository extends RecallLedgerRepository {
   constructor(private readonly session: PgSession) {
     super();
   }
@@ -825,7 +919,7 @@ export class PgRepositories implements Repositories {
   readonly updates: BackgroundUpdateRepository;
   readonly mcpSettings: McpSettingsRepository;
   readonly appState: AppStateRepository;
-  readonly memoryRetentions: MemoryRetentionRepository;
+  readonly memoryRetentions: RetentionRepository;
   readonly recallLedger: RecallLedgerRepository;
 
   constructor(session: PgSession) {
@@ -838,7 +932,7 @@ export class PgRepositories implements Repositories {
     this.updates = new PgBackgroundUpdateRepository(session);
     this.mcpSettings = new PgMcpSettingsRepository(session);
     this.appState = new PgAppStateRepository(session);
-    this.memoryRetentions = new PgMemoryRetentionRepository(session);
+    this.memoryRetentions = new PgRetentionRepository(session);
     this.recallLedger = new PgRecallLedgerRepository(session);
   }
 }

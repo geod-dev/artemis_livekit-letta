@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { LlmRequest } from '@artemis/llm';
-import { InMemoryStorage } from '@artemis/storage';
+import { EphemeralStorage } from '@artemis/storage/testing';
 import type { SubagentSpec, TurnSubmission } from './types.ts';
 import { createHarness, seedConversation, until, type Harness, type Step } from './test-support.ts';
 
@@ -235,7 +235,7 @@ test('tasks at depth > 0 never wake the conversation, failures of depth 0 always
 });
 
 test('recovery fails interrupted turns and tasks and delivers the task failure to the conversation', async () => {
-  const storage = new InMemoryStorage();
+  const storage = new EphemeralStorage();
   const seeded = await createHarness(() => ({ content: [{ type: 'text', text: 'unused' }] }), { storage });
   await seedConversation(seeded, 'c1');
   const turn = await storage.turns.create({
