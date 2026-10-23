@@ -1,15 +1,15 @@
-import { AppError, consoleLogger, uuid } from '@artemis/core';
+import { AppError, type Clock, consoleLogger, errorMessage, uuid } from '@artemis/core';
 import { eventStream } from '@artemis/http';
 import { Hono } from 'hono';
 import type { TurnMode } from '@artemis/contracts/chat-types';
 import type { CallSessions } from '../calls/call-sessions.ts';
-import type { TurnHandle } from '../workers/types.ts';
-import type { ApiDependencies } from './app.ts';
-import { requireUuidParam } from './ids.ts';
+import type { TurnHandle } from '../conversations/service.ts';
+import type { ApiDependencies } from './deps.ts';
+import { isCallId, requireUuidParam } from './guards.ts';
 import { noContent, requireBody } from './http.ts';
 
 /**
- * Voice endpoints used by the LiveKit voice agent (architecture.md#13):
+ * Voice endpoints used by the LiveKit voice agent (docs/architecture.md, "How the services talk"):
  * OpenAI-compatible completions, the control channel of a call, spoken
  * updates. Every voice response is bracketed on the call (`beginResponse` when
  * it starts, `finishResponse` when it ends).
@@ -37,23 +37,19 @@ export function voiceRoutes(deps: ApiDependencies): Hono {
     if (!validMessages(body.messages)) {
       throw new AppError('invalid_messages', `messages must be a valid list with at most ${MAX_MESSAGES} entries`, 400);
     }
-    const header = req.headers.get('x-voice-call-id');
-    if (header && header.length > 200) throw new AppError('invalid_field', 'x-voice-call-id is too long', 400);
-    const callId = header || deps.calls.callId(id);
+    // A call id the client sends is trusted only when it has the call id format; otherwise the open call's id is used.
+    const callId = validCallId(req.headers.get('x-voice-call-id')) ?? deps.calls.callId(id);
     const utterance = deps.calls.newVoiceInput(id, callId, body.messages);
     const identities = utterance?.identities ?? [];
 
-    const { stream, write, chunk, controller } = completionStream();
+    const { stream, write, chunk, controller } = completionStream(deps.clock);
     let handle: TurnHandle | null = null;
     if (utterance) {
       try {
-        const worker = await deps.supervisor.mainAgent(id);
-        handle = worker.submit({
-          kind: 'user',
-          modality: 'voice',
-          mode: turnModeOf(deps.calls, id),
+        handle = await deps.conversations.submitVoiceTurn(id, {
           text: utterance.text,
           ...(utterance.clientMessageId ? { clientMessageId: utterance.clientMessageId } : {}),
+          mode: () => voiceTurnMode(deps.calls, id),
           signal: req.signal,
           onText: (delta) => write(chunk({ content: delta })),
         });
@@ -80,7 +76,7 @@ export function voiceRoutes(deps: ApiDependencies): Hono {
       write('data: [DONE]\n\n');
       controller.close();
     })().catch((error: unknown) => {
-      log.error('completion stream failed', { error: messageOf(error) });
+      log.error('completion stream failed', { error: errorMessage(error) });
       try {
         controller.error(error);
       } catch {
@@ -116,17 +112,13 @@ export function voiceRoutes(deps: ApiDependencies): Hono {
     if (!claimed) throw new AppError('not_found', 'No such pending update', 404);
     const { token, update } = claimed;
 
-    const { stream, write, controller } = completionStream();
+    const { stream, write, controller } = completionStream(deps.clock);
     let handle: TurnHandle;
     try {
-      const worker = await deps.supervisor.mainAgent(id);
-      handle = worker.submit({
-        kind: 'update',
-        modality: 'voice',
-        mode: turnModeOf(deps.calls, id),
-        text: '',
-        updates: [update],
+      handle = await deps.conversations.submitUpdateTurn(id, {
+        update,
         deliveryToken: token,
+        mode: () => voiceTurnMode(deps.calls, id),
         signal: req.signal,
         onText: (delta) => write(delta),
       });
@@ -147,7 +139,7 @@ export function voiceRoutes(deps: ApiDependencies): Hono {
       if (outcome.status === 'failed') controller.error(new Error(outcome.error ?? 'update failed'));
       else controller.close();
     })().catch(async (error: unknown) => {
-      log.error('update stream failed', { updateId, error: messageOf(error) });
+      log.error('update stream failed', { updateId, error: errorMessage(error) });
       await deps.delivery.rollback(id, token).catch(() => undefined);
       try {
         controller.error(error);
@@ -182,9 +174,16 @@ export function voiceRoutes(deps: ApiDependencies): Hono {
   return voice;
 }
 
-/** Mode of a voice response: the call's mode, and a fresh end request. */
-function turnModeOf(calls: CallSessions, conversationId: string): TurnMode {
-  return `voice-${calls.beginResponse(conversationId) ?? 'short'}` as TurnMode;
+function validCallId(header: string | null): string | null {
+  return header !== null && isCallId(header) ? header : null;
+}
+
+/**
+ * Mode of a voice response: the call's mode (no call counts as short), and a fresh end request.
+ * Called once the main agent is ready, so a failed start does not begin a response.
+ */
+function voiceTurnMode(calls: CallSessions, conversationId: string): TurnMode {
+  return calls.beginResponse(conversationId) === 'long' ? 'voice-long' : 'voice-short';
 }
 
 /**
@@ -192,7 +191,7 @@ function turnModeOf(calls: CallSessions, conversationId: string): TurnMode {
  * created (ReadableStream `start` runs synchronously), so the caller can
  * submit a turn before returning the response.
  */
-function completionStream(): {
+function completionStream(clock: Clock): {
   stream: ReadableStream<Uint8Array>;
   controller: ReadableStreamDefaultController<Uint8Array>;
   write: (value: string) => void;
@@ -200,7 +199,7 @@ function completionStream(): {
 } {
   const encoder = new TextEncoder();
   const completionId = `chatcmpl-${uuid()}`;
-  const created = Math.floor(Date.now() / 1000);
+  const created = Math.floor(clock.now() / 1000);
   let controller!: ReadableStreamDefaultController<Uint8Array>;
   const stream = new ReadableStream<Uint8Array>({
     start(value) {
@@ -245,8 +244,4 @@ function validMessages(value: unknown): value is Array<Record<string, unknown>> 
     }
     return false;
   });
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -1,9 +1,15 @@
 import { AppError, NotFoundError } from '@artemis/core';
 import { eventStream } from '@artemis/http';
 import { Hono } from 'hono';
-import type { ChatAttachment, TextEffort } from '@artemis/contracts/chat-types';
-import type { ApiDependencies } from './app.ts';
-import { isUuid, requireUuidParam } from './ids.ts';
+import {
+  type ChatAttachment,
+  MAX_TURN_ATTACHMENTS,
+  MAX_TURN_TEXT_LENGTH,
+  TEXT_EFFORTS,
+  type TextEffort,
+} from '@artemis/contracts/chat-types';
+import type { ApiDependencies } from './deps.ts';
+import { isUuid, requireUuidParam } from './guards.ts';
 import {
   noContent,
   optionalBody,
@@ -13,11 +19,10 @@ import {
   requireString,
 } from './http.ts';
 
-const EFFORTS: readonly TextEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
-const MAX_TEXT = 100_000;
-const MAX_ATTACHMENTS = 20;
+const ATTACHMENT_KINDS: readonly ChatAttachment['kind'][] = ['image', 'file'];
+const MAX_UPDATE_IDS = 500;
 
-/** Conversation, turn, task, message and read routes (architecture.md#13). */
+/** Conversation, turn, task, message and read routes (docs/architecture.md, "How the services talk"). */
 export function conversationRoutes(deps: ApiDependencies): Hono {
   const api = new Hono();
 
@@ -76,27 +81,23 @@ export function conversationRoutes(deps: ApiDependencies): Hono {
   });
 
   api.delete('/conversations/:id/messages/:messageId', async (c) => {
-    const conversation = await deps.conversations.rewind(c.req.param('id'), c.req.param('messageId'));
-    return Response.json({ conversation });
+    const response = await deps.conversations.rewind(c.req.param('id'), c.req.param('messageId'));
+    return Response.json(response);
   });
 
   api.post('/conversations/:id/turns', async (c) => {
     const id = c.req.param('id');
     await deps.conversations.require(id);
     const body = await requireBody(c.req.raw);
-    const text = requireString(body, 'text', MAX_TEXT, 0);
-    const attachments = optionalArray<ChatAttachment>(body, 'attachments', MAX_ATTACHMENTS);
+    const text = requireString(body, 'text', MAX_TURN_TEXT_LENGTH, 0);
+    const attachments = parseAttachments(body.attachments);
     if (text.trim() === '' && attachments.length === 0) {
       throw new AppError('invalid_field', 'text or attachments is required', 400);
     }
     const effort = body.effort === undefined ? undefined : requireEffort(body.effort);
     const clientMessageId =
       body.clientMessageId === undefined ? undefined : requireString(body, 'clientMessageId', 200);
-    const worker = await deps.supervisor.mainAgent(id);
-    const handle = worker.submit({
-      kind: 'user',
-      modality: 'text',
-      mode: 'text',
+    const handle = await deps.conversations.submitTurn(id, {
       text,
       ...(effort ? { effort } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
@@ -105,16 +106,15 @@ export function conversationRoutes(deps: ApiDependencies): Hono {
     return Response.json({ accepted: true, turnId: handle.turnId }, { status: 202 });
   });
 
-  api.post('/conversations/:id/cancel', (c) => {
-    const cancelled = deps.supervisor.peekMainAgent(c.req.param('id'))?.cancel() ?? false;
-    return Response.json({ cancelled });
-  });
+  api.post('/conversations/:id/cancel', (c) =>
+    Response.json({ cancelled: deps.conversations.cancelTurn(c.req.param('id')) })
+  );
 
   api.post('/conversations/:id/warm', async (c) => {
     const id = c.req.param('id');
     await deps.conversations.require(id);
     await optionalBody(c.req.raw);
-    await deps.supervisor.mainAgent(id);
+    await deps.conversations.warm(id);
     return noContent();
   });
 
@@ -143,26 +143,60 @@ export function conversationRoutes(deps: ApiDependencies): Hono {
   api.post('/conversations/:id/read', async (c) => {
     const id = c.req.param('id');
     const body = await requireBody(c.req.raw);
-    const updateIds = optionalArray<string>(body, 'updateIds', 500);
-    if (updateIds.some((item) => typeof item !== 'string' || !isUuid(item))) {
-      throw new AppError('invalid_field', 'updateIds must be uuids', 400);
-    }
+    const entries = optionalList(body, 'updateIds', MAX_UPDATE_IDS);
+    const updateIds = entries.filter((item): item is string => typeof item === 'string' && isUuid(item));
+    if (updateIds.length !== entries.length) throw invalidField('updateIds must be uuids');
     return Response.json({ read: await deps.delivery.markRead(id, updateIds) });
   });
 
   return api;
 }
 
-function optionalArray<T>(body: Record<string, unknown>, field: string, max: number): T[] {
+function invalidField(message: string): AppError {
+  return new AppError('invalid_field', message, 400);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function optionalList(body: Record<string, unknown>, field: string, max: number): unknown[] {
   const value = body[field];
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > max) {
-    throw new AppError('invalid_field', `${field} must be a list of at most ${max} entries`, 400);
+    throw invalidField(`${field} must be a list of at most ${max} entries`);
   }
-  return value as T[];
+  return value;
+}
+
+/** The uploads of a turn, each checked before the turn exists. Only the known fields are kept. */
+function parseAttachments(value: unknown): ChatAttachment[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_TURN_ATTACHMENTS) {
+    throw invalidField(`attachments must be a list of at most ${MAX_TURN_ATTACHMENTS} entries`);
+  }
+  return value.map((entry, index) => parseAttachment(entry, `attachments[${index}]`));
+}
+
+function parseAttachment(value: unknown, field: string): ChatAttachment {
+  if (!isRecord(value)) throw invalidField(`${field} must be an object`);
+  const kind = ATTACHMENT_KINDS.find((item) => item === value.kind);
+  if (!kind) throw invalidField(`${field}.kind must be one of ${ATTACHMENT_KINDS.join(', ')}`);
+  const { path, name, mimeType, size } = value;
+  if (typeof path !== 'string' || path === '') throw invalidField(`${field}.path must be a non-empty string`);
+  if (typeof name !== 'string') throw invalidField(`${field}.name must be a string`);
+  if (mimeType !== undefined && typeof mimeType !== 'string') throw invalidField(`${field}.mimeType must be a string`);
+  if (size !== undefined && typeof size !== 'number') throw invalidField(`${field}.size must be a number`);
+  return {
+    path,
+    name,
+    kind,
+    ...(typeof mimeType === 'string' ? { mimeType } : {}),
+    ...(typeof size === 'number' ? { size } : {}),
+  };
 }
 
 function requireEffort(value: unknown): TextEffort {
-  if (typeof value === 'string' && (EFFORTS as readonly string[]).includes(value)) return value as TextEffort;
-  throw new AppError('invalid_field', `effort must be one of ${EFFORTS.join(', ')}`, 400);
+  if (typeof value === 'string' && (TEXT_EFFORTS as readonly string[]).includes(value)) return value as TextEffort;
+  throw invalidField(`effort must be one of ${TEXT_EFFORTS.join(', ')}`);
 }

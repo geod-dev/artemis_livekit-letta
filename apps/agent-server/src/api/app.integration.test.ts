@@ -6,22 +6,17 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import type { Hono } from 'hono';
-import type { ChatAttachment } from '@artemis/contracts/chat-types';
 import { consoleLogger, systemClock } from '@artemis/core';
-import { type LlmProvider, ProviderRegistry } from '@artemis/llm';
-import { type ArtifactSink, McpCatalog, McpServerRegistry, type McpSettingsStore, mcpRevision } from '@artemis/mcp';
-import { MemoryStore, type RecallResult } from '@artemis/memory';
-import type { Storage } from '@artemis/storage';
-import type { WorkspaceTransport } from '@artemis/workspace';
+import { createTestDatabase, dropTestDatabase } from '@artemis/storage/postgres/testing';
 import type { CallSessions } from '../calls/call-sessions.ts';
-import { compose } from '../compose.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
+import { compose } from '../compose.ts';
 import { loadConfig } from '../config.ts';
 import { createConversationService } from '../conversations/service.ts';
 import { ConversationEventHub } from '../events/hub.ts';
+import { migrate } from '../migrate.ts';
 import { createMemoryCoordinator } from '../memory/coordinator.ts';
 import { createMemoryTools } from '../memory/tools.ts';
-import { createModelRouter } from '../models/routing.ts';
 import { PromptRenderer } from '../prompts/renderer.ts';
 import { loadSubagentDefinitions } from '../subagents/definitions.ts';
 import { createTitleService } from '../titles/title-service.ts';
@@ -31,15 +26,16 @@ import { createApp } from './app.ts';
 /**
  * Integration tests: the real app wiring of `main.ts` (PostgresStorage, workers,
  * events, MCP registry) behind the Hono app, driven in-process with `app.request`.
- * Runs only when TEST_DATABASE_URL is set. The Anthropic client points at a closed
- * local port, so turns fail fast and offline instead of reaching the network.
+ * Runs only when TEST_DATABASE_URL is set. It is the Postgres server admin URL: each run
+ * creates and drops its own database on that server. The Anthropic client points at a closed
+ * local port (ANTHROPIC_BASE_URL, read by the SDK), so turns fail fast and offline.
  */
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const skip = TEST_DATABASE_URL ? false : 'set TEST_DATABASE_URL to run the agent-server integration tests';
 
 const TOKEN = `integration-${randomUUID()}`;
 const UNREACHABLE_URL = 'http://127.0.0.1:9';
-const PROMPTS_DIR = fileURLToPath(new URL('../../prompts', import.meta.url));
+const PROMPTS_DIR = fileURLToPath(new URL('../../templates', import.meta.url));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Harness {
@@ -119,8 +115,9 @@ class SseReader {
 /** Same wiring as `main.ts`, minus the HTTP server and the signal handlers. */
 async function buildHarness(): Promise<Harness> {
   const root = await mkdtemp(join(tmpdir(), 'agent-server-it-'));
+  const database = await createTestDatabase(TEST_DATABASE_URL!);
   const config = loadConfig({
-    DATABASE_URL: TEST_DATABASE_URL!,
+    DATABASE_URL: database.url,
     AGENT_SERVER_TOKEN: TOKEN,
     ANTHROPIC_API_KEY: 'integration-test-key',
     ASSISTANT_TASK_MODEL: 'anthropic/claude-haiku-5-5',
@@ -128,35 +125,19 @@ async function buildHarness(): Promise<Harness> {
   });
   const logger = consoleLogger('agent-server-it');
   const clock = systemClock;
+  const previousBaseUrl = process.env.ANTHROPIC_BASE_URL;
+  process.env.ANTHROPIC_BASE_URL = UNREACHABLE_URL;
 
-  const storage: Storage = compose.postgresStorage({ connectionString: config.databaseUrl });
-  await storage.migrate();
+  await migrate(config);
+  const { storage, router, memoryStore, workspace, mcpClient, catalog, registry } = compose(config);
 
-  const providers: LlmProvider[] = [
-    compose.anthropicProvider({ apiKey: 'integration-test-key', baseUrl: UNREACHABLE_URL, maxRetries: 0 }),
-  ];
-  const router = createModelRouter(config, new ProviderRegistry(providers));
   const prompts = new PromptRenderer(PROMPTS_DIR);
   const subagents = await loadSubagentDefinitions(join(PROMPTS_DIR, 'agents'));
 
-  const memoryStore = new DisabledMemoryStore();
   const memory = createMemoryCoordinator({ store: memoryStore, storage, config, clock, logger: logger.child('memory') });
   memory.start();
   await memoryStore.ensureReady();
 
-  const workspace = compose.filesystemWorkspace({
-    root: config.workspace.root,
-    displayRoot: config.workspace.displayRoot,
-    runAs: config.workspace.runAs,
-    ripgrep: 'auto',
-  });
-  const mcpClient = compose.sdkMcpClient({ artifacts: workspaceArtifactSink(workspace), stdio: { cwd: config.workspace.root } });
-  const catalog: McpCatalog = new McpCatalog(mcpClient, () => registry.servers());
-  const registry: McpServerRegistry = new McpServerRegistry(
-    mcpSettingsStore(storage),
-    () => catalog.refresh().then(() => undefined),
-    () => catalog.status()
-  );
   await registry.load();
   await catalog.refresh();
 
@@ -192,6 +173,7 @@ async function buildHarness(): Promise<Harness> {
     router,
     events,
     config,
+    supervisor,
     toolDefinitions: () => tools.definitions(),
     pendingRows: (conversationId) => delivery.eventRows(conversationId),
     onArchived: (conversationId) => supervisor.stopConversation(conversationId),
@@ -203,12 +185,12 @@ async function buildHarness(): Promise<Harness> {
   const app = createApp({
     config,
     conversations,
-    supervisor,
     tasks: runtime.tasks,
     delivery,
     calls,
     events,
     mcp: registry,
+    clock,
     ready: async () => ({
       storage: await storage.healthy(),
       mcp: catalog.status().refreshedAt !== null,
@@ -226,59 +208,10 @@ async function buildHarness(): Promise<Harness> {
       await titles.stop();
       events.close();
       await storage.close();
+      await dropTestDatabase(TEST_DATABASE_URL!, database.name);
+      if (previousBaseUrl === undefined) delete process.env.ANTHROPIC_BASE_URL;
+      else process.env.ANTHROPIC_BASE_URL = previousBaseUrl;
       await rm(root, { recursive: true, force: true });
-    },
-  };
-}
-
-/** Memory disabled (no HINDSIGHT_URL), as in `main.ts`. */
-class DisabledMemoryStore extends MemoryStore {
-  async ensureReady(): Promise<void> {}
-
-  async retain(): Promise<{ operationId: string }> {
-    return { operationId: 'disabled' };
-  }
-
-  async recall(): Promise<RecallResult> {
-    return { facts: [] };
-  }
-
-  async healthy(): Promise<boolean> {
-    return false;
-  }
-}
-
-function mcpSettingsStore(storage: Storage): McpSettingsStore {
-  return {
-    async load() {
-      const record = await storage.mcpSettings.get();
-      return record
-        ? { servers: record.servers, invalidEntries: record.invalidEntries, revision: record.revision }
-        : { servers: [], invalidEntries: [], revision: null };
-    },
-    async save(servers, invalidEntries, expectedRevision) {
-      const revision = mcpRevision(servers);
-      const record = await storage.mcpSettings.save({ servers, invalidEntries, revision }, expectedRevision);
-      return record.revision;
-    },
-  };
-}
-
-function workspaceArtifactSink(workspace: WorkspaceTransport): ArtifactSink {
-  return {
-    async save({ conversationId, name, mimeType, bytes }) {
-      const safeName = name.replace(/[^\w.-]+/g, '_') || 'artifact';
-      const path = `data/artifacts/${conversationId}/${randomUUID()}-${safeName}`;
-      await workspace.makeDirectory(`data/artifacts/${conversationId}`);
-      await workspace.writeFile(path, bytes);
-      const attachment: ChatAttachment = {
-        path,
-        name,
-        kind: mimeType.startsWith('image/') ? 'image' : 'file',
-        mimeType,
-        size: bytes.byteLength,
-      };
-      return attachment;
     },
   };
 }
@@ -301,7 +234,7 @@ describe('agent-server HTTP API against real storage and workers', { skip }, () 
 
     const ready = await request(h, 'GET', '/ready', { auth: false });
     assert.equal(ready.status, 200);
-    assert.deepEqual(await ready.json(), { status: 'degraded', storage: true, mcp: true, memory: false });
+    assert.deepEqual(await ready.json(), { status: 'ok', storage: true, mcp: true, memory: true });
   });
 
   it('an unknown path is a 404 with the stable not_found code', async () => {
@@ -632,7 +565,7 @@ describe('agent-server HTTP API against real storage and workers', { skip }, () 
 
   it('a voice completion on an open call runs a real turn and closes its stream with [DONE]', { timeout: 60_000 }, async () => {
     const created = await createConversation(h);
-    const callId = `call-it-${randomUUID()}`;
+    const callId = `call_${randomUUID().replaceAll('-', '')}`;
     h.calls.openChannel(created.id, () => undefined, 'short');
 
     const response = await request(h, 'POST', `/v1/voice/conversations/${created.id}/chat/completions`, {

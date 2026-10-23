@@ -85,6 +85,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
     router,
     events,
     config,
+    supervisor,
     toolDefinitions: () => tools.definitions(),
     pendingRows: (conversationId) => delivery.eventRows(conversationId),
     onArchived: (conversationId) => supervisor.stopConversation(conversationId),
@@ -96,12 +97,12 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
   const app = createApp({
     config,
     conversations,
-    supervisor,
     tasks: runtime.tasks,
     delivery,
     calls,
     events,
     mcp: registry,
+    clock,
     ready: async () => ({
       storage: await storage.healthy(),
       mcp: catalog.status().refreshedAt !== null,

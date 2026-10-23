@@ -1,32 +1,68 @@
 import type { ToolDefinition } from '@artemis/llm';
-import type { ChatMessage, ConversationContextUsage, ConversationSummary } from '@artemis/contracts/chat-types';
+import {
+  type ChatMessage,
+  type ConversationContextUsage,
+  type ConversationSummary,
+  DEFAULT_CONVERSATION_TITLE,
+  type TurnMode,
+} from '@artemis/contracts/chat-types';
+import type { MessageDeleteResponse, TextTurnRequest } from '@artemis/contracts/agent-server';
 import { AppError, NotFoundError, uuid } from '@artemis/core';
-import type { ConversationRecord, Storage } from '@artemis/storage';
+import type { BackgroundUpdateRecord, ConversationRecord, Storage } from '@artemis/storage';
 import type { AgentServerConfig } from '../config.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { ModelRouter } from '../models/routing.ts';
 import type { PromptRenderer } from '../prompts/renderer.ts';
+import type { WorkerSupervisor } from '../workers/supervisor.ts';
+import type { TurnHandle } from '../workers/types.ts';
 import { projectHistory } from './history.ts';
 
-/**
- * Conversation CRUD over storage. `create` renders and freezes the system
- * prompt + tool definitions (prompt snapshot). Delete = archive (stop workers,
- * release artifacts). Rewind = soft-delete from a message, in place.
- */
-export abstract class ConversationService {
-  abstract list(options: { limit: number; after?: string }): Promise<{ items: ConversationSummary[]; nextCursor: string | null }>;
-  abstract create(input: { title?: string }): Promise<ConversationSummary>;
-  /** Throws `NotFoundError`. */
-  abstract require(id: string): Promise<ConversationSummary>;
-  abstract rename(id: string, title: string): Promise<ConversationSummary>;
-  abstract archive(id: string): Promise<void>;
-  abstract rewind(id: string, messageId: string): Promise<ConversationSummary | null>;
-  /** UI rows, newest page first (`before` = row cursor), plus `X-Next-Cursor`. */
-  abstract messages(id: string, options: { before?: string; limit: number }): Promise<{ rows: ChatMessage[]; nextCursor: string | null }>;
-  abstract contextUsage(id: string): Promise<ConversationContextUsage | null>;
+export type { TurnHandle, TurnOutcome } from '../workers/types.ts';
+
+/** A spoken turn of a call. `mode` is resolved once the main agent is ready, so a call that fails to start opens no response. */
+export interface VoiceTurn {
+  text: string;
+  clientMessageId?: string;
+  mode: () => TurnMode;
+  signal: AbortSignal;
+  onText: (delta: string) => void;
 }
 
-export const DEFAULT_TITLE = 'New chat';
+/** A spoken background update, claimed by the caller; `deliveryToken` releases or completes it. */
+export interface UpdateTurn {
+  update: BackgroundUpdateRecord;
+  deliveryToken: string;
+  mode: () => TurnMode;
+  signal: AbortSignal;
+  onText: (delta: string) => void;
+}
+
+/**
+ * Conversation behaviour: CRUD over storage, the prompt snapshot taken at creation,
+ * and the turns submitted to a conversation's main agent. Delete = archive (stop
+ * workers, release artifacts). Rewind = soft-delete from a message, in place.
+ */
+export interface ConversationService {
+  list(options: { limit: number; after?: string }): Promise<{ items: ConversationSummary[]; nextCursor: string | null }>;
+  create(input: { title?: string }): Promise<ConversationSummary>;
+  /** Throws `NotFoundError`. */
+  require(id: string): Promise<ConversationSummary>;
+  rename(id: string, title: string): Promise<ConversationSummary>;
+  archive(id: string): Promise<void>;
+  /** Soft-deletes the message and every later one; `attachments` lists the uploads that remain. */
+  rewind(id: string, messageId: string): Promise<MessageDeleteResponse>;
+  /** UI rows, newest page first (`before` = row cursor), plus the next cursor. */
+  messages(id: string, options: { before?: string; limit: number }): Promise<{ rows: ChatMessage[]; nextCursor: string | null }>;
+  contextUsage(id: string): Promise<ConversationContextUsage | null>;
+  /** Queues a typed turn on the conversation's main agent. */
+  submitTurn(id: string, request: TextTurnRequest): Promise<TurnHandle>;
+  submitVoiceTurn(id: string, turn: VoiceTurn): Promise<TurnHandle>;
+  submitUpdateTurn(id: string, turn: UpdateTurn): Promise<TurnHandle>;
+  /** Aborts the running turn; false when no turn runs. */
+  cancelTurn(id: string): boolean;
+  /** Starts the conversation's main agent ahead of a call. */
+  warm(id: string): Promise<void>;
+}
 
 interface ConversationServiceDeps {
   storage: Storage;
@@ -34,6 +70,8 @@ interface ConversationServiceDeps {
   router: ModelRouter;
   events: ConversationEventHub;
   config: Pick<AgentServerConfig, 'assistant' | 'workspace'>;
+  /** Starts, peeks at and submits turns to the main agents of conversations. */
+  supervisor: Pick<WorkerSupervisor, 'mainAgent' | 'peekMainAgent'>;
   /** Tool definitions frozen with the system prompt (the order sent to the provider). */
   toolDefinitions: () => ToolDefinition[];
   /** Live rows not yet in storage (held background updates), first page only. */
@@ -42,10 +80,8 @@ interface ConversationServiceDeps {
   onArchived?: (conversationId: string) => Promise<void>;
 }
 
-class StorageConversationService extends ConversationService {
-  constructor(private readonly deps: ConversationServiceDeps) {
-    super();
-  }
+class StorageConversationService implements ConversationService {
+  constructor(private readonly deps: ConversationServiceDeps) {}
 
   async list(options: { limit: number; after?: string }) {
     const page = await this.deps.storage.conversations.list(options);
@@ -97,14 +133,14 @@ class StorageConversationService extends ConversationService {
     await this.deps.onArchived?.(id);
   }
 
-  async rewind(id: string, messageId: string): Promise<ConversationSummary | null> {
+  async rewind(id: string, messageId: string): Promise<MessageDeleteResponse> {
     await this.require(id);
     const message = await this.deps.storage.messages.get(messageId);
     if (!message || message.conversationId !== id || message.taskId !== null) {
       throw new NotFoundError('Message');
     }
     await this.deps.storage.messages.softDeleteFrom(id, messageId);
-    return this.require(id);
+    return { attachments: await this.remainingAttachmentPaths(id) };
   }
 
   async messages(id: string, options: { before?: string; limit: number }) {
@@ -133,6 +169,69 @@ class StorageConversationService extends ConversationService {
     };
   }
 
+  async submitTurn(id: string, request: TextTurnRequest): Promise<TurnHandle> {
+    const worker = await this.deps.supervisor.mainAgent(id);
+    return worker.submit({
+      kind: 'user',
+      modality: 'text',
+      mode: 'text',
+      text: request.text,
+      ...(request.effort ? { effort: request.effort } : {}),
+      ...(request.attachments?.length ? { attachments: request.attachments } : {}),
+      ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
+    });
+  }
+
+  async submitVoiceTurn(id: string, turn: VoiceTurn): Promise<TurnHandle> {
+    const worker = await this.deps.supervisor.mainAgent(id);
+    return worker.submit({
+      kind: 'user',
+      modality: 'voice',
+      mode: turn.mode(),
+      text: turn.text,
+      ...(turn.clientMessageId ? { clientMessageId: turn.clientMessageId } : {}),
+      signal: turn.signal,
+      onText: turn.onText,
+    });
+  }
+
+  async submitUpdateTurn(id: string, turn: UpdateTurn): Promise<TurnHandle> {
+    const worker = await this.deps.supervisor.mainAgent(id);
+    return worker.submit({
+      kind: 'update',
+      modality: 'voice',
+      mode: turn.mode(),
+      text: '',
+      updates: [turn.update],
+      deliveryToken: turn.deliveryToken,
+      signal: turn.signal,
+      onText: turn.onText,
+    });
+  }
+
+  cancelTurn(id: string): boolean {
+    return this.deps.supervisor.peekMainAgent(id)?.cancel() ?? false;
+  }
+
+  async warm(id: string): Promise<void> {
+    await this.deps.supervisor.mainAgent(id);
+  }
+
+  /** Workspace paths of the user-message uploads that the conversation still shows. */
+  private async remainingAttachmentPaths(id: string): Promise<string[]> {
+    const paths = new Set<string>();
+    let before: string | undefined;
+    do {
+      const page = await this.deps.storage.messages.page(id, { ...(before ? { before } : {}), limit: 200 });
+      for (const message of page.items) {
+        if (message.role !== 'user') continue;
+        for (const attachment of message.envelope?.attachments ?? []) paths.add(attachment.path);
+      }
+      before = page.nextCursor ?? undefined;
+    } while (before);
+    return [...paths];
+  }
+
   /** A summary with the list's unread count (unread background results of the conversation). */
   private async withUnread(record: ConversationRecord): Promise<ConversationSummary> {
     return { ...summarize(record), unread: await this.deps.storage.updates.unreadCount(record.id) };
@@ -148,7 +247,7 @@ class StorageConversationService extends ConversationService {
 function summarize(record: ConversationRecord): ConversationSummary {
   return {
     id: record.id,
-    title: record.title?.trim() || DEFAULT_TITLE,
+    title: record.title?.trim() || DEFAULT_CONVERSATION_TITLE,
     updatedAt: record.lastMessageAt ?? record.updatedAt,
   };
 }

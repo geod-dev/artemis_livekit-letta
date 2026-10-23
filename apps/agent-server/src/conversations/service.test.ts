@@ -10,6 +10,9 @@ import { loadConfig } from '../config.ts';
 import { ConversationEventHub } from '../events/hub.ts';
 import { createModelRouter } from '../models/routing.ts';
 import { PromptRenderer } from '../prompts/renderer.ts';
+import type { WorkerSupervisor } from '../workers/supervisor.ts';
+import type { MainAgentWorker } from '../workers/main-agent-worker.ts';
+import type { TurnOutcome, TurnSubmission } from '../workers/types.ts';
 import { createConversationService } from './service.ts';
 
 class StubProvider extends LlmProvider {
@@ -45,12 +48,31 @@ after(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-function service(events = new ConversationEventHub()) {
+/** Test double: `members` names what the test uses; anything else is absent. */
+function fake<T>(members: Partial<T>): T {
+  return members as T;
+}
+
+/** A main agent that records the submissions it receives and completes each one at once. */
+function recordingSupervisor(submitted: TurnSubmission[]): Pick<WorkerSupervisor, 'mainAgent' | 'peekMainAgent'> {
+  const outcome: TurnOutcome = { turnId: 'turn_test', status: 'completed', text: '' };
+  const worker = fake<MainAgentWorker>({
+    submit(submission: TurnSubmission) {
+      submitted.push(submission);
+      return { turnId: outcome.turnId, done: Promise.resolve(outcome) };
+    },
+    cancel: () => true,
+  });
+  return { mainAgent: async () => worker, peekMainAgent: () => worker };
+}
+
+function service(events = new ConversationEventHub(), submitted: TurnSubmission[] = []) {
   storage = new EphemeralStorage();
   const config = loadConfig({
     DATABASE_URL: 'postgresql://x',
     ASSISTANT_NAME: 'Artemis',
     ASSISTANT_TIMEZONE: 'Europe/Paris',
+    ASSISTANT_TASK_MODEL: 'anthropic/claude-haiku-5-5',
     WORKSPACE_PATH: '/workspace',
   });
   const router = createModelRouter(config, new ProviderRegistry([new StubProvider(), new OtherStubProvider()]));
@@ -62,6 +84,7 @@ function service(events = new ConversationEventHub()) {
       router,
       events,
       config,
+      supervisor: recordingSupervisor(submitted),
       toolDefinitions: () => TOOLS,
     }),
   };
@@ -176,6 +199,19 @@ describe('ConversationService', () => {
     const created = await conversations.create({});
     await conversations.archive(created.id);
     await assert.rejects(conversations.require(created.id), NotFoundError);
+  });
+
+  it('submits a text turn to the main agent with its effort and client id, and cancels through it', async () => {
+    const submitted: TurnSubmission[] = [];
+    const { conversations } = service(undefined, submitted);
+    const created = await conversations.create({});
+
+    const handle = await conversations.submitTurn(created.id, { text: 'hi', effort: 'high', clientMessageId: 'cm1' });
+    assert.equal(handle.turnId, 'turn_test');
+    assert.deepEqual(submitted, [
+      { kind: 'user', modality: 'text', mode: 'text', text: 'hi', effort: 'high', clientMessageId: 'cm1' },
+    ]);
+    assert.equal(conversations.cancelTurn(created.id), true);
   });
 
   it('reports context usage from the latest completed turn', async () => {

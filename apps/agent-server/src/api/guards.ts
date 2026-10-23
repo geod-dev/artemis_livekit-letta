@@ -2,9 +2,15 @@ import { NotFoundError } from '@artemis/core';
 import type { Context, Next } from 'hono';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Call ids are `prefixedId('call')` from @artemis/core: `call_` and 32 hex digits. */
+const CALL_ID_PATTERN = /^call_[0-9a-f]{32}$/;
 
 export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
+}
+
+export function isCallId(value: string): boolean {
+  return CALL_ID_PATTERN.test(value);
 }
 
 /**
