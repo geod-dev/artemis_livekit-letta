@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:0.12.5-python3.13-bookworm-slim
+FROM ghcr.io/astral-sh/uv:0.7-python3.13-bookworm-slim
 
 WORKDIR /app
 COPY apps/voice-agent/pyproject.toml apps/voice-agent/uv.lock ./
