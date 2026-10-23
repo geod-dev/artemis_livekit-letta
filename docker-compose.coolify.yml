@@ -5,7 +5,10 @@ name: livekit-letta
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18
+    # Init script is baked into the image: Coolify resolves file bind mounts on the
+    # host, where the checkout does not exist, so a ./path mount becomes an empty dir.
+    build:
+      context: ./infrastructure/postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -13,7 +16,6 @@ services:
       HINDSIGHT_DB_PASSWORD: ${HINDSIGHT_DB_PASSWORD:?set HINDSIGHT_DB_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql   # PG18 image layout (VOLUME /var/lib/postgresql)
-      - ./infrastructure/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
