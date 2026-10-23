@@ -19,9 +19,9 @@ const commands = {
     ['tests', process.execPath, ['--test', '--experimental-strip-types', '--no-warnings', 'src/**/*.test.ts'], 'apps/web'],
   ],
   voice: [
-    ['tests', 'uv', ['run', '--locked', '--group', 'dev', 'pytest'], 'voice-agent'],
-    ['lint', 'uv', ['run', '--locked', '--group', 'dev', 'ruff', 'check', 'src', 'tests'], 'voice-agent'],
-    ['typecheck', 'uv', ['run', '--locked', '--group', 'dev', 'pyright'], 'voice-agent'],
+    ['tests', 'uv', ['run', '--locked', '--group', 'dev', 'pytest'], 'apps/voice-agent'],
+    ['lint', 'uv', ['run', '--locked', '--group', 'dev', 'ruff', 'check', 'src', 'tests'], 'apps/voice-agent'],
+    ['typecheck', 'uv', ['run', '--locked', '--group', 'dev', 'pyright'], 'apps/voice-agent'],
   ],
   devices: [
     ['tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_device.py'], 'devices'],

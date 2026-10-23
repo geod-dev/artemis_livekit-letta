@@ -22,7 +22,7 @@ pnpm install
 pnpm --filter ./services/agent-server start
 cd backend && pnpm install && pnpm dev
 cd frontend && pnpm install && pnpm dev
-cd voice-agent && uv sync && uv run agent dev
+cd apps/voice-agent && uv sync && uv run agent dev
 ```
 
 The agent server applies its database migrations at startup. For host-based runs,

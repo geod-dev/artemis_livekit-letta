@@ -134,7 +134,7 @@ services:
   voice-agent:
     build:
       context: .
-      dockerfile: voice-agent/Dockerfile
+      dockerfile: apps/voice-agent/Dockerfile
     env_file: .env
     environment:
       LIVEKIT_URL: ws://livekit:7880
