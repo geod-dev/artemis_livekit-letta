@@ -167,7 +167,7 @@ class CallWriteTool extends McpBridgeTool {
  * tools only), `mcp_call_write`. Fixed definitions keep the tool list (and the
  * prompt cache) stable however many MCP tools exist; the model learns names from
  * reminders. Call results carry `display: {type:'mcp', artifacts}`. Specs and
- * handlers ported from backend/src/mcp-bridge/tools.ts.
+ * handlers ported from pre-refactor mcp-bridge/tools.ts.
  */
 export function createMcpBridgeTools(catalog: McpCatalog, client: McpClient): AnyTool<ToolContext>[] {
   return [new DescribeTool(catalog, client), new CallTool(catalog, client), new CallWriteTool(catalog, client)];

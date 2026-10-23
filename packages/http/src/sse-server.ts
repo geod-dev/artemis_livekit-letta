@@ -12,7 +12,7 @@ const DEFAULT_KEEP_ALIVE_MS = 15_000;
 const DEFAULT_MAX_EVENT_BYTES = 256 * 1024;
 
 /**
- * Server-Sent Events response (port of backend/src/http.ts `eventStream`):
+ * Server-Sent Events response (port of pre-refactor http.ts `eventStream`):
  * `data: <JSON>\n\n` frames, `: connected` first, keepalive pings, closes on
  * oversize events or backpressure. `start` receives `send` and `close` and may
  * return the cleanup to run when the stream ends (also when it closed during start).

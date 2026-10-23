@@ -10,6 +10,7 @@ apps/mobile/.signing/
 apps/mobile/app/build/
 apps/mobile/.gradle/
 apps/mobile/local.properties
+apps/mobile/build/
 node_modules/
 .venv/
 __pycache__/
@@ -17,6 +18,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .pnpm-store/
+dist/
+coverage/
+.coverage
+*.egg-info/
 **/__pycache__/
 **/*.py[codc]
 **/.pytest_cache/

@@ -27,7 +27,7 @@ const MAX_TITLE_LENGTH = 60;
 const TITLE_INPUT_LENGTH = 1_000;
 const TITLE_TIMEOUT_MS = 20_000;
 
-/** Port of backend/src/assistant/conversations/title-text.ts. Null when the reply holds no usable title. */
+/** Port of pre-refactor assistant/conversations/title-text.ts. Null when the reply holds no usable title. */
 export function cleanTitle(raw: string): string | null {
   const line =
     raw

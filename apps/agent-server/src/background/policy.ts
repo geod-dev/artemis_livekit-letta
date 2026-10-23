@@ -2,7 +2,7 @@ import type { TurnMode } from '@artemis/contracts/chat-types';
 
 /**
  * Whether a finished task wakes the conversation that started it (unchanged
- * from backend/src/assistant/background/policy.ts):
+ * from pre-refactor assistant/background/policy.ts):
  * - work stopped on purpose never wakes it;
  * - work started while answering an update (depth > 0) never wakes it;
  * - failures and requests for the user's input always wake it;

@@ -1,7 +1,7 @@
 .git
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 **/node_modules
 **/.pnpm-store
 **/.venv
@@ -17,12 +17,15 @@
 **/*.aab
 **/*.keystore
 **/*.jks
+**/*.egg-info
+**/dist
+**/coverage
+**/.coverage
 
 # Runtime data (created by Compose bind mounts and the apps at run time), never image content.
 /data
 apps/*/data
 
 # Build outputs that the image rebuilds itself.
-apps/web/dist
 apps/mobile/build
 apps/mobile/app/build

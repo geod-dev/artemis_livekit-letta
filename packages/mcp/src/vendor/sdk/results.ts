@@ -36,7 +36,7 @@ interface Media {
  * Turns an MCP `tools/call` result into the call result the bridge uses: binary
  * blocks (images, audio, resources) are saved through the `ArtifactSink`, the
  * envelope (structured content, metadata, errors) stays as text, and small images
- * are also inlined for the model. Port of backend/src/mcp-bridge/client.ts, with
+ * are also inlined for the model. Port of pre-refactor mcp-bridge/client.ts, with
  * workspace paths instead of gateway URLs and no retention markers.
  */
 export class McpResultConverter {

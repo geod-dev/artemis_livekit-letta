@@ -1,6 +1,6 @@
 /**
  * `<system-reminder>` for the next user turn (port of
- * backend/src/assistant/mcp-context.ts): the full list when `previous` is null,
+ * pre-refactor assistant/mcp-context.ts): the full list when `previous` is null,
  * otherwise Added/Removed; undefined when nothing changed.
  */
 export function mcpToolsReminder(
