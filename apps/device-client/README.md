@@ -4,7 +4,7 @@ The device client (`apps/device-client`) is a Python script that runs on the des
 exposes. It talks to the gateway, and the agent server reaches the device through the
 gateway's device MCP endpoints. Check group: `pnpm check:device`.
 
-Python 3.10+; no packages to install. Run on the desktop whose browser, files, audio, terminal, or screen you want to expose.
+Python 3.13 (pinned in `.python-version`); no packages to install. Run on the desktop whose browser, files, audio, terminal, or screen you want to expose.
 
 ```sh
 python apps/device-client/artemis-device.py laptop
@@ -12,7 +12,7 @@ python apps/device-client/artemis-device.py laptop
 python apps/device-client/artemis-device.py laptop --scopes browser
 ```
 
-The script reads **ARTEMIS_DEVICE_TOKEN** from the environment, then from the project `.env`; it asks you to paste the token only if neither contains it. Use `--env-file .env` to explicitly select a token file and override a stale environment variable. Use the VPS device token; the website password is a different credential. The script prints the credential source, its length and a short SHA-256 fingerprint, never the token itself. Surrounding whitespace, quotes, a copied `ARTEMIS_DEVICE_TOKEN=` prefix and terminal paste markers are handled automatically. Use `--server https://your-server` and `--firefox /path/to/firefox` if needed. On Windows, `py` can replace `python`.
+The script reads **ARTEMIS_DEVICE_TOKEN** from the environment, then from the project `.env`; it asks you to paste the token only if neither contains it. Use `--env-file .env` to explicitly select a token file and override a stale environment variable. Use the VPS device token; the website password is a different credential. The script prints the credential source and its length. Add `--verbose-auth` to also print a short SHA-256 fingerprint, which helps diagnose a 401; the token itself is never printed. Surrounding whitespace, quotes, a copied `ARTEMIS_DEVICE_TOKEN=` prefix and terminal paste markers are handled automatically. Use `--server https://your-server` and `--firefox /path/to/firefox` if needed. On Windows, `py` can replace `python`.
 
 ## Built-in scopes
 
@@ -24,7 +24,7 @@ python apps/device-client/artemis-device.py laptop --scopes filesystem --active-
 python apps/device-client/artemis-device.py laptop --scopes terminal --active-folder ~/Projects
 ```
 
-The client is also an importable `artemis_device` package. From the `apps/device-client` directory, run `python -m artemis_device laptop --scopes browser`. Run its tests from the repository root with `python -m unittest discover -s apps/device-client/tests -p test_device.py`.
+The client is also an importable `artemis_device` package. From the `apps/device-client` directory, run `python -m artemis_device laptop --scopes browser`. Run its tests from the repository root with `uv run --python 3.13 --no-project python -m unittest discover -s apps/device-client/tests -p test_device.py` (uv is required for this command; the Python version is pinned as above). The launcher is `artemis-device.py`; `python -m artemis_device` runs the same client.
 
 - `browser` exposes `open_url`, which accepts only HTTP and HTTPS URLs. It opens Firefox when available (or the configured `--firefox`), otherwise the system's default URL handler.
 - `media` exposes `media_control` for play, pause, current track/status, and volume. Linux uses `playerctl`; macOS uses the Music app via `osascript`; Windows uses system media controls and Windows Core Audio for volume. Linux requires `playerctl` on PATH.

@@ -1,0 +1,10 @@
+line-length = 100
+target-version = "py313"
+
+[lint]
+select = ["E", "F", "W", "I"]
+
+[lint.per-file-ignores]
+# Embedded PowerShell, AppleScript and shell scripts, and long tool descriptions, stay as written.
+"artemis_device/scopes/*.py" = ["E501"]
+"tests/*.py" = ["E501"]

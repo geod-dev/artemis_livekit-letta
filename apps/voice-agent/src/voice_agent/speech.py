@@ -9,6 +9,8 @@ from livekit.agents import inference, stt, tts
 from livekit.agents.voice.turn import TurnDetectionMode
 from livekit.plugins import deepgram, openai
 
+from .config import DEFAULT_GROQ_BASE_URL
+
 
 @dataclass
 class SpeechStack:
@@ -24,7 +26,21 @@ def _split(spec: str) -> tuple[str, str]:
     return provider.lower(), model
 
 
-def build_speech(stt_spec: str, tts_spec: str, language: str) -> SpeechStack:
+def _groq_api_key() -> str:
+    key = os.environ.get("GROQ_API_KEY", "")
+    if not key.strip():
+        raise RuntimeError(
+            "GROQ_API_KEY is empty; set it in the repo-root .env to transcribe voice calls."
+        )
+    return key
+
+
+def build_speech(
+    stt_spec: str,
+    tts_spec: str,
+    language: str,
+    groq_base_url: str = DEFAULT_GROQ_BASE_URL,
+) -> SpeechStack:
     stt_provider, stt_model = _split(stt_spec)
     tts_provider, tts_model = _split(tts_spec)
     if stt_provider != "groq":
@@ -35,8 +51,8 @@ def build_speech(stt_spec: str, tts_spec: str, language: str) -> SpeechStack:
     transcription = openai.STT(
         model=stt_model,
         language=language,
-        base_url="https://api.groq.com/openai/v1",
-        api_key=os.environ["GROQ_API_KEY"],
+        base_url=groq_base_url,
+        api_key=_groq_api_key(),
         use_realtime=False,
     )
     synthesis = (

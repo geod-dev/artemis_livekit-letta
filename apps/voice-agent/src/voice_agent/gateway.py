@@ -12,6 +12,8 @@ import aiohttp
 
 HTTP_OPERATION_TIMEOUT_SECONDS = 10.0
 EVENT_HEARTBEAT_TIMEOUT_SECONDS = 45.0
+# Spoken updates stream a whole turn; this is aiohttp's default total, made explicit.
+UPDATE_TEXT_TIMEOUT_SECONDS = 300.0
 
 
 @dataclass(frozen=True)
@@ -70,15 +72,19 @@ class Gateway:
         async with self._http.get(f"{self._url}/call/state", timeout=timeout) as response:
             response.raise_for_status()
             body = await response.json()
-        return CallState(
-            mode="long" if body.get("mode") == "long" else "short",
-            next="end" if body.get("next") == "end" else "listen",
-        )
+        mode = body.get("mode")
+        next_step = body.get("next")
+        if mode not in ("short", "long") or next_step not in ("end", "listen"):
+            raise ValueError(f"Unexpected call state from the gateway: {body!r}")
+        return CallState(mode=mode, next=next_step)
 
     async def update_text(self, update_id: str) -> AsyncIterator[str]:
         """Stream the spoken text of a background update (runs its turn)."""
         decoder = codecs.getincrementaldecoder("utf-8")()
-        async with self._http.post(f"{self._url}/call/updates/{update_id}") as response:
+        timeout = aiohttp.ClientTimeout(total=UPDATE_TEXT_TIMEOUT_SECONDS)
+        async with self._http.post(
+            f"{self._url}/call/updates/{update_id}", timeout=timeout
+        ) as response:
             response.raise_for_status()
             async for chunk in response.content.iter_any():
                 if text := decoder.decode(chunk):

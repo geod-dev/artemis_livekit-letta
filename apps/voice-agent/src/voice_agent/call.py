@@ -9,11 +9,10 @@ playing, and speaks queued background updates only once nobody is talking.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Coroutine
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 from livekit.agents import (
     AgentSession,
@@ -26,7 +25,7 @@ from livekit.agents.voice import SpeechHandle
 
 from .gateway import CallState, Gateway
 
-logger = logging.getLogger("voice-agent")
+logger = logging.getLogger("voice_agent")
 
 # Pause between the end of a final reply and the hangup; speaking in it keeps the call.
 END_GRACE_SECONDS = 0.6
@@ -39,7 +38,7 @@ RECONNECT_SECONDS = 2.0
 UPDATE_RETRY_BASE_SECONDS = 1.0
 UPDATE_RETRY_MAX_SECONDS = 30.0
 
-EventHandlerRegistration: TypeAlias = (
+type EventHandlerRegistration = (
     tuple[Literal["speech_created"], Callable[[SpeechCreatedEvent], None]]
     | tuple[
         Literal["user_input_transcribed"],
@@ -230,8 +229,10 @@ class CallController:
             self._completed.add(update_id)
             self._retry_attempts.pop(update_id, None)
         heard = streamed and not handle.interrupted
-        with contextlib.suppress(Exception):
+        try:
             await self._gateway.acknowledge_update(update_id, heard=heard)
+        except Exception:
+            logger.warning("could not acknowledge update %s", update_id, exc_info=True)
         if heard:
             await self._after_response()
         return streamed

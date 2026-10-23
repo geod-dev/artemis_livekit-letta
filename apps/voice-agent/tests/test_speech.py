@@ -41,6 +41,23 @@ def test_unsupported_tts_is_rejected():
         build_speech("groq/whisper-large-v3-turbo", "nope/model", "en")
 
 
-def test_gateway_url_is_scoped_to_the_conversation():
+def test_missing_groq_key_is_a_descriptive_error(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "  ")
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY is empty"):
+        build_speech("groq/whisper-large-v3-turbo", "deepgram/flux-hannah-en", "en")
+
+
+def test_groq_base_url_is_a_parameter():
+    stack = build_speech(
+        "groq/whisper-large-v3-turbo",
+        "deepgram/flux-hannah-en",
+        "en",
+        groq_base_url="https://groq.example.invalid/v1",
+    )
+    assert str(stack.stt._client.base_url) == "https://groq.example.invalid/v1/"
+
+
+def test_gateway_url_is_scoped_to_the_conversation(monkeypatch):
+    monkeypatch.setenv("VOICE_GATEWAY_TOKEN", "test-token")
     settings = Settings.from_env()
     assert settings.conversation_base_url("conv-1").endswith("/api/voice/conversations/conv-1/v1")

@@ -13,7 +13,6 @@ ends and speaks background updates; see `CallController`.
 
 from __future__ import annotations
 
-import json
 import logging
 
 from livekit.agents import (
@@ -30,10 +29,11 @@ from livekit.plugins import openai
 
 from .call import CallController
 from .config import Settings
+from .dispatch import parse_dispatch
 from .gateway import Gateway
 from .speech import build_speech
 
-logger = logging.getLogger("voice-agent")
+logger = logging.getLogger("voice_agent")
 settings = Settings.from_env()
 server = AgentServer()
 
@@ -47,14 +47,16 @@ class VoiceFrontEnd(Agent):
 
 @server.rtc_session(agent_name=settings.agent_name)
 async def entrypoint(ctx: JobContext) -> None:
-    metadata = json.loads(ctx.job.metadata or "{}")
-    conversation_id = metadata.get("conversation_id")
+    dispatch = parse_dispatch(ctx.job.metadata)
+    conversation_id = dispatch.conversation_id
     if not conversation_id:
         logger.error("job has no conversation_id in its metadata; leaving")
         return
     ctx.log_context_fields = {"room": ctx.room.name, "conversation": conversation_id}
 
-    speech = build_speech(settings.stt, settings.tts, settings.language)
+    speech = build_speech(
+        settings.stt, settings.tts, settings.language, groq_base_url=settings.groq_base_url
+    )
     session = AgentSession(
         stt=speech.stt,
         vad=inference.VAD(model="silero"),
@@ -86,9 +88,7 @@ async def entrypoint(ctx: JobContext) -> None:
             if parts:
                 logger.info("%s turn latency: %s", item.role, " ".join(parts))
 
-    # The dispatcher picks the starting mode (the frontend asks for "long").
-    mode = "long" if metadata.get("call_mode") == "long" else "short"
-    gateway = Gateway(settings.gateway_url, settings.gateway_token, conversation_id, mode)
+    gateway = Gateway(settings.gateway_url, settings.gateway_token, conversation_id, dispatch.mode)
     call = CallController(ctx, session, gateway)
 
     async def on_shutdown() -> None:

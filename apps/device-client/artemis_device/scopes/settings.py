@@ -1,4 +1,5 @@
 """Small, typed configuration shared by built-in device scopes."""
+
 from dataclasses import dataclass
 from pathlib import Path
 

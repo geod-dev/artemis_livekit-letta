@@ -5,11 +5,14 @@ recognition (`VOICE_STT`), turn detection, and speech synthesis (`VOICE_TTS`). I
 only the gateway's `/api/voice` routes, for call state, call updates, and chat
 completions. It does not call the agent server directly.
 
-- Entry point: the `agent` script, `voice_agent.main:run`.
-- Dev: `cd apps/voice-agent && uv sync && uv run agent dev`.
-- Container: `apps/voice-agent/Dockerfile` runs `uv run --no-sync agent start`.
-- Python: `>=3.11, <3.15`, pinned to 3.13 in `.python-version`.
+- Entry point: the `voice-agent` script, `voice_agent.main:run`.
+- Dev: `cd apps/voice-agent && uv sync && uv run voice-agent dev`.
+- Container: `apps/voice-agent/Dockerfile` runs `uv run --no-sync voice-agent start` as uid 1001.
+- Python: 3.13 (`.python-version` is the single pin; `requires-python` is `>=3.13`).
 - Check: `pnpm check:voice` (pytest, ruff, and pyright, run with `uv run --locked`).
 - Tests: `tests/`.
-- Environment: `GATEWAY_URL`, `LIVEKIT_URL`, `VOICE_*`, and the LiveKit keys, as listed in
-  [`.env.example`](../../.env.example).
+- Settings are read from the repo-root `.env` (`REPO_ROOT/.env`). Required: `VOICE_GATEWAY_TOKEN`
+  (must match the gateway; empty is an error), `GROQ_API_KEY` (speech-to-text), and
+  `DEEPGRAM_API_KEY` (speech synthesis, read by the Deepgram plugin). Also `GATEWAY_URL`,
+  `LIVEKIT_URL`, the LiveKit keys, and `VOICE_*`, as listed in
+  [`.env.example`](../../.env.example). `GROQ_BASE_URL` overrides the Groq endpoint.

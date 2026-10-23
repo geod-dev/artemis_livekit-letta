@@ -97,3 +97,20 @@ async def test_state_ack_and_end_use_bounded_deadlines(monkeypatch: pytest.Monke
     assert [call[2]["timeout"].total for call in http.calls] == [
         gateway_module.HTTP_OPERATION_TIMEOUT_SECONDS
     ] * 3
+
+
+async def test_update_text_has_an_explicit_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    gateway, http = make_gateway(monkeypatch, FakeResponse([b"ok"]))
+    _ = [chunk async for chunk in gateway.update_text("u1")]
+    assert http.calls[0][2]["timeout"].total == gateway_module.UPDATE_TEXT_TIMEOUT_SECONDS
+
+
+async def test_state_rejects_unexpected_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def bad_json() -> dict[str, str]:
+        return {"mode": "medium", "next": "listen"}
+
+    response = FakeResponse()
+    response.json = bad_json  # type: ignore[method-assign]
+    gateway, _ = make_gateway(monkeypatch, response)
+    with pytest.raises(ValueError, match="Unexpected call state"):
+        await gateway.state()

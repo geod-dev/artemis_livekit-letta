@@ -1,8 +1,16 @@
 """Built-in, opt-in scopes for the Artemis device bridge."""
-from .settings import ScopeSettings
-from . import browser, filesystem, media, screenshot, terminal
 
-SCOPE_MODULES = {'browser': browser, 'media': media, 'filesystem': filesystem, 'terminal': terminal, 'screenshot': screenshot}
+from . import browser, filesystem, media, screenshot, terminal
+from .settings import ScopeSettings
+
+SCOPE_MODULES = {
+    "browser": browser,
+    "media": media,
+    "filesystem": filesystem,
+    "terminal": terminal,
+    "screenshot": screenshot,
+}
+
 
 def build_scopes(scopes: list[str], settings: ScopeSettings):
     tools, handlers = [], {}
