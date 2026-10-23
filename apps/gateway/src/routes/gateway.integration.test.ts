@@ -123,7 +123,7 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
   };
 }
 
-/** The backend's composition from server.ts: auth in front of the gateway routes, public health and readiness. */
+/** The gateway's composition from server.ts: auth in front of the gateway routes, public health and readiness. */
 function buildGateway(config: AppConfig): Hono {
   const agent = new AgentServerClient(config.agentServer);
   const app = createAuth(config.auth.password, config.auth.deviceToken);
@@ -155,7 +155,7 @@ before(async () => {
     AGENT_SERVER_TOKEN: AGENT_TOKEN,
     ARTEMIS_PASSWORD: PASSWORD,
     WORKSPACE_PATH: join(root, 'workspace'),
-    ASSISTANT_DATA_ROOT: join(root, 'data'),
+    ARTEMIS_DATA_DIR: join(root, 'data'),
   });
   gateway = serve({ fetch: buildGateway(config).fetch, hostname: '127.0.0.1', port: 0 }) as Server;
   await once(gateway, 'listening');

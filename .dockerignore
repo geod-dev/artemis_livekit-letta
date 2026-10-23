@@ -21,7 +21,6 @@
 # Runtime data (created by Compose bind mounts and the apps at run time), never image content.
 /data
 apps/*/data
-apps/*/.workspace
 
 # Build outputs that the image rebuilds itself.
 apps/web/dist

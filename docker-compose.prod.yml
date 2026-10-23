@@ -3,11 +3,12 @@ services:
   agent-server:
     volumes:
       - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}:/workspace
-      - ${ASSISTANT_DATA_ROOT:?set ASSISTANT_DATA_ROOT in the production environment}:/workspace/data
+      - ${ARTEMIS_DATA_DIR:?set ARTEMIS_DATA_DIR in the production environment}:/workspace/data
 
   backend:
     environment:
       NODE_ENV: production
     volumes:
       - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}:/workspace
-      - ${ASSISTANT_DATA_ROOT:?set ASSISTANT_DATA_ROOT in the production environment}:/data/backend
+      - ${ARTEMIS_DATA_DIR:?set ARTEMIS_DATA_DIR in the production environment}:/data/gateway
+      - ${ARTEMIS_DATA_DIR:?set ARTEMIS_DATA_DIR in the production environment}:/workspace/data

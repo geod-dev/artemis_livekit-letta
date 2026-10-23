@@ -13,7 +13,7 @@ export function equalSecret(a: string, b: string): boolean {
 }
 
 export function createAuth(password: string, deviceToken: string) {
-  if (!password) throw new Error('Set ARTEMIS_PASSWORD in .env before starting the backend');
+  if (!password) throw new Error('Set ARTEMIS_PASSWORD in .env before starting the gateway');
   const sign = (value: string) =>
     createHmac('sha256', password).update(`artemis-session:${value}`).digest('base64url');
   const valid = (token: string) => {

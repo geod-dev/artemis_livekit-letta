@@ -14,11 +14,13 @@ export interface AppConfig {
 
 const DEV_AGENT_SERVER_TOKEN = 'dev-agent-server-token-change-me';
 const gatewayDir = fileURLToPath(new URL('../../', import.meta.url));
-// Boundary for the "outside the repository" checks: the checkout root, two levels above
-// apps/gateway (/app in the container). Behaviour is unchanged until P5 replaces it.
+// The apps/ folder holds source code only. Production runtime roots must resolve outside it.
+const appsDir = resolve(gatewayDir, '..');
+// The repository root, which owns the gitignored data/ folder and the shared .env.
 const repoDir = resolve(gatewayDir, '..', '..');
-// Host default, matching .env.example and the Compose mounts: <gateway>/.workspace.
-const defaultWorkspace = join(gatewayDir, '.workspace');
+// Development defaults, matching .env.example and the Compose mounts.
+const defaultWorkspace = join(repoDir, 'data', 'workspace');
+const defaultDataDir = join(repoDir, 'data', 'gateway');
 let loaded = false;
 let rootEnvLoaded = false;
 
@@ -60,39 +62,30 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
   const production = env.NODE_ENV === 'production';
   const workspaceValue = env.WORKSPACE_PATH?.trim();
   const workspaceDir = workspaceValue ? resolve(workspaceValue) : defaultWorkspace;
-  const dataValue = env.ASSISTANT_DATA_ROOT?.trim();
-  const dataDir = dataValue ? resolve(dataValue) : join(workspaceDir, 'data');
+  const dataValue = env.ARTEMIS_DATA_DIR?.trim();
+  const dataDir = dataValue ? resolve(dataValue) : defaultDataDir;
   if (strict) {
     if ((workspaceValue && !isAbsolute(workspaceValue)) || (dataValue && !isAbsolute(dataValue))) {
-      throw new Error('WORKSPACE_PATH and ASSISTANT_DATA_ROOT must be absolute paths');
+      throw new Error('WORKSPACE_PATH and ARTEMIS_DATA_DIR must be absolute paths');
     }
     if (!isAbsolute(workspaceDir) || !isAbsolute(dataDir))
-      throw new Error('WORKSPACE_PATH and ASSISTANT_DATA_ROOT must be absolute paths');
+      throw new Error('WORKSPACE_PATH and ARTEMIS_DATA_DIR must be absolute paths');
     if (production && (!workspaceValue || !dataValue))
-      throw new Error(
-        'Production requires explicit WORKSPACE_PATH and ASSISTANT_DATA_ROOT outside the checkout'
-      );
-    if (production && [workspaceDir, dataDir].some((path) => containsPath(repoDir, path))) {
-      throw new Error(
-        'Production workspace and data roots must be outside the repository checkout'
-      );
-    }
-    if (dataValue && containsPath(repoDir, dataDir)) {
-      throw new Error('ASSISTANT_DATA_ROOT must be outside the repository checkout');
+      throw new Error('Production requires explicit WORKSPACE_PATH and ARTEMIS_DATA_DIR');
+    if (production && [workspaceDir, dataDir].some((path) => containsPath(appsDir, path))) {
+      throw new Error('Production WORKSPACE_PATH and ARTEMIS_DATA_DIR must not be inside apps/');
     }
     if (dataValue && canonicalPath(dataDir) === canonicalPath(defaultWorkspace))
-      throw new Error('ASSISTANT_DATA_ROOT must not point at the default workspace root');
+      throw new Error('ARTEMIS_DATA_DIR must not point at the default workspace root');
     if (
       workspaceValue &&
       dataValue &&
       (containsPath(workspaceDir, dataDir) || containsPath(dataDir, workspaceDir))
     ) {
-      throw new Error(
-        'WORKSPACE_PATH and ASSISTANT_DATA_ROOT must be separate, non-overlapping roots'
-      );
+      throw new Error('WORKSPACE_PATH and ARTEMIS_DATA_DIR must be separate, non-overlapping roots');
     }
-    const port = integer(env, 'BACKEND_PORT', 3000, 1);
-    if (port > 65535) throw new Error('BACKEND_PORT must be between 1 and 65535');
+    const port = integer(env, 'GATEWAY_PORT', 3000, 1);
+    if (port > 65535) throw new Error('GATEWAY_PORT must be between 1 and 65535');
     integer(env, 'AGENT_SERVER_PORT', 4000, 1);
     if (production) {
       for (const [name, fallback] of [
@@ -112,7 +105,7 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
     }
   }
   return {
-    port: integer(env, 'BACKEND_PORT', 3000, 1),
+    port: integer(env, 'GATEWAY_PORT', 3000, 1),
     agentServer: {
       url: value(env, 'AGENT_SERVER_URL', `http://${ip}:${integer(env, 'AGENT_SERVER_PORT', 4000, 1)}`),
       token: value(env, 'AGENT_SERVER_TOKEN', DEV_AGENT_SERVER_TOKEN),
@@ -154,7 +147,7 @@ export function loadConfig(): AppConfig {
   }
   config = validateConfig(process.env);
   if (!config.auth.password)
-    throw new Error('Set ARTEMIS_PASSWORD in .env before starting the backend');
+    throw new Error('Set ARTEMIS_PASSWORD in .env before starting the gateway');
   if (process.env.NODE_ENV === 'production' && !config.auth.deviceToken)
     throw new Error('Set ARTEMIS_DEVICE_TOKEN in production');
   loaded = true;

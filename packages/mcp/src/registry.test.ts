@@ -9,7 +9,7 @@ const manual: McpServer = { name: 'search', transport: 'http', url: 'https://exa
 const device: McpServer = {
   name: 'device_laptop',
   transport: 'http',
-  url: 'http://backend:3000/internal/mcp/devices/laptop',
+  url: 'http://gateway:3000/internal/mcp/devices/laptop',
   headers: { Authorization: 'Bearer internal-only' },
   managed: { type: 'device', deviceName: 'laptop', connectedAt: '2026-10-12T00:00:00Z', tools: 1 },
 };

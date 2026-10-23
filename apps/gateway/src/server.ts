@@ -74,7 +74,7 @@ export async function startBackend(): Promise<BackendApplication> {
 
   deviceHub.start();
   const server = serve({ fetch: app.fetch, hostname: '0.0.0.0', port: config.port }, ({ port }) => {
-    console.info(`[backend] listening on port ${port}`);
+    console.info(`[gateway] listening on port ${port}`);
   }) as Server;
   let closing: Promise<void> | undefined;
   const close = () => {

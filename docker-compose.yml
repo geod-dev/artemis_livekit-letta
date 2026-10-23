@@ -60,8 +60,8 @@ services:
       hindsight:
         condition: service_started
     volumes:
-      - ${WORKSPACE_PATH:-./apps/gateway/.workspace}:/workspace
-      - ${ASSISTANT_DATA_ROOT:-./apps/gateway/.workspace/data}:/workspace/data
+      - ${WORKSPACE_PATH:-./data/workspace}:/workspace
+      - ${ARTEMIS_DATA_DIR:-./data/gateway}:/workspace/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -94,13 +94,14 @@ services:
       AGENT_SERVER_URL: http://agent-server:4000
       LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:-127.0.0.1}:7880}
       WORKSPACE_PATH: /workspace
-      ASSISTANT_DATA_ROOT: /data/backend
+      ARTEMIS_DATA_DIR: /data/gateway
     depends_on:
       agent-server:
         condition: service_healthy
     volumes:
-      - ${WORKSPACE_PATH:-./apps/gateway/.workspace}:/workspace
-      - ${ASSISTANT_DATA_ROOT:-./apps/gateway/.workspace/data}:/data/backend
+      - ${WORKSPACE_PATH:-./data/workspace}:/workspace
+      - ${ARTEMIS_DATA_DIR:-./data/gateway}:/data/gateway
+      - ${ARTEMIS_DATA_DIR:-./data/gateway}:/workspace/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s

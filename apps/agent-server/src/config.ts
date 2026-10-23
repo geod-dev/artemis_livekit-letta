@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseModelHandle } from '@artemis/llm';
 
 /** Validated agent-server configuration (env, see architecture.md#environment-variables). */
@@ -152,7 +153,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
   }
 
   const hindsightUrl = text(env, 'HINDSIGHT_URL') ?? '';
-  const workspaceRoot = resolve(text(env, 'WORKSPACE_PATH') ?? resolve(process.cwd(), '.workspace'));
+  const workspaceRoot = resolve(
+    text(env, 'WORKSPACE_PATH') ?? fileURLToPath(new URL('../../../data/workspace', import.meta.url))
+  );
   const runAs = parseRunAs(text(env, 'WORKSPACE_RUN_AS'));
 
   return {
@@ -197,7 +200,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
       recallMaxTokens: { low: 800, mid: 1_500, high: 3_000 },
     },
     mcp: {
-      deviceBaseUrl: (text(env, 'MCP_DEVICE_BASE_URL') ?? 'http://backend:3000').replace(/\/$/, ''),
+      deviceBaseUrl: (text(env, 'MCP_DEVICE_BASE_URL') ?? 'http://gateway:3000').replace(/\/$/, ''),
     },
   };
 }

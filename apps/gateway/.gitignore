@@ -1,3 +1,1 @@
 /node_modules
-# The agent workspace (mounted into the agent-server and backend containers), with the backend data
-/.workspace/

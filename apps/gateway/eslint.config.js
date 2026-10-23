@@ -2,7 +2,7 @@ import prettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['node_modules/**', '.workspace/**'] },
+  { ignores: ['node_modules/**'] },
   ...tseslint.configs.recommended,
   prettier,
   {
