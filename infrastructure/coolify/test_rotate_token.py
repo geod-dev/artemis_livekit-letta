@@ -5,11 +5,12 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import tempfile
 from unittest import mock
 import unittest
 
-MODULE_PATH = Path(__file__).with_name('rotate-token.py')
+MODULE_PATH = Path(__file__).with_name('rotate_token.py')
 SPEC = importlib.util.spec_from_file_location('rotate_token', MODULE_PATH)
 rotate_token = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(rotate_token)
@@ -27,10 +28,9 @@ class FakeResponse(io.BytesIO):
 
 class RotateTokenTests(unittest.TestCase):
     def setUp(self):
-        tmp_root = Path(__file__).resolve().parents[2] / '.codex-tmp' / 'coolify-tests'
-        tmp_root.mkdir(parents=True, exist_ok=True)
-        self.tmp = tempfile.TemporaryDirectory(dir=tmp_root)
-        self.destination = Path(self.tmp.name) / 'coolify-token'
+        self.tmp_dir = tempfile.mkdtemp(prefix='rotate-token-test-')
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+        self.destination = Path(self.tmp_dir) / 'coolify-token'
         self.destination.write_text('old-token')
         self.config = {'token_file': str(self.destination), 'application_uuid': 'app-uuid'}
         self.commands = []
@@ -39,9 +39,6 @@ class RotateTokenTests(unittest.TestCase):
                                      side_effect=AssertionError('real docker call during test'))
         real_run.start()
         self.addCleanup(real_run.stop)
-
-    def tearDown(self):
-        self.tmp.cleanup()
 
     def rotate_quietly(self, open_url):
         output = io.StringIO()

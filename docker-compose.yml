@@ -1,6 +1,6 @@
 # The full application stack. Host-facing URLs use IP_ADDRESS; containers use
 # Compose service names for traffic that stays inside the Docker network.
-name: livekit-letta
+name: artemis
 
 services:
   postgres:
@@ -131,7 +131,7 @@ services:
   voice-agent:
     build:
       context: .
-      dockerfile: agent/Dockerfile
+      dockerfile: voice-agent/Dockerfile
     env_file: .env
     environment:
       LIVEKIT_URL: ws://livekit:7880

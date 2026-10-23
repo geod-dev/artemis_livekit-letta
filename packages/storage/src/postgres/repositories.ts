@@ -95,12 +95,25 @@ function byCreated<T extends { createdAt: string; id: string }>(rows: T[]): T[] 
 }
 
 async function insertSnapshot(session: PgSession, snapshot: Omit<PromptSnapshotRecord, 'id' | 'createdAt'>): Promise<PromptSnapshotRecord> {
+  // The owner id goes to the foreign-key column matching its kind; the other one stays NULL (see migration 0002).
+  const conversationId = snapshot.ownerKind === 'conversation' ? snapshot.ownerId : null;
+  const taskId = snapshot.ownerKind === 'task' ? snapshot.ownerId : null;
   return requireOne(
     await rowsOf(
       session,
-      `INSERT INTO prompt_snapshots (id, owner_kind, owner_id, system_prompt, tools, template_id, template_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [uuid(), snapshot.ownerKind, snapshot.ownerId, snapshot.systemPrompt, jsonParam(snapshot.tools), snapshot.templateId, snapshot.templateHash],
+      `INSERT INTO prompt_snapshots (id, owner_kind, owner_id, conversation_id, task_id, system_prompt, tools, template_id, template_hash)
+       VALUES ($1, $2, $3, $4::uuid, $5::text, $6, $7, $8, $9) RETURNING *`,
+      [
+        uuid(),
+        snapshot.ownerKind,
+        snapshot.ownerId,
+        conversationId,
+        taskId,
+        snapshot.systemPrompt,
+        jsonParam(snapshot.tools),
+        snapshot.templateId,
+        snapshot.templateHash,
+      ],
       toPromptSnapshot
     ),
     'prompt snapshot'

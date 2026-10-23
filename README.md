@@ -6,12 +6,7 @@ agent server, LiveKit voice agent, Android WebView wrapper, and deployment confi
 
 ## Services
 
-- `frontend`: static React app served by nginx.
-- `backend`: authenticated gateway for the browser, devices, files, and voice tokens.
-- `agent-server`: conversations, workers, tools, MCP, and the memory coordinator.
-- `postgres` (pgvector): databases for the agent server (`artemis`) and Hindsight (`hindsight`).
-- `hindsight`: long-term memory service.
-- `livekit` and `voice-agent`: voice calls.
+The services and how they fit together are described in [Architecture](docs/architecture.md).
 
 ## Start here
 

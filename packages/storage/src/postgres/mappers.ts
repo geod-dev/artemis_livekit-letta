@@ -36,6 +36,8 @@ export interface PromptSnapshotRow {
   id: string;
   owner_kind: 'conversation' | 'task';
   owner_id: string;
+  conversation_id: string | null;
+  task_id: string | null;
   system_prompt: string;
   tools: JsonValue[];
   template_id: string;

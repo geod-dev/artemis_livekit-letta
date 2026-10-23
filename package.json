@@ -18,7 +18,8 @@
     "check:packages": "node scripts/check.mjs packages",
     "typecheck:packages": "pnpm --filter \"./shared\" --filter \"./packages/*\" --filter \"./services/*\" -r run typecheck",
     "test:packages": "pnpm --filter \"./packages/*\" --filter \"./services/*\" -r run test",
-    "generate:present-tool": "node --experimental-strip-types --no-warnings frontend/scripts/generate-present-tool.ts"
+    "generate:present-tool": "node --experimental-strip-types --no-warnings scripts/generate-present-tool.ts",
+    "smoke:agent-server": "node scripts/smoke-agent-server.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

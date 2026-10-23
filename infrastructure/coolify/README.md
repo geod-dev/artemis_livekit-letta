@@ -8,7 +8,7 @@ See [deployment](../../docs/deployment.md) for storage and recovery instructions
 
 ## Deployment poller
 
-`poll-deploy.py` checks the configured public Git branch and requests a deploy
+`poll_deploy.py` checks the configured public Git branch and requests a deploy
 through Coolify's loopback API. It waits while any deployment is active. It
 records success only when the deployment reports the same full commit hash that
 was requested. A missing or different revision is recorded as failed; the same
@@ -17,7 +17,7 @@ revision manually in Coolify.
 
 ## Token rotation
 
-`rotate-token.py` issues a read/deploy token with a 90-day expiry, validates it
+`rotate_token.py` issues a read/deploy token with a 90-day expiry, validates it
 against the configured application, then atomically replaces the local token
 file and revokes previous tokens. Validation failure revokes only the newly
 issued token and leaves the prior token file unchanged.

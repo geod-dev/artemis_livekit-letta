@@ -4,7 +4,7 @@ After=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /usr/local/lib/artemis/rotate-token.py
+ExecStart=/usr/bin/python3 /usr/local/lib/artemis/rotate_token.py
 TimeoutStartSec=120
 Restart=on-failure
 RestartSec=3600

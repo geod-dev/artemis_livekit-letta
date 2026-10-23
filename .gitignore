@@ -17,8 +17,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .pnpm-store/
-.codex-tmp/
 **/__pycache__/
 **/*.py[codc]
 **/.pytest_cache/
 **/.ruff_cache/
+/backend/data/

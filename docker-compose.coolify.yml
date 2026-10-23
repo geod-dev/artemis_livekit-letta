@@ -1,7 +1,7 @@
 # Coolify deployment stack. Set the Coolify domain to the frontend service on
 # port 80 and to the LiveKit service on port 7880 for WebSocket signaling.
 # Persistent workspace files use the host directory previously used by Coolify.
-name: livekit-letta
+name: artemis
 
 services:
   postgres:
@@ -134,7 +134,7 @@ services:
   voice-agent:
     build:
       context: .
-      dockerfile: agent/Dockerfile
+      dockerfile: voice-agent/Dockerfile
     env_file: .env
     environment:
       LIVEKIT_URL: ws://livekit:7880

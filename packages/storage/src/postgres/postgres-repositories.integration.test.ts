@@ -477,6 +477,19 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       assert.notEqual(await storage.conversations.get(keep), null);
     });
 
+    test('deleting a conversation deletes its prompt snapshot and its task snapshots', async () => {
+      const conversationId = await newConversation();
+      const task = await newTask(conversationId);
+      await storage.promptSnapshots.create({ ownerKind: 'task', ownerId: task.id, ...SNAPSHOT });
+      assert.equal(await countRows('prompt_snapshots', 'conversation_id = $1', [conversationId]), 1);
+      assert.equal(await countRows('prompt_snapshots', 'task_id = $1', [task.id]), 1);
+
+      await direct.query('DELETE FROM conversations WHERE id = $1', [conversationId]);
+
+      assert.equal(await countRows('prompt_snapshots', 'owner_id = $1', [conversationId]), 0);
+      assert.equal(await countRows('prompt_snapshots', 'task_id = $1', [task.id]), 0);
+    });
+
     test('deleting a turn keeps its rows and sets their turn reference to NULL', async () => {
       const conversationId = await newConversation();
       const turn = await newTurn(conversationId);

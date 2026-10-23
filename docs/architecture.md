@@ -7,7 +7,7 @@
 - `services/agent-server/` owns conversation state and events, workers and background tasks, tools, MCP, the memory coordinator, titles, call state, and voice completions. Its `/v1` API requires `AGENT_SERVER_TOKEN`.
 - `postgres` (pgvector) stores the agent server's database `artemis` and Hindsight's database `hindsight`.
 - `hindsight` is the memory service. The agent server retains and recalls memories over its HTTP API.
-- `agent/` joins LiveKit rooms and handles speech recognition, turn detection, speech generation, and call lifecycle. It sends each completed user utterance to the backend's OpenAI-compatible voice route.
+- `voice-agent/` joins LiveKit rooms and handles speech recognition, turn detection, speech generation, and call lifecycle. It sends each completed user utterance to the backend's OpenAI-compatible voice route.
 - `livekit` provides WebRTC signaling and media transport. Browser signaling goes through `/livekit/` on nginx; the agent uses the internal Compose address.
 
 ## Conversation and files

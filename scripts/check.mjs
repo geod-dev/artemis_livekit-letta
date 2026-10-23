@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 
-const pnpmExecutable = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+const pnpmExecutable = 'pnpm';
 
 const commands = {
   backend: [
@@ -15,9 +15,9 @@ const commands = {
     ['tests', process.execPath, ['--test', '--experimental-strip-types', '--no-warnings', 'src/**/*.test.ts'], 'frontend'],
   ],
   voice: [
-    ['tests', 'uv', ['run', '--locked', '--group', 'dev', 'pytest'], 'agent'],
-    ['lint', 'uv', ['run', '--locked', '--group', 'dev', 'ruff', 'check', 'src', 'tests'], 'agent'],
-    ['typecheck', 'uv', ['run', '--locked', '--group', 'dev', 'pyright'], 'agent'],
+    ['tests', 'uv', ['run', '--locked', '--group', 'dev', 'pytest'], 'voice-agent'],
+    ['lint', 'uv', ['run', '--locked', '--group', 'dev', 'ruff', 'check', 'src', 'tests'], 'voice-agent'],
+    ['typecheck', 'uv', ['run', '--locked', '--group', 'dev', 'pyright'], 'voice-agent'],
   ],
   devices: [
     ['tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_device.py'], 'devices'],
@@ -30,7 +30,7 @@ const commands = {
     ['mocked deployment tests', 'uv', ['run', '--python', '3.13', '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'infrastructure/coolify', '-p', 'test_*.py'], '.'],
   ],
   schema: [
-    ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'scripts/generate-present-tool.ts', '--check'], 'frontend'],
+    ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'scripts/generate-present-tool.ts', '--check'], '.'],
   ],
 };
 
@@ -55,11 +55,15 @@ let failed = false;
 for (const group of groups) {
   for (const [label, executable, args, directory] of commands[group]) {
     process.stdout.write(`\n> ${group}: ${label}\n`);
-    const result = spawnSync(executable, args, {
+    // On Windows, pnpm is a .cmd shim, so run it through cmd.exe without the shell option.
+    const viaCmd = process.platform === 'win32' && executable === pnpmExecutable;
+    const command = viaCmd ? (process.env.ComSpec || 'cmd.exe') : executable;
+    const commandArgs = viaCmd ? ['/d', '/s', '/c', executable, ...args] : args;
+    const result = spawnSync(command, commandArgs, {
       cwd: new URL(`../${directory}/`, import.meta.url),
       stdio: 'inherit',
-      // Windows needs a shell to launch pnpm.cmd.
-      shell: executable.endsWith('.cmd'),
+      shell: false,
+      windowsVerbatimArguments: viaCmd,
       env: process.env,
     });
     if (result.error) {

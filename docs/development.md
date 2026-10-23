@@ -22,7 +22,7 @@ pnpm install
 pnpm --filter ./services/agent-server start
 cd backend && pnpm install && pnpm dev
 cd frontend && pnpm install && pnpm dev
-cd agent && uv sync && uv run agent dev
+cd voice-agent && uv sync && uv run agent dev
 ```
 
 The agent server applies its database migrations at startup. For host-based runs,
@@ -46,7 +46,7 @@ pnpm check
 Useful focused commands include `pnpm check:backend`, `pnpm check:frontend`,
 `pnpm check:voice`, `pnpm check:devices`, `pnpm check:packages` (typecheck and tests
 for `shared/`, `packages/`, and `services/`), and `pnpm check:operations` (mocked
-deployment and token-rotation tests).
+deployment and token-rotation tests). `pnpm smoke:agent-server` runs a live smoke turn against an already-running agent server.
 
 ## Android build
 
@@ -56,8 +56,8 @@ Build the current debug APK with:
 .\mobile\gradlew.bat -p mobile -PartemisUrl=https://your-host assembleDebug
 ```
 
-The output is `mobile/app/build/outputs/apk/debug/app-debug.apk`. The installer
-defaults to that current build. Pass `-ApkPath` to install a different artifact.
+The output is `mobile/app/build/outputs/apk/debug/app-debug.apk`. The installer,
+`scripts/install-android.ps1`, defaults to that current build. Pass `-ApkPath` to install a different artifact.
 Every build requires an HTTPS origin through `-PartemisUrl` or the
 `ARTEMIS_URL` environment variable. The matching origin is
 used for microphone permissions, authenticated downloads, and same-site previews.

@@ -19,7 +19,7 @@ test('parseToolInput returns objects and falls back to {} for empty, cut-off or 
   assert.deepEqual(parseToolInput('"text"'), {});
 });
 
-test('opening a block closes the previous one and empty text blocks are not replayed', () => {
+test('opening a block closes the previous one and empty text blocks keep their slot', () => {
   const acc = new ResponseAccumulator('m', () => 0);
   acc.messageStart({ providerMessageId: 'x' });
   const empty = acc.startBlock('text');
@@ -33,7 +33,31 @@ test('opening a block closes the previous one and empty text blocks are not repl
     ['message_start', 'block_start', 'block_end', 'block_start', 'reasoning_delta', 'block_end', 'message_end']
   );
   assert.equal(empty, 0);
-  assert.deepEqual(finalMessage(events).content, [{ type: 'reasoning', text: 'thinking' }]);
+  assert.deepEqual(finalMessage(events).content, [
+    { type: 'text', text: '' },
+    { type: 'reasoning', text: 'thinking' },
+  ]);
+});
+
+test('an empty leading text block keeps stream and stored block indexes aligned', () => {
+  const acc = new ResponseAccumulator('m', () => 0);
+  acc.messageStart({ providerMessageId: 'x' });
+  const empty = acc.startBlock('text');
+  acc.closeBlock(empty);
+  const answer = acc.startBlock('text');
+  acc.text(answer, 'Hello');
+  acc.finish('end_turn');
+  const events = acc.drain();
+
+  assert.equal(empty, 0);
+  assert.equal(answer, 1);
+  assert.deepEqual(
+    events.flatMap(e => (e.type === 'block_start' || e.type === 'text_delta' ? [e.index] : [])),
+    [0, 1, 1]
+  );
+  const content = finalMessage(events).content;
+  assert.equal(content.length, 2);
+  assert.deepEqual(content[answer], { type: 'text', text: 'Hello' });
 });
 
 test('finish reports partial content and error details', () => {

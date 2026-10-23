@@ -158,8 +158,9 @@ export class ResponseAccumulator {
     for (const block of this.blocks) {
       switch (block.kind) {
         case 'text':
-          // Anthropic rejects empty text blocks on replay.
-          if (block.text) content.push({ type: 'text', text: block.text });
+          // Kept even when empty: each block keeps the index it was streamed under (`startBlock`).
+          // Replay drops empty text (Anthropic rejects it), see anthropic/request.ts.
+          content.push({ type: 'text', text: block.text });
           break;
         case 'reasoning':
           content.push({

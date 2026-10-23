@@ -62,7 +62,7 @@ test('PostgresStorage migrations', { skip }, async (t) => {
     await withTempDatabase(server, async (url) => {
       const storage = new PostgresStorage({ connectionString: url });
       try {
-        assert.deepEqual(await storage.migrate(), ['0001_initial']);
+        assert.deepEqual(await storage.migrate(), ['0001_initial', '0002_prompt_snapshot_owner_links']);
         assert.deepEqual(await storage.migrate(), []);
         assert.equal(await storage.healthy(), true);
       } finally {
@@ -77,7 +77,7 @@ test('PostgresStorage migrations', { skip }, async (t) => {
       const b = new PostgresStorage({ connectionString: url });
       try {
         const [first, second] = await Promise.all([a.migrate(), b.migrate()]);
-        assert.deepEqual([...first, ...second], ['0001_initial']);
+        assert.deepEqual([...first, ...second].sort(), ['0001_initial', '0002_prompt_snapshot_owner_links']);
       } finally {
         await a.close();
         await b.close();

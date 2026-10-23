@@ -57,6 +57,21 @@ test('production requires external roots and explicitly configured secrets', () 
   );
 });
 
+test('unset roots resolve to the documented host defaults without warnings', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const repoRoot = join(import.meta.dirname, '..', '..', '..');
+  const defaults = validateConfig({});
+  assert.equal(defaults.workspace.dir, join(repoRoot, 'backend', '.workspace'));
+  assert.equal(defaults.workspace.dataDir, join(repoRoot, 'backend', '.workspace', 'data'));
+
+  const explicit = join(tmpdir(), 'artemis-workspace');
+  assert.equal(
+    validateConfig({ WORKSPACE_PATH: explicit }).workspace.dataDir,
+    join(explicit, 'data')
+  );
+  assert.equal(warn.mock.callCount(), 0);
+});
+
 test(
   'data-root containment resolves Windows case aliases and missing descendants',
   { skip: process.platform !== 'win32' },

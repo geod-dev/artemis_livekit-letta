@@ -6,9 +6,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { toJSONSchema } from 'zod';
-import { presentLibrary, presentToolSchema } from '../src/lib/generative-ui.ts';
+import { presentLibrary, presentToolSchema } from '../frontend/src/lib/generative-ui.ts';
 
-const generatedDirectory = new URL('../../shared/generated/', import.meta.url);
+const generatedDirectory = new URL('../shared/generated/', import.meta.url);
 const targets = [
   {
     label: 'schema',

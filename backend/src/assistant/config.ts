@@ -17,7 +17,8 @@ const backendDir = fileURLToPath(new URL('../../', import.meta.url));
 // In the repository, backendDir is <repo>/backend. The container copies that
 // package to /app, so its checkout root is /app rather than the filesystem root.
 const repoDir = resolve(process.env.ARTEMIS_REPO_ROOT || resolve(backendDir, '..'));
-const legacyWorkspace = join(backendDir, '.workspace');
+// Host default, matching .env.example and the Compose mounts: <repo>/backend/.workspace.
+const defaultWorkspace = join(repoDir, 'backend', '.workspace');
 let loaded = false;
 let rootEnvLoaded = false;
 
@@ -58,7 +59,7 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
   const ip = value(env, 'IP_ADDRESS', '127.0.0.1');
   const production = env.NODE_ENV === 'production';
   const workspaceValue = env.WORKSPACE_PATH?.trim();
-  const workspaceDir = workspaceValue ? resolve(workspaceValue) : legacyWorkspace;
+  const workspaceDir = workspaceValue ? resolve(workspaceValue) : defaultWorkspace;
   const dataValue = env.ASSISTANT_DATA_ROOT?.trim();
   const dataDir = dataValue ? resolve(dataValue) : join(workspaceDir, 'data');
   if (strict) {
@@ -79,8 +80,8 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
     if (dataValue && containsPath(repoDir, dataDir)) {
       throw new Error('ASSISTANT_DATA_ROOT must be outside the repository checkout');
     }
-    if (dataValue && canonicalPath(dataDir) === canonicalPath(legacyWorkspace))
-      throw new Error('ASSISTANT_DATA_ROOT must not point at the legacy workspace root');
+    if (dataValue && canonicalPath(dataDir) === canonicalPath(defaultWorkspace))
+      throw new Error('ASSISTANT_DATA_ROOT must not point at the default workspace root');
     if (
       workspaceValue &&
       dataValue &&
@@ -110,14 +111,6 @@ function makeConfig(env: NodeJS.ProcessEnv, strict: boolean): AppConfig {
       }
     }
   }
-  if (!workspaceValue && strict)
-    console.warn(
-      `[config] using legacy workspace at ${legacyWorkspace}; set WORKSPACE_PATH to move it explicitly`
-    );
-  if (!dataValue && strict)
-    console.warn(
-      `[config] using legacy data at ${join(workspaceDir, 'data')}; set ASSISTANT_DATA_ROOT to migrate explicitly`
-    );
   return {
     port: integer(env, 'BACKEND_PORT', 3000, 1),
     agentServer: {

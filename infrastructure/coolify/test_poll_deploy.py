@@ -3,7 +3,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-MODULE_PATH = Path(__file__).with_name('poll-deploy.py')
+MODULE_PATH = Path(__file__).with_name('poll_deploy.py')
 SPEC = importlib.util.spec_from_file_location('poll_deploy', MODULE_PATH)
 poll_deploy = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(poll_deploy)

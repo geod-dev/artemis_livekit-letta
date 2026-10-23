@@ -1,5 +1,4 @@
 .git
-.codex-tmp
 .env
 .env.*
 !.env.example
