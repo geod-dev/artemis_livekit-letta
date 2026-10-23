@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ConversationContextUsage } from '@shared/chat-types';
+import type { ConversationContextUsage } from '@artemis/contracts/chat-types';
 import { isRecord, requestJson } from '@/lib/api';
 
 function isContextUsage(value: unknown): value is ConversationContextUsage | null {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { ChatMessage } from '@shared/chat-types';
+import type { ChatMessage } from '@artemis/contracts/chat-types';
 import { mergeConversationMessages } from './conversation-messages.ts';
 import {
   type LiveConversationItem,

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@artemis/contracts':
+        specifier: link:../packages/contracts
+        version: link:../packages/contracts
       '@assistant-ui/react':
         specifier: ^0.15.25
         version: 0.15.25(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))

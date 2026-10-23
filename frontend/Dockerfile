@@ -2,13 +2,15 @@ FROM node:24.19-alpine AS build
 
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.18.0 --activate
+# The frontend links @artemis/contracts from ../packages/contracts, which resolves to
+# /packages/contracts from /app. It must exist before pnpm install creates the link.
+COPY packages/contracts /packages/contracts
+# packages/contracts/tsconfig.json extends ../../tsconfig.base.json, which is /tsconfig.base.json here.
+COPY tsconfig.base.json /tsconfig.base.json
 COPY frontend/.npmrc ./.npmrc
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
-# The frontend imports shared API contracts through the sibling shared tree.
-COPY shared/contracts/chat-types.ts /shared/contracts/chat-types.ts
-COPY shared/present-validation.ts /shared/present-validation.ts
 
 ARG IP_ADDRESS=127.0.0.1
 ARG ASSISTANT_NAME=Artemis

@@ -1,4 +1,4 @@
-import type { ChatMessage, ConversationTask } from '@shared/chat-types';
+import type { ChatMessage, ConversationTask } from '@artemis/contracts/chat-types';
 
 export type AgentRun = ConversationTask & {
   agentKey?: string;

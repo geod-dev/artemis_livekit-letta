@@ -17,6 +17,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@artemis/contracts": "link:../packages/contracts",
     "@assistant-ui/react": "^0.15.25",
     "@assistant-ui/react-generative-ui": "^0.0.24",
     "@assistant-ui/react-streamdown": "^0.3.19",

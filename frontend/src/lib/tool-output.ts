@@ -1,4 +1,4 @@
-import type { ToolDisplay } from '@shared/chat-types';
+import type { ToolDisplay } from '@artemis/contracts/chat-types';
 import { workspaceUrl } from './attachments.ts';
 
 /** Safe, display-oriented view of a tool result. Raw MCP media bytes never belong in the UI. */

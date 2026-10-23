@@ -14,7 +14,7 @@ import type {
   ConversationEvent,
   ConversationSummary,
   TextEffort,
-} from '@shared/chat-types';
+} from '@artemis/contracts/chat-types';
 import { isRecord, requestJson, responseJson } from '@/lib/api';
 import { historyCoversMessage, mergeConversationMessages } from '@/lib/conversation-messages';
 import { isChatMessage, isConversationEvent } from '@/lib/conversation-protocol';

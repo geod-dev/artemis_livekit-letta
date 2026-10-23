@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { ChatMessage, ConversationTask } from '@shared/chat-types';
+import type { ChatMessage, ConversationTask } from '@artemis/contracts/chat-types';
 import {
   commandOutput,
   filterTaskKinds,

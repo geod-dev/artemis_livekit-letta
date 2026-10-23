@@ -1,4 +1,4 @@
-import type { ConversationTask } from '@shared/chat-types';
+import type { ConversationTask } from '@artemis/contracts/chat-types';
 
 export function formatTaskDuration(durationMs: number | undefined): string | null {
   if (durationMs === undefined || !Number.isFinite(durationMs) || durationMs < 0) return null;

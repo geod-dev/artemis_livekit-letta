@@ -1,4 +1,4 @@
-import type { ChatMessage, ConversationEvent } from '@shared/chat-types';
+import type { ChatMessage, ConversationEvent } from '@artemis/contracts/chat-types';
 import { isRecord } from './api.ts';
 
 const boundedString = (value: unknown, max = 1_000_000): value is string =>

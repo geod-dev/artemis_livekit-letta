@@ -1,1 +1,1 @@
-export type * from "../../shared/contracts/chat-types";
+export type * from "@artemis/contracts/chat-types";

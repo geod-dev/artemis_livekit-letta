@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@shared/chat-types';
+import type { ChatMessage } from '@artemis/contracts/chat-types';
 import type { LiveConversationItem } from './conversation-state.ts';
 
 /** History can lag the stream even after the provider acknowledges a turn. */

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import presentComponentsJson from '@artemis/contracts/present-components.json' with { type: 'json' };
+import presentToolJson from '@artemis/contracts/present-tool.json' with { type: 'json' };
 import {
   presentLibrary,
   presentToolSchema,
@@ -13,19 +14,12 @@ import {
 process.env.NODE_ENV = 'production';
 
 test('the shared present tool schema is generated from the library', () => {
-  const registered: unknown = JSON.parse(
-    readFileSync(new URL('../../../shared/generated/present-tool.json', import.meta.url), 'utf8')
-  );
+  const registered: unknown = presentToolJson;
   const generated: unknown = JSON.parse(
     JSON.stringify(presentToolSchema(presentLibrary(() => null)))
   );
-  assert.deepEqual(registered, generated, 'run `pnpm generate:present-tool` in frontend/');
-  const registeredComponents: unknown = JSON.parse(
-    readFileSync(
-      new URL('../../../shared/generated/present-components.json', import.meta.url),
-      'utf8'
-    )
-  );
+  assert.deepEqual(registered, generated, 'run `pnpm generate:present-tool` at the repo root');
+  const registeredComponents: unknown = presentComponentsJson;
   const generatedComponents = Object.fromEntries(
     Object.entries(presentLibrary(() => null)).map(([name, component]) => [
       name,
@@ -35,7 +29,7 @@ test('the shared present tool schema is generated from the library', () => {
   assert.deepEqual(
     registeredComponents,
     generatedComponents,
-    'run `pnpm generate:present-tool` in frontend/'
+    'run `pnpm generate:present-tool` at the repo root'
   );
 });
 

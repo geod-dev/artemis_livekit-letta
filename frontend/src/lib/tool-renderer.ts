@@ -1,4 +1,4 @@
-import type { ToolDisplay } from '@shared/chat-types';
+import type { ToolDisplay } from '@artemis/contracts/chat-types';
 import { type ToolCall, webSearchQuery } from '../components/assistant-ui/tools/tool-display.ts';
 import { TOOL_NAMES } from './tool-names.ts';
 import { readToolOutput } from './tool-output.ts';

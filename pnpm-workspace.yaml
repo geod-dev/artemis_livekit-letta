@@ -1,7 +1,6 @@
 # One pnpm workspace and one lockfile (pnpm-lock.yaml at the root) for every
 # Node package except the frontend, which keeps its own hoisted install.
 packages:
-  - shared
   - packages/*
   - services/*
   - backend

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { ToolDisplay, ToolTaskRef } from '@shared/chat-types';
+import type { ToolDisplay, ToolTaskRef } from '@artemis/contracts/chat-types';
 import {
   commandIsBackground,
   getToolGroupDisplay,

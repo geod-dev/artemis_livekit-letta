@@ -16,15 +16,16 @@ export default tseslint.config(
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
       ],
-      // Shared API contracts may only be imported as types by the frontend.
+      // The frontend may only import the type-only API contracts as types. The
+      // present-validation module and generated JSON are real runtime imports.
       '@typescript-eslint/no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['@shared/*'],
+              group: ['@artemis/contracts/chat-types', '@artemis/contracts/agent-server'],
               allowTypeImports: true,
-              message: 'Import shared API contracts with `import type`.',
+              message: 'Import API contracts with `import type`.',
             },
           ],
         },

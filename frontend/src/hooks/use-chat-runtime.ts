@@ -6,7 +6,7 @@ import {
   createMessageQueue,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
-import type { TextEffort } from '@shared/chat-types';
+import type { TextEffort } from '@artemis/contracts/chat-types';
 import type { useConversation } from '@/hooks/use-conversation';
 import type { useConversations } from '@/hooks/use-conversations';
 import { attachmentAdapter, sentAttachments } from '@/lib/attachment-adapter';

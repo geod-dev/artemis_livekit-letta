@@ -4,7 +4,7 @@ import type {
   AgentServerError,
   ManagedMcpServersRequest,
   WarmRequest,
-} from '../../../shared/contracts/agent-server.ts';
+} from '@artemis/contracts/agent-server';
 
 interface AgentServerOptions {
   /** Base URL of the agent-server, e.g. `http://agent-server:4000`. */

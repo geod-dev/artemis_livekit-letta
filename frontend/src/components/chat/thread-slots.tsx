@@ -7,7 +7,7 @@ import {
   QueueItemPrimitive,
   useAuiState,
 } from '@assistant-ui/react';
-import type { ConversationContextUsage, ConversationSummary, TextEffort } from '@shared/chat-types';
+import type { ConversationContextUsage, ConversationSummary, TextEffort } from '@artemis/contracts/chat-types';
 import type { ThreadComponents } from '@/components/assistant-ui/chat/thread';
 import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import { type ActivityTask, useActivity } from '@/components/chat/activity-context';

@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@shared/chat-types';
+import type { ChatMessage } from '@artemis/contracts/chat-types';
 
 export interface LiveConversationItem {
   turnId: string;

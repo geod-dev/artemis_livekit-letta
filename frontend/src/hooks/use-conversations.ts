@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ConversationListEvent, ConversationSummary } from '@shared/chat-types';
+import type { ConversationListEvent, ConversationSummary } from '@artemis/contracts/chat-types';
 import { isRecord, requestJson, responseJson } from '@/lib/api';
 
 const isSummary = (value: unknown): value is ConversationSummary =>

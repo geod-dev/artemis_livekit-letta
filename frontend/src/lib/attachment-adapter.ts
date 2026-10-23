@@ -1,5 +1,5 @@
 import type { AttachmentAdapter, CompleteAttachment } from '@assistant-ui/react';
-import type { ChatAttachment } from '@shared/chat-types';
+import type { ChatAttachment } from '@artemis/contracts/chat-types';
 import { MAX_ATTACHMENT_BYTES } from './attachments';
 import { toThreadAttachment } from './thread-messages';
 

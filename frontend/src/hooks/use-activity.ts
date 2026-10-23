@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMessage } from '@shared/chat-types';
+import type { ChatMessage } from '@artemis/contracts/chat-types';
 import type { ActivityTask } from '@/components/chat/activity-context';
 import type { TaskStatus } from '@/hooks/use-conversation';
 import { runDuration, taskRuns } from '@/lib/agent-runs';

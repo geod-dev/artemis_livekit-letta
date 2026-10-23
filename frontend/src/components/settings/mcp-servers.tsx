@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
-import type { McpServer, McpSettingsResponse, McpTransport } from '@shared/chat-types';
+import type { McpServer, McpSettingsResponse, McpTransport } from '@artemis/contracts/chat-types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,

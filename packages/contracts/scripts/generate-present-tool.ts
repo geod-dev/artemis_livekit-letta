@@ -6,30 +6,28 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { toJSONSchema } from 'zod';
-import { presentLibrary, presentToolSchema } from '../frontend/src/lib/generative-ui.ts';
+import { presentLibrary, presentToolSchema } from '../../../frontend/src/lib/generative-ui.ts';
 
-const generatedDirectory = new URL('../shared/generated/', import.meta.url);
-const targets = [
-  {
-    label: 'schema',
-    path: fileURLToPath(new URL('present-tool.json', generatedDirectory)),
-    contents: '',
-  },
-  {
-    label: 'component protocol',
-    path: fileURLToPath(new URL('present-components.json', generatedDirectory)),
-    contents: '',
-  },
-];
+const generatedDirectory = new URL('../generated/', import.meta.url);
 // Without the schema's shared-prop warnings (see `presentToolSchema`).
 process.env.NODE_ENV = 'production';
 const schema = presentToolSchema(presentLibrary(() => null));
-targets[0].contents = `${JSON.stringify(schema, null, 2)}\n`;
 const library = presentLibrary(() => null);
 const componentSchemas = Object.fromEntries(
   Object.entries(library).map(([name, component]) => [name, toJSONSchema(component.properties)])
 );
-targets[1].contents = `${JSON.stringify(componentSchemas, null, 2)}\n`;
+const targets = [
+  {
+    label: 'schema',
+    path: fileURLToPath(new URL('present-tool.json', generatedDirectory)),
+    contents: `${JSON.stringify(schema, null, 2)}\n`,
+  },
+  {
+    label: 'component protocol',
+    path: fileURLToPath(new URL('present-components.json', generatedDirectory)),
+    contents: `${JSON.stringify(componentSchemas, null, 2)}\n`,
+  },
+];
 
 if (process.argv.includes('--check')) {
   for (const target of targets) {

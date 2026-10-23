@@ -1,4 +1,4 @@
-import type { McpServer, McpTransport } from '@shared/chat-types';
+import type { McpServer, McpTransport } from '@artemis/contracts/chat-types';
 
 /** The editor's form: free text where the server stores lists and maps. */
 export interface McpServerDraft {

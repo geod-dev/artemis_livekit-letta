@@ -9,7 +9,7 @@ import {
   TerminalIcon,
   XIcon,
 } from 'lucide-react';
-import type { ChatMessage } from '@shared/chat-types';
+import type { ChatMessage } from '@artemis/contracts/chat-types';
 import { fileName } from '@/components/assistant-ui/files/workspace-file';
 import { WorkspaceFilePreview } from '@/components/assistant-ui/files/workspace-file-panel';
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';

@@ -5,12 +5,15 @@ import {
   JSONGenerativeUI,
   defaultGenerativeUILibrary,
 } from '@assistant-ui/react-generative-ui';
-import { type PresentValidation, validatePresentTree } from '../../../shared/present-validation.ts';
+import {
+  type PresentValidation,
+  validatePresentTree,
+} from '@artemis/contracts/present-validation';
 
 /**
  * Generative UI: the assistant calls the `present` tool with a JSON tree of
  * components (`{ componentType, ...props, children }`) and the chat renders it. The
- * agent-server registers the tool from `shared/generated/present-tool.json`,
+ * agent-server registers the tool from `packages/contracts/generated/present-tool.json`,
  * generated from this library by `pnpm generate:present-tool`; a test fails
  * when the two differ.
  */

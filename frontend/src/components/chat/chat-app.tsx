@@ -3,7 +3,7 @@ import { TokenSource } from 'livekit-client';
 import { MessageCirclePlusIcon, PanelRightIcon } from 'lucide-react';
 import { AssistantRuntimeProvider, AuiConfig, Tools } from '@assistant-ui/react';
 import { RoomAudioRenderer, SessionProvider, useSession } from '@livekit/components-react';
-import type { ConversationSummary, TextEffort } from '@shared/chat-types';
+import type { ConversationSummary, TextEffort } from '@artemis/contracts/chat-types';
 import { StartAudioButton } from '@/components/agents-ui/start-audio-button';
 import { Thread } from '@/components/assistant-ui/chat/thread';
 import { WorkspaceFilePanelContext } from '@/components/assistant-ui/files/workspace-file';
