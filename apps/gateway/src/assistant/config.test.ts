@@ -43,7 +43,7 @@ test('production requires external roots and explicitly configured secrets', () 
     () =>
       validateConfig({
         ...env,
-        ASSISTANT_DATA_ROOT: join(process.cwd(), 'backend', '.workspace', 'data'),
+        ASSISTANT_DATA_ROOT: join(import.meta.dirname, '..', '..', '.workspace', 'data'),
       }),
     /outside the repository/
   );
@@ -59,10 +59,10 @@ test('production requires external roots and explicitly configured secrets', () 
 
 test('unset roots resolve to the documented host defaults without warnings', (t) => {
   const warn = t.mock.method(console, 'warn', () => {});
-  const repoRoot = join(import.meta.dirname, '..', '..', '..');
+  const gatewayRoot = join(import.meta.dirname, '..', '..');
   const defaults = validateConfig({});
-  assert.equal(defaults.workspace.dir, join(repoRoot, 'backend', '.workspace'));
-  assert.equal(defaults.workspace.dataDir, join(repoRoot, 'backend', '.workspace', 'data'));
+  assert.equal(defaults.workspace.dir, join(gatewayRoot, '.workspace'));
+  assert.equal(defaults.workspace.dataDir, join(gatewayRoot, '.workspace', 'data'));
 
   const explicit = join(tmpdir(), 'artemis-workspace');
   assert.equal(
@@ -76,9 +76,9 @@ test(
   'data-root containment resolves Windows case aliases and missing descendants',
   { skip: process.platform !== 'win32' },
   () => {
-    const checkoutAlias = join(import.meta.dirname, '..', '..', '..').toUpperCase();
+    const checkoutAlias = join(import.meta.dirname, '..', '..', '..', '..').toUpperCase();
     assert.throws(
-      () => validateConfig({ ASSISTANT_DATA_ROOT: join(checkoutAlias, 'BACKEND', 'NEW-DATA') }),
+      () => validateConfig({ ASSISTANT_DATA_ROOT: join(checkoutAlias, 'APPS', 'GATEWAY', 'NEW-DATA') }),
       /ASSISTANT_DATA_ROOT must be outside the repository checkout/
     );
   }

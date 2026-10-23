@@ -13,4 +13,4 @@ WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile --filter "@artemis/agent-server..."
 EXPOSE 4000
-CMD ["pnpm", "--filter", "./services/agent-server", "start"]
+CMD ["pnpm", "--filter", "./apps/agent-server", "start"]

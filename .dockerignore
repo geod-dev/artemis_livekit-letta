@@ -17,5 +17,5 @@
 **/*.aab
 **/*.keystore
 **/*.jks
-backend/.workspace
+apps/gateway/.workspace
 frontend/dist

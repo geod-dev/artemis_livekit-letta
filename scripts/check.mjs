@@ -4,10 +4,14 @@ import process from 'node:process';
 const pnpmExecutable = 'pnpm';
 
 const commands = {
-  backend: [
-    ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'], 'backend'],
-    ['lint', process.execPath, ['node_modules/eslint/bin/eslint.js', '.'], 'backend'],
-    ['tests', process.execPath, ['node_modules/tsx/dist/cli.mjs', '--test', 'src/**/*.test.ts'], 'backend'],
+  gateway: [
+    ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'], 'apps/gateway'],
+    ['lint', process.execPath, ['node_modules/eslint/bin/eslint.js', '.'], 'apps/gateway'],
+    ['tests', process.execPath, ['node_modules/tsx/dist/cli.mjs', '--test', 'src/**/*.test.ts'], 'apps/gateway'],
+  ],
+  'agent-server': [
+    ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', 'tsconfig.json'], 'apps/agent-server'],
+    ['tests', process.execPath, ['node_modules/tsx/dist/cli.mjs', '--test', 'src/**/*.test.ts'], 'apps/agent-server'],
   ],
   frontend: [
     ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'], 'frontend'],
@@ -36,9 +40,9 @@ const commands = {
 
 const selected = process.argv[2];
 const groups = selected === 'all'
-  ? ['backend', 'frontend', 'voice', 'devices', 'packages', 'operations', 'schema']
+  ? ['gateway', 'agent-server', 'frontend', 'voice', 'devices', 'packages', 'operations', 'schema']
   : selected === undefined
-    ? ['backend', 'frontend', 'voice', 'devices', 'packages', 'operations', 'schema']
+    ? ['gateway', 'agent-server', 'frontend', 'voice', 'devices', 'packages', 'operations', 'schema']
     : [selected];
 
 if (groups.some((group) => !(group in commands))) {

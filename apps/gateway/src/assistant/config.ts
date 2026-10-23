@@ -13,12 +13,12 @@ export interface AppConfig {
 }
 
 const DEV_AGENT_SERVER_TOKEN = 'dev-agent-server-token-change-me';
-const backendDir = fileURLToPath(new URL('../../', import.meta.url));
-// In the repository, backendDir is <repo>/backend. The container copies that
-// package to /app, so its checkout root is /app rather than the filesystem root.
-const repoDir = resolve(process.env.ARTEMIS_REPO_ROOT || resolve(backendDir, '..'));
-// Host default, matching .env.example and the Compose mounts: <repo>/backend/.workspace.
-const defaultWorkspace = join(repoDir, 'backend', '.workspace');
+const gatewayDir = fileURLToPath(new URL('../../', import.meta.url));
+// Boundary for the "outside the repository" checks: the checkout root, two levels above
+// apps/gateway (/app in the container). Behaviour is unchanged until P5 replaces it.
+const repoDir = resolve(gatewayDir, '..', '..');
+// Host default, matching .env.example and the Compose mounts: <gateway>/.workspace.
+const defaultWorkspace = join(gatewayDir, '.workspace');
 let loaded = false;
 let rootEnvLoaded = false;
 

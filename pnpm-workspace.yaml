@@ -2,5 +2,5 @@
 # Node package except the frontend, which keeps its own hoisted install.
 packages:
   - packages/*
-  - services/*
-  - backend
+  - apps/agent-server
+  - apps/gateway

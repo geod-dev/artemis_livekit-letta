@@ -18,11 +18,63 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  backend:
+  apps/agent-server:
+    dependencies:
+      '@artemis/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
+      '@artemis/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@artemis/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@artemis/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@artemis/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      '@artemis/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@artemis/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@artemis/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      '@artemis/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+      '@artemis/workspace':
+        specifier: workspace:*
+        version: link:../../packages/workspace
+      '@hono/node-server':
+        specifier: ^1.19.5
+        version: 1.19.17(hono@4.13.13)
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      hono:
+        specifier: ^4.10.1
+        version: 4.13.13
+      tsx:
+        specifier: ^4.20.6
+        version: 4.23.15
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  apps/gateway:
     dependencies:
       '@artemis/contracts':
         specifier: workspace:*
-        version: link:../packages/contracts
+        version: link:../../packages/contracts
       '@hono/node-server':
         specifier: ^1.19.5
         version: 1.19.17(hono@4.13.13)
@@ -260,58 +312,6 @@ importers:
       tsx:
         specifier: ^4.20.6
         version: 4.23.15
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
-  services/agent-server:
-    dependencies:
-      '@artemis/agent':
-        specifier: workspace:*
-        version: link:../../packages/agent
-      '@artemis/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@artemis/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@artemis/http':
-        specifier: workspace:*
-        version: link:../../packages/http
-      '@artemis/llm':
-        specifier: workspace:*
-        version: link:../../packages/llm
-      '@artemis/mcp':
-        specifier: workspace:*
-        version: link:../../packages/mcp
-      '@artemis/memory':
-        specifier: workspace:*
-        version: link:../../packages/memory
-      '@artemis/storage':
-        specifier: workspace:*
-        version: link:../../packages/storage
-      '@artemis/tools':
-        specifier: workspace:*
-        version: link:../../packages/tools
-      '@artemis/workspace':
-        specifier: workspace:*
-        version: link:../../packages/workspace
-      '@hono/node-server':
-        specifier: ^1.19.5
-        version: 1.19.17(hono@4.13.13)
-      ajv:
-        specifier: ^8.20.0
-        version: 8.20.0
-      hono:
-        specifier: ^4.10.1
-        version: 4.13.13
-      tsx:
-        specifier: ^4.20.6
-        version: 4.23.15
-    devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

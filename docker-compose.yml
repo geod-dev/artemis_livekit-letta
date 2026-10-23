@@ -44,7 +44,7 @@ services:
   agent-server:
     build:
       context: .
-      dockerfile: services/agent-server/Dockerfile
+      dockerfile: apps/agent-server/Dockerfile
     env_file: .env
     environment:
       NODE_ENV: production
@@ -60,8 +60,8 @@ services:
       hindsight:
         condition: service_started
     volumes:
-      - ${WORKSPACE_PATH:-./backend/.workspace}:/workspace
-      - ${ASSISTANT_DATA_ROOT:-./backend/.workspace/data}:/workspace/data
+      - ${WORKSPACE_PATH:-./apps/gateway/.workspace}:/workspace
+      - ${ASSISTANT_DATA_ROOT:-./apps/gateway/.workspace/data}:/workspace/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -86,7 +86,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: apps/gateway/Dockerfile
     env_file: .env
     environment:
       BACKEND_PORT: 3000
@@ -99,8 +99,8 @@ services:
       agent-server:
         condition: service_healthy
     volumes:
-      - ${WORKSPACE_PATH:-./backend/.workspace}:/workspace
-      - ${ASSISTANT_DATA_ROOT:-./backend/.workspace/data}:/data/backend
+      - ${WORKSPACE_PATH:-./apps/gateway/.workspace}:/workspace
+      - ${ASSISTANT_DATA_ROOT:-./apps/gateway/.workspace/data}:/data/backend
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s

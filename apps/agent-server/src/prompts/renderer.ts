@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
- * Renders prompt templates from `services/agent-server/prompts/` with
+ * Renders prompt templates from `apps/agent-server/prompts/` with
  * `{{name}}`, `{{workspace}}`, `{{conversation_id}}`, `{{timezone}}`,
  * `{{task_id}}`, `{{mcp_tools}}` (subagents only). Templates are read on each
  * render (dev edits apply to NEW conversations only: rendered prompts are frozen).

@@ -1,5 +1,5 @@
 /**
- * Shared API contracts for the frontend, the gateway (backend/) and the
+ * Shared API contracts for the frontend, the gateway (apps/gateway/) and the
  * agent-server. Keep this file free of runtime code and imports so every
  * package can consume it as types only.
  */

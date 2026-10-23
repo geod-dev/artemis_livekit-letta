@@ -1,5 +1,5 @@
 {
-  "name": "@artemis/backend",
+  "name": "@artemis/gateway",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     "node": ">=22.19"
   },
   "scripts": {
-    "dev": "tsx watch --clear-screen=false --include \"prompts/**/*.md\" src/server.ts",
+    "dev": "tsx watch --clear-screen=false src/server.ts",
     "start": "tsx src/server.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
