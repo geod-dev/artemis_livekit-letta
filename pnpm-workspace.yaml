@@ -1,6 +1,8 @@
 # One pnpm workspace and one lockfile (pnpm-lock.yaml at the root) for every
-# Node package, including the web app. The default isolated linker is kept;
-# public-hoist-pattern lists the UI declaration packages the web app needs.
+# Node package. apps/ holds the deployable entry points (agent-server, gateway,
+# web) and packages/ holds the libraries they import. The workspace uses pnpm's
+# default isolated linker with no public-hoist-pattern entries. Python and
+# Android folders are not workspace members.
 packages:
   - packages/*
   - apps/agent-server

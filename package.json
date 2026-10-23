@@ -17,8 +17,8 @@
     "check:operations": "node scripts/check.mjs operations",
     "check:schema": "node scripts/check.mjs schema",
     "check:packages": "node scripts/check.mjs packages",
-    "typecheck:packages": "pnpm --filter \"./packages/*\" --filter \"./apps/agent-server\" -r run typecheck",
-    "test:packages": "pnpm --filter \"./packages/*\" --filter \"./apps/agent-server\" -r run test",
+    "typecheck:packages": "pnpm --filter \"./packages/*\" -r run typecheck",
+    "test:packages": "pnpm --filter \"./packages/*\" -r run test",
     "generate:present-tool": "node --experimental-strip-types --no-warnings packages/contracts/scripts/generate-present-tool.ts",
     "smoke:agent-server": "node scripts/smoke-agent-server.mjs"
   },
