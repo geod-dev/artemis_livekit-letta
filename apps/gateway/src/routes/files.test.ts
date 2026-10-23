@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { Hono } from 'hono';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
 import { MAX_ATTACHMENT_BYTES } from '../assistant/attachments/attachment-policy.ts';
 import { composeWorkspace } from '../compose.ts';
+import type { WorkspaceTransport } from '@artemis/workspace';
+import { describeWorkspaceFile } from '../assistant/workspace-files.ts';
 import { createFileRoutes, planWorkspaceResponse } from './files.ts';
 
 /** The file routes over a workspace rooted at `root`. */
@@ -34,6 +36,43 @@ test('workspace file GET and HEAD use inspected MIME and bounded byte ranges', a
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('a symlink to a workspace file is served under the target name', async (ctx) => {
+  const root = await mkdtemp(join(process.cwd(), '.test-workspace-link-'));
+  const app = routesFor(root);
+  try {
+    await writeFile(join(root, 'report.txt'), 'linked body');
+    try {
+      await symlink(join(root, 'report.txt'), join(root, 'shared.txt'), 'file');
+    } catch {
+      return ctx.skip('file symlinks need privileges on this platform');
+    }
+    const inline = await app.fetch(new Request('http://localhost/api/workspace/shared.txt'));
+    assert.equal(inline.status, 200);
+    assert.equal(inline.headers.get('content-disposition'), "inline; filename*=UTF-8''report.txt");
+    assert.equal(await inline.text(), 'linked body');
+
+    const download = await app.fetch(new Request('http://localhost/api/workspace/shared.txt?download'));
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get('content-disposition'), "attachment; filename*=UTF-8''report.txt");
+    await download.text();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a linked workspace file is described and served under its target name (no symlink privilege needed)', async () => {
+  // stat follows the link, but the name a download reports is the target's (realPath), not the link's.
+  const workspace = {
+    stat: async (path: string) => ({ path, type: 'file', size: 9, modifiedAt: '' }),
+    realPath: async () => 'files/report.txt',
+    readStream: async () => new Response('linked body').body!,
+  } as unknown as WorkspaceTransport;
+  const file = await describeWorkspaceFile(workspace, 'shared/link.txt');
+  assert.equal(file?.path, 'files/report.txt');
+  const plan = planWorkspaceResponse(file!, 'GET', false, null);
+  assert.equal(plan.headers['Content-Disposition'], "inline; filename*=UTF-8''report.txt");
 });
 
 test('workspace response planning bounds ranges and preserves HEAD semantics', () => {

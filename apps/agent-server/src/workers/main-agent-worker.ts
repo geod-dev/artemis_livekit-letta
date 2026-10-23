@@ -1,5 +1,5 @@
 import { AgentLoop, type LoopOutcome } from '@artemis/agent-loop';
-import { AppError, BusyError, NotFoundError, SerialScheduler, uuid } from '@artemis/core';
+import { AppError, BusyError, NotFoundError, uuid } from '@artemis/core';
 import type { ChatAttachment, ChatMessage } from '@artemis/contracts/chat-types';
 import type { ImageBlock, ToolDefinition, ToolUseBlock, UserContent } from '@artemis/llm';
 import { mcpToolsReminder } from '@artemis/mcp';
@@ -17,6 +17,7 @@ import { updateEventRow } from '../background/delivery.ts';
 import { CallStateFilter, formatCurrentDateTime, renderUserTurn } from '../turns/envelope.ts';
 import type { AgentToolContext } from '../tools/index.ts';
 import { drainLoop, LoopPersistence } from './loop-persistence.ts';
+import { SerialScheduler } from './scheduler.ts';
 import { workspaceAccess, type WorkerEnv } from './env.ts';
 import type { TurnHandle, TurnOutcome, TurnSubmission } from './types.ts';
 import { Worker } from './worker.ts';

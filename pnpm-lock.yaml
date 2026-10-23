@@ -369,9 +369,6 @@ importers:
 
   packages/memory:
     dependencies:
-      '@artemis/core':
-        specifier: workspace:*
-        version: link:../core
       '@vectorize-io/hindsight-client':
         specifier: 1.1.0
         version: 1.1.0

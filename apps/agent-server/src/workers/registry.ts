@@ -1,5 +1,4 @@
-import { type Clock, systemClock } from './clock.ts';
-import { consoleLogger, type Logger } from './logger.ts';
+import { type Clock, consoleLogger, type Logger, systemClock } from '@artemis/core';
 
 /** Something the registry can reap when idle (port of runtime/registry.ts). */
 export interface Reapable {

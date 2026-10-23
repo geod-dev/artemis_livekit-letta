@@ -1,6 +1,7 @@
-import { KeyedRegistry, uuid } from '@artemis/core';
+import { uuid } from '@artemis/core';
 import type { TaskRecord } from '@artemis/storage';
 import type { WorkerEnv } from './env.ts';
+import { KeyedRegistry } from './registry.ts';
 import { CommandTaskWorker, type CommandTaskInput } from './command-task-worker.ts';
 import { MainAgentWorker } from './main-agent-worker.ts';
 import { SubagentTaskWorker } from './subagent-task-worker.ts';

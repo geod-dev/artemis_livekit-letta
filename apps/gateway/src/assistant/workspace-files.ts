@@ -4,6 +4,7 @@ import { type WorkspaceTransport, inspectedMimeType } from '@artemis/workspace';
 const SERVING_SNIFF_BYTES = 8192;
 
 export interface WorkspaceFileInfo {
+  /** Workspace-relative path after following symlinks: a link is served under its target's name. */
   path: string;
   size: number;
   contentType: string;
@@ -22,6 +23,8 @@ export async function describeWorkspaceFile(
 ): Promise<WorkspaceFileInfo | null> {
   const info = await workspace.stat(path).catch(() => null);
   if (info?.type !== 'file') return null;
+  const target = await workspace.realPath(path).catch(() => null);
+  if (target === null) return null;
   const prefix = await readPrefix(workspace, path, SERVING_SNIFF_BYTES);
   const contentType = inspectedMimeType(prefix);
   const viewable =
@@ -29,7 +32,7 @@ export async function describeWorkspaceFile(
     contentType === 'application/pdf' ||
     contentType === 'application/json' ||
     contentType.startsWith('text/');
-  return { path, size: info.size, contentType, viewable };
+  return { path: target, size: info.size, contentType, viewable };
 }
 
 async function readPrefix(

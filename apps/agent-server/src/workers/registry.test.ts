@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Clock } from './clock.ts';
-import type { Logger } from './logger.ts';
+import type { Clock, Logger } from '@artemis/core';
 import { type Reapable, KeyedRegistry } from './registry.ts';
 
 /** Manual clock: time moves only through `advance`, which fires due intervals in order. */

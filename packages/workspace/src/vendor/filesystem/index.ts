@@ -14,7 +14,7 @@ import {
   unlink,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { Readable } from 'node:stream';
 import {
   type ByteRange,
@@ -85,6 +85,11 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
     this.displayRoot = options.displayRoot ?? options.root;
     this.containment = new WorkspaceContainment(options.root);
     this.search = new TextSearch(options.ripgrep ?? 'auto');
+  }
+
+  async realPath(path: string): Promise<string> {
+    const real = await this.containment.existing(this.rel(path));
+    return toPosix(relative(await this.containment.realRoot(), real));
   }
 
   async stat(path: string): Promise<FileStat | null> {

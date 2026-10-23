@@ -108,6 +108,13 @@ describe('files', () => {
     assert.equal(await transport().readText('notes-link.md'), 'needle in notes\n');
   });
 
+  test('realPath reports a symlink as its workspace-relative target', async (ctx) => {
+    if (!fileLinksAllowed) return ctx.skip('file symlinks need privileges on this platform');
+    assert.equal(await transport().realPath('notes-link.md'), 'notes.md');
+    assert.equal(await transport().realPath('notes.md'), 'notes.md');
+    await assert.rejects(() => transport().realPath('escape.txt'), WorkspacePathError);
+  });
+
   test('assertWritable refuses read-only prefixes', () => {
     const t = transport();
     const policy = { readOnlyPrefixes: ['data'] };

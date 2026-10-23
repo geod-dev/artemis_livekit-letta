@@ -97,6 +97,8 @@ export abstract class WorkspaceTransport {
   abstract readonly displayRoot: string;
 
   abstract stat(path: string): Promise<FileStat | null>;
+  /** Workspace-relative path of the entry after following symlinks (the name a download reports). Rejects when it resolves outside the workspace. */
+  abstract realPath(path: string): Promise<string>;
   abstract readFile(path: string): Promise<Uint8Array>;
   /** The whole text, or `limit` lines starting at the zero-based line `offset`. */
   abstract readText(path: string, options?: { offset?: number; limit?: number }): Promise<string>;

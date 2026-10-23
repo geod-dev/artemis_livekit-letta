@@ -1,15 +1,3 @@
-/** Thrown by contract stubs until a work package implements them. */
-export class NotImplementedError extends Error {
-  constructor(what: string) {
-    super(`Not implemented: ${what}`);
-    this.name = 'NotImplementedError';
-  }
-}
-
-export function notImplemented(what: string): never {
-  throw new NotImplementedError(what);
-}
-
 /** An error with a stable machine code, mapped to HTTP statuses at the API edge. */
 export class AppError extends Error {
   constructor(

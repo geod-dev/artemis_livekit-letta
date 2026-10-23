@@ -1,4 +1,4 @@
-import { BusyError } from './errors.ts';
+import { BusyError } from '@artemis/core';
 
 /**
  * FIFO promise-chain serializer with a pending limit (port of

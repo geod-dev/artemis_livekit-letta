@@ -1,4 +1,5 @@
-import { type Clock, type Reapable, systemClock } from '@artemis/core';
+import { type Clock, systemClock } from '@artemis/core';
+import type { Reapable } from './registry.ts';
 import type { WorkerKind, WorkerState } from './types.ts';
 
 /**

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BusyError } from './errors.ts';
+import { BusyError } from '@artemis/core';
 import { SerialScheduler } from './scheduler.ts';
 
 test('scheduler runs jobs in order and continues after a failed job', async () => {

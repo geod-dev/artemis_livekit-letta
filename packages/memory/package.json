@@ -13,7 +13,6 @@
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@artemis/core": "workspace:*",
     "@vectorize-io/hindsight-client": "1.1.0"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Generic building blocks: serial scheduler, keyed registry with idle reaper, clock, logger, errors.",
+  "description": "Shared primitives used by several packages: injectable clock, AppError and its subclasses, id helpers, console logger. Depends on no workspace package.",
   "exports": {
     ".": "./src/index.ts"
   },
