@@ -1,15 +1,16 @@
-import { AgentLoop, type LoopOutcome } from '@artemis/agent-loop';
-import { AppError, uuid } from '@artemis/core';
+import type { LoopOutcome } from '@artemis/agent-loop';
+import { AppError, errorMessage, uuid } from '@artemis/core';
 import type { LlmMessage, ToolDefinition, ToolUseBlock } from '@artemis/llm';
 import { mcpToolsSection } from '@artemis/mcp';
 import type { TurnUsage } from '@artemis/storage';
 import { needsUserInput } from '../subagents/definitions.ts';
 import type { AgentToolContext } from '../tools/index.ts';
 import { workspaceAccess, type WorkerEnv } from './env.ts';
-import { drainLoop, LoopPersistence } from './loop-persistence.ts';
+import { LoopPersistence, runLoop } from './loop-persistence.ts';
 import { TaskWorker } from './task-worker.ts';
 import type { SubagentSpec, TaskOutcome } from './types.ts';
-import { isoAt, messageOf, toLlmMessages } from './util.ts';
+import { toLlmMessages } from './codecs.ts';
+import { isoAt } from '../util/time.ts';
 
 /** Longest chain of resumed tasks replayed into one transcript. */
 const MAX_RESUME_CHAIN = 20;
@@ -60,13 +61,13 @@ export class SubagentTaskWorker extends TaskWorker {
       mcpTools: mcpToolsSection(await env.catalog.tools()),
     });
     if (!controller.signal.aborted) {
-      this.toolDefinitions = env.tools().definitions();
+      this.toolDefinitions = env.tools.definitions();
       this.systemPrompt = rendered.systemPrompt;
       await env.storage.promptSnapshots.create({
         ownerKind: 'task',
         ownerId: taskId,
         systemPrompt: rendered.systemPrompt,
-        tools: this.toolDefinitions as unknown[],
+        tools: this.toolDefinitions,
         templateId: rendered.templateId,
         templateHash: rendered.templateHash,
       });
@@ -119,20 +120,21 @@ export class SubagentTaskWorker extends TaskWorker {
           clock: env.clock,
           signal,
         });
-        const events = new AgentLoop().run({
-          route,
-          system: this.systemPrompt,
-          toolDefinitions: this.toolDefinitions,
-          toolset: env.tools(),
-          messages: [...this.history, { role: 'user', content: [{ type: 'text', text: spec.prompt }] }],
-          toolContext: (call: ToolUseBlock) => this.toolContext(call),
-          signal,
-          newMessageId: () => uuid(),
-        });
-        outcome = await drainLoop(events, (event) => persistence.handle(event));
+        outcome = await runLoop(
+          {
+            route,
+            system: this.systemPrompt,
+            toolDefinitions: this.toolDefinitions,
+            toolset: env.tools,
+            messages: [...this.history, { role: 'user', content: [{ type: 'text', text: spec.prompt }] }],
+            toolContext: (call: ToolUseBlock) => this.toolContext(call),
+            signal,
+          },
+          persistence
+        );
       }
     } catch (error) {
-      failure = messageOf(error);
+      failure = errorMessage(error);
       controller.abort();
     }
 
@@ -179,7 +181,7 @@ export class SubagentTaskWorker extends TaskWorker {
       logger: env.logger,
       mode: spec.originMode,
       taskDepth: spec.depth,
-      tasks: env.tasks(),
+      tasks: env.tasks,
       calls: env.calls,
     };
   }

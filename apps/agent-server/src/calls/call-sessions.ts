@@ -4,7 +4,7 @@ import type { CallControlEvent, CallStateResponse } from '@artemis/contracts/age
 import { type VoiceUtterance, VoiceInputLedger, trailingUserEntries } from './voice-input.ts';
 
 /**
- * Live voice calls, one per conversation (port of pre-refactor assistant/calls/state.ts).
+ * Live voice calls, one per conversation .
  * A call is active while the voice agent keeps its control channel open; a
  * dropped channel ends the call unless the agent reconnects within the grace
  * period. Holds the mode, `next` (end/listen), `endRequested` (end_call tool),
@@ -16,27 +16,27 @@ import { type VoiceUtterance, VoiceInputLedger, trailingUserEntries } from './vo
  */
 type CallEndListener = (conversationId: string, pendingUpdateIds: string[]) => void;
 
-export abstract class CallSessions {
-  abstract openChannel(conversationId: string, send: (event: CallControlEvent) => void, mode?: CallMode): () => void;
-  abstract active(conversationId: string): CallStateResponse | null;
-  abstract callId(conversationId: string): string | null;
+export interface CallSessions {
+  openChannel(conversationId: string, send: (event: CallControlEvent) => void, mode?: CallMode): () => void;
+  active(conversationId: string): CallStateResponse | null;
+  callId(conversationId: string): string | null;
   /** Tools. False when no call is active. */
-  abstract setMode(conversationId: string, mode: CallMode): boolean;
-  abstract requestEnd(conversationId: string): boolean;
+  setMode(conversationId: string, mode: CallMode): boolean;
+  requestEnd(conversationId: string): boolean;
   /** Voice response bracket: the call's mode for the response, and a fresh end request. */
-  abstract beginResponse(conversationId: string): CallMode | null;
-  abstract finishResponse(conversationId: string, marker: 'listen' | 'done' | null): void;
-  abstract announceUpdate(conversationId: string, updateId: string): boolean;
-  abstract takeUpdate(conversationId: string, updateId: string): boolean;
+  beginResponse(conversationId: string): CallMode | null;
+  finishResponse(conversationId: string, marker: 'listen' | 'done' | null): void;
+  announceUpdate(conversationId: string, updateId: string): boolean;
+  takeUpdate(conversationId: string, updateId: string): boolean;
   /** Ends the call; listeners receive the spoken updates that were never acknowledged. */
-  abstract end(conversationId: string): void;
+  end(conversationId: string): void;
   /** Returns the unsubscribe function. */
-  abstract onEnded(listener: CallEndListener): () => void;
+  onEnded(listener: CallEndListener): () => void;
   /** New user utterances of the OpenAI-style message list, or null when nothing new. */
-  abstract newVoiceInput(conversationId: string, callId: string | null, messages: unknown[]): VoiceUtterance | null;
+  newVoiceInput(conversationId: string, callId: string | null, messages: unknown[]): VoiceUtterance | null;
   /** Admission of an utterance (after the turn was accepted) and its release (turn did not complete). */
-  abstract acceptVoiceInput(conversationId: string, callId: string | null, identities: string[]): void;
-  abstract rejectVoiceInput(conversationId: string, callId: string | null, identities: string[]): void;
+  acceptVoiceInput(conversationId: string, callId: string | null, identities: string[]): void;
+  rejectVoiceInput(conversationId: string, callId: string | null, identities: string[]): void;
 }
 
 interface Call {
@@ -54,7 +54,7 @@ interface Call {
 /** A dropped control channel ends the call unless the agent reconnects in time. */
 const RECONNECT_GRACE_MS = 10_000;
 
-export class LocalCallSessions extends CallSessions {
+class LocalCallSessions implements CallSessions {
   private readonly calls = new Map<string, Call>();
   private readonly listeners = new Set<CallEndListener>();
   private readonly voiceInputs: VoiceInputLedger;
@@ -63,7 +63,6 @@ export class LocalCallSessions extends CallSessions {
     private readonly clock: Clock = systemClock,
     private readonly reconnectGraceMs = RECONNECT_GRACE_MS
   ) {
-    super();
     this.voiceInputs = new VoiceInputLedger(clock);
   }
 

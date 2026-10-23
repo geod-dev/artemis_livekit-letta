@@ -4,7 +4,7 @@ import { BusyError, NotFoundError } from '@artemis/core';
 import { FakeClock } from '@artemis/core/testing';
 import type { McpServerRegistry } from '@artemis/mcp';
 import type { TextTurnRequest } from '@artemis/contracts/agent-server';
-import type { BackgroundDeliveryService } from '../background/delivery.ts';
+import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
 import type { AgentServerConfig } from '../config.ts';
 import type { ConversationService, TurnOutcome } from '../conversations/service.ts';

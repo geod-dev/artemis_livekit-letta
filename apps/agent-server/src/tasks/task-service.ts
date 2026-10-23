@@ -1,50 +1,73 @@
-import { AppError, NotFoundError, prefixedId } from '@artemis/core';
+import { AppError, type Clock, NotFoundError, prefixedId } from '@artemis/core';
 import type { ConversationTask } from '@artemis/contracts/chat-types';
-import type { TaskRecord } from '@artemis/storage';
+import type { Storage, TaskRecord } from '@artemis/storage';
 import type { CommandHandoff } from '@artemis/tools/workspace-tools';
-import type { WorkerEnv } from '../workers/env.ts';
-import type { SubagentTaskWorker } from '../workers/subagent-task-worker.ts';
-import type { WorkerSupervisor } from '../workers/supervisor.ts';
-import type { SubagentSpec, SubagentStartMode } from '../workers/types.ts';
+import type { WorkspaceProcess } from '@artemis/workspace';
+import type { ConversationEventHub } from '../events/hub.ts';
+import type { SubagentDefinition } from '../subagents/definitions.ts';
 import type { AgentToolContext } from '../tools/index.ts';
-import { isoAt } from '../workers/util.ts';
+import type { SubagentSpec, TaskPort } from '../tools/task-port.ts';
+import { isoAt } from '../util/time.ts';
+import type { SubagentStartMode, TaskOutcome } from '../workers/types.ts';
 
 /**
- * Task lifecycle facade used by tools and the API. Creates `tasks` rows,
- * asks the supervisor for workers, publishes `task` SSE events, and projects
- * `TaskRecord` -> `ConversationTask`. Implements the bash `CommandHandoff`.
+ * Task lifecycle facade used by tools and the API. Creates `tasks` rows, asks
+ * the workers to run them, publishes `task` SSE events, and projects
+ * `TaskRecord` into `ConversationTask`. Implements the bash `CommandHandoff`.
  */
-export abstract class TaskService implements CommandHandoff {
-  abstract adopt(input: Parameters<CommandHandoff['adopt']>[0]): ReturnType<CommandHandoff['adopt']>;
+export type TaskService = TaskPort;
 
-  /** Start a subagent in the background (main agent) -> task id. */
-  abstract startSubagent(spec: SubagentSpec): Promise<{ taskId: string }>;
+export interface TaskServiceDeps {
+  storage: Storage;
+  hub: ConversationEventHub;
+  clock: Clock;
+  subagents: readonly SubagentDefinition[];
+  /** `workers.maxSubagents`: subagents that may run at once. */
+  maxSubagents: number;
+}
 
-  /** Run a subagent and wait for its report (synchronous policy, nested). */
-  abstract runSubagent(spec: SubagentSpec, signal: AbortSignal): Promise<{ taskId: string; report: string; status: ConversationTask['status'] }>;
+/** A command process handed over by the bash tool, to be run as a background task. */
+export interface AdoptedCommand {
+  taskId: string;
+  conversationId: string;
+  process: WorkspaceProcess;
+  outputPath: string;
+  command: string;
+}
 
-  abstract list(conversationId: string): Promise<ConversationTask[]>;
-  abstract get(conversationId: string, taskId: string): Promise<ConversationTask | null>;
-  /** Stop a running task (ends `cancelled`); false if not running. */
-  abstract stop(conversationId: string, taskId: string): Promise<boolean>;
+/** A started subagent worker, as the task service sees it. */
+export interface SubagentRun {
+  readonly taskId: string;
+  readonly outcome: Promise<TaskOutcome>;
+  stop(reason: string): Promise<void>;
+}
+
+/** The workers a task runs in: implemented by the supervisor, which owns their lifecycle. */
+export interface TaskWorkers {
+  runningSubagentCount(): number;
+  /** Registers a subagent before its task row exists, so archive and stop reach it at once. */
+  registerSubagent(taskId: string, spec: SubagentSpec): SubagentRun;
+  forgetSubagent(taskId: string): void;
+  startSubagent(run: SubagentRun, mode: SubagentStartMode): Promise<SubagentRun>;
+  adoptCommand(input: AdoptedCommand): Promise<unknown>;
+  /** False when no such task is running in this process. */
+  stopTask(taskId: string, reason: string): Promise<boolean>;
 }
 
 const LIST_LIMIT = 200;
 
-export class WorkerTaskService extends TaskService {
+class WorkerTaskService implements TaskService {
   constructor(
-    private readonly env: WorkerEnv,
-    private readonly supervisor: WorkerSupervisor
-  ) {
-    super();
-  }
+    private readonly deps: TaskServiceDeps,
+    private readonly workers: TaskWorkers
+  ) {}
 
   async adopt(input: Parameters<CommandHandoff['adopt']>[0]): ReturnType<CommandHandoff['adopt']> {
     const context = input.context;
     if (!isAgentContext(context)) throw new AppError('invalid_context', 'Background commands need a conversation context', 500);
     const taskId = prefixedId('task');
     const outputPath = `data/tasks/${taskId}.log`;
-    await this.env.storage.tasks.create({
+    await this.deps.storage.tasks.create({
       id: taskId,
       conversationId: context.conversationId,
       kind: 'command',
@@ -66,7 +89,7 @@ export class WorkerTaskService extends TaskService {
       startedAt: this.iso(),
     });
     this.publishRunning(context.conversationId, taskId, input.description, 'command');
-    await this.supervisor.adoptCommand({
+    await this.workers.adoptCommand({
       taskId,
       conversationId: context.conversationId,
       process: input.process,
@@ -77,18 +100,18 @@ export class WorkerTaskService extends TaskService {
   }
 
   async startSubagent(spec: SubagentSpec): Promise<{ taskId: string }> {
-    const worker = await this.spawnSubagent(spec, 'background');
-    return { taskId: worker.taskId };
+    const run = await this.spawnSubagent(spec, 'background');
+    return { taskId: run.taskId };
   }
 
   async runSubagent(spec: SubagentSpec, signal: AbortSignal): Promise<{ taskId: string; report: string; status: ConversationTask['status'] }> {
-    const worker = await this.spawnSubagent(spec, 'synchronous');
-    const { taskId } = worker;
-    const stop = () => void worker.stop('Cancelled by the user');
+    const run = await this.spawnSubagent(spec, 'synchronous');
+    const { taskId } = run;
+    const stop = () => void run.stop('Cancelled by the user');
     if (signal.aborted) stop();
     else signal.addEventListener('abort', stop, { once: true });
     try {
-      const { task } = await worker.outcome;
+      const { task } = await run.outcome;
       return { taskId, report: task.report ?? '', status: task.status };
     } finally {
       signal.removeEventListener('abort', stop);
@@ -96,21 +119,21 @@ export class WorkerTaskService extends TaskService {
   }
 
   async list(conversationId: string): Promise<ConversationTask[]> {
-    const tasks = await this.env.storage.tasks.listByConversation(conversationId, { limit: LIST_LIMIT });
+    const tasks = await this.deps.storage.tasks.listByConversation(conversationId, { limit: LIST_LIMIT });
     return tasks.map(project);
   }
 
   async get(conversationId: string, taskId: string): Promise<ConversationTask | null> {
-    const task = await this.env.storage.tasks.get(taskId);
+    const task = await this.deps.storage.tasks.get(taskId);
     if (!task || task.conversationId !== conversationId) return null;
     return project(task);
   }
 
   async stop(conversationId: string, taskId: string): Promise<boolean> {
-    const task = await this.env.storage.tasks.get(taskId);
+    const task = await this.deps.storage.tasks.get(taskId);
     if (!task || task.conversationId !== conversationId || task.status !== 'running') return false;
-    await this.env.storage.tasks.requestStop(taskId, this.iso());
-    return this.supervisor.stopTask(taskId, 'Stopped by request');
+    await this.deps.storage.tasks.requestStop(taskId, this.iso());
+    return this.workers.stopTask(taskId, 'Stopped by request');
   }
 
   /**
@@ -119,25 +142,25 @@ export class WorkerTaskService extends TaskService {
    * starts the worker. Archive and stop reach the worker from registration on, even while
    * the row is being written or the loop is spawning.
    */
-  private async spawnSubagent(spec: SubagentSpec, mode: SubagentStartMode): Promise<SubagentTaskWorker> {
-    const { maxSubagents } = this.env.config.workers;
-    if (this.supervisor.runningSubagentCount() >= maxSubagents) {
+  private async spawnSubagent(spec: SubagentSpec, mode: SubagentStartMode): Promise<SubagentRun> {
+    const { maxSubagents } = this.deps;
+    if (this.workers.runningSubagentCount() >= maxSubagents) {
       throw new AppError('too_many_tasks', `At most ${maxSubagents} subagents can run at once`, 429);
     }
     const taskId = prefixedId('task');
-    const worker = this.supervisor.registerSubagent(taskId, spec);
+    const run = this.workers.registerSubagent(taskId, spec);
     try {
       await this.createSubagentTask(taskId, spec);
     } catch (error) {
-      this.supervisor.forgetSubagent(taskId);
+      this.workers.forgetSubagent(taskId);
       throw error;
     }
-    return this.supervisor.startSubagent(worker, mode);
+    return this.workers.startSubagent(run, mode);
   }
 
   /** Validates a subagent start and creates its running task row. */
   private async createSubagentTask(taskId: string, spec: SubagentSpec): Promise<void> {
-    const { storage, subagents } = this.env;
+    const { storage, subagents } = this.deps;
     if (!subagents.some((definition) => definition.name === spec.subagentType)) {
       throw new AppError('unknown_subagent', `Unknown subagent type "${spec.subagentType}"`, 400);
     }
@@ -172,12 +195,17 @@ export class WorkerTaskService extends TaskService {
   }
 
   private publishRunning(conversationId: string, taskId: string, title: string, kind: 'agent' | 'command'): void {
-    this.env.hub.publish(conversationId, { type: 'task', taskId, status: 'running', title, kind });
+    this.deps.hub.publish(conversationId, { type: 'task', taskId, status: 'running', title, kind });
   }
 
   private iso(): string {
-    return isoAt(this.env.clock.now());
+    return isoAt(this.deps.clock.now());
   }
+}
+
+/** The task service over the given storage, hub and workers. */
+export function createTaskService(deps: TaskServiceDeps, workers: TaskWorkers): TaskService {
+  return new WorkerTaskService(deps, workers);
 }
 
 function isAgentContext(context: unknown): context is AgentToolContext {
@@ -185,7 +213,7 @@ function isAgentContext(context: unknown): context is AgentToolContext {
 }
 
 /** Projection of a task row for the API and the tools. */
-export function project(task: TaskRecord): ConversationTask {
+function project(task: TaskRecord): ConversationTask {
   const durationMs = task.endedAt ? Math.max(0, Date.parse(task.endedAt) - Date.parse(task.startedAt)) : undefined;
   return {
     id: task.id,

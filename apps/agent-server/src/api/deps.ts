@@ -1,6 +1,6 @@
 import type { Clock } from '@artemis/core';
 import type { McpServerRegistry } from '@artemis/mcp';
-import type { BackgroundDeliveryService } from '../background/delivery.ts';
+import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
 import type { CallSessions } from '../calls/call-sessions.ts';
 import type { AgentServerConfig } from '../config.ts';
 import type { ConversationService } from '../conversations/service.ts';

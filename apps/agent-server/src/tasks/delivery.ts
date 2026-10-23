@@ -4,12 +4,11 @@ import type { ChatMessage } from '@artemis/contracts/chat-types';
 import type { BackgroundUpdateRecord, Storage, TaskRecord } from '@artemis/storage';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { CallSessions } from '../calls/call-sessions.ts';
-import { updateLabel } from '../turns/envelope.ts';
+import { updateLabel } from '../turns/render.ts';
 import { wakesThread } from './policy.ts';
 
 /**
- * Turns finished tasks into updates for the main agent (modernized
- * background/service.ts; inputs are first-party task outcomes, no text parsing):
+ * Turns finished tasks into updates for the main agent (inputs are first-party task outcomes, no text parsing):
  *
  * taskFinished(task):
  *   create update (delivery `held`, unread) -> publish `updates_changed` and the
@@ -23,21 +22,21 @@ import { wakesThread } from './policy.ts';
  * Turns claim updates with a token (held/queued -> inflight) and complete
  * (-> delivered) or roll back. Call end: unspoken `queued` -> `held` + wake.
  */
-export abstract class BackgroundDeliveryService {
+export interface BackgroundDeliveryService {
   /** `null` when the conversation is archived (nothing is recorded or woken). */
-  abstract taskFinished(task: TaskRecord): Promise<BackgroundUpdateRecord | null>;
-  abstract claimHeld(conversationId: string): Promise<{ token: string; updates: BackgroundUpdateRecord[] }>;
-  abstract claimQueued(conversationId: string, updateId: string): Promise<{ token: string; update: BackgroundUpdateRecord } | null>;
-  abstract complete(conversationId: string, token: string, turnId: string): Promise<void>;
-  abstract rollback(conversationId: string, token: string): Promise<void>;
-  abstract markRead(conversationId: string, ids: string[]): Promise<number>;
-  abstract unreadCount(conversationId: string): Promise<number>;
-  abstract callEnded(conversationId: string, pendingUpdateIds: string[]): Promise<void>;
+  taskFinished(task: TaskRecord): Promise<BackgroundUpdateRecord | null>;
+  claimHeld(conversationId: string): Promise<{ token: string; updates: BackgroundUpdateRecord[] }>;
+  claimQueued(conversationId: string, updateId: string): Promise<{ token: string; update: BackgroundUpdateRecord } | null>;
+  complete(conversationId: string, token: string, turnId: string): Promise<void>;
+  rollback(conversationId: string, token: string): Promise<void>;
+  markRead(conversationId: string, ids: string[]): Promise<number>;
+  unreadCount(conversationId: string): Promise<number>;
+  callEnded(conversationId: string, pendingUpdateIds: string[]): Promise<void>;
   /** Event rows (`role:'event'`) for history projection, incl. not-yet-delivered updates. */
-  abstract eventRows(conversationId: string): Promise<ChatMessage[]>;
+  eventRows(conversationId: string): Promise<ChatMessage[]>;
 }
 
-interface BackgroundDeliveryDeps {
+export interface BackgroundDeliveryDeps {
   storage: Storage;
   hub: ConversationEventHub;
   calls: CallSessions;
@@ -47,10 +46,12 @@ interface BackgroundDeliveryDeps {
   wake: (conversationId: string) => void;
 }
 
-export class StorageBackgroundDeliveryService extends BackgroundDeliveryService {
-  constructor(private readonly deps: BackgroundDeliveryDeps) {
-    super();
-  }
+export function createBackgroundDelivery(deps: BackgroundDeliveryDeps): BackgroundDeliveryService {
+  return new StorageBackgroundDelivery(deps);
+}
+
+class StorageBackgroundDelivery implements BackgroundDeliveryService {
+  constructor(private readonly deps: BackgroundDeliveryDeps) {}
 
   async taskFinished(task: TaskRecord): Promise<BackgroundUpdateRecord | null> {
     const { storage, calls, logger } = this.deps;

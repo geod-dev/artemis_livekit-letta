@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { LlmRequest } from '@artemis/llm';
 import { EphemeralStorage } from '@artemis/storage/testing';
 import type { SubagentSpec, TurnSubmission } from './types.ts';
-import { createHarness, seedConversation, until, type Harness, type Step } from './test-support.ts';
+import { createHarness, seedConversation, until, type Harness, type Step } from '../../test/workers-support.ts';
 
 const textTurn = (text: string): TurnSubmission => ({ kind: 'user', modality: 'text', mode: 'text', effort: 'medium', text });
 

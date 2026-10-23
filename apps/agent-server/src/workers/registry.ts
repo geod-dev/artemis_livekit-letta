@@ -1,6 +1,6 @@
 import { type Clock, consoleLogger, type Logger, systemClock } from '@artemis/core';
 
-/** Something the registry can reap when idle (port of runtime/registry.ts). */
+/** Something the registry can reap when idle. */
 export interface Reapable {
   /** True while the entry must not be reaped (busy, active task, active call...). */
   isActive(now: number): boolean;
@@ -9,7 +9,7 @@ export interface Reapable {
   dispose(reason: string): Promise<void>;
 }
 
-export interface KeyedRegistryOptions<T extends Reapable> {
+interface KeyedRegistryOptions<T extends Reapable> {
   create: (key: string) => Promise<T>;
   idleMs: number;
   /** Reaper period. */

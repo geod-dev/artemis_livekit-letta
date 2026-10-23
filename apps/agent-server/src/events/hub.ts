@@ -3,8 +3,7 @@ import type { ConversationEvent, ConversationListEvent, Modality } from '@artemi
 import { type Clock, systemClock } from '@artemis/core';
 
 /**
- * In-process pub/sub per conversation + the list channel (port of
- * pre-refactor assistant/conversations/events.ts): retains in-flight turns and
+ * In-process pub/sub per conversation + the list channel: retains in-flight turns and
  * running tasks to send a bounded `snapshot` first on subscribe (<= 4 turns,
  * <= 32 events/turn, <= 128 KB text/turn). Single-instance by design.
  */

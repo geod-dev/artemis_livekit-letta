@@ -18,12 +18,12 @@ import { type AgentServerConfig, loadConfig, loadRootEnv } from './config.ts';
 import { createConversationService } from './conversations/service.ts';
 import { ConversationEventHub } from './events/hub.ts';
 import { createMemoryCoordinator } from './memory/coordinator.ts';
-import { createMemoryTools } from './memory/tools.ts';
+import { createMemoryTools } from './tools/memory-tools.ts';
 import { migrate } from './migrate.ts';
 import { PromptRenderer } from './prompts/renderer.ts';
 import { loadSubagentDefinitions } from './subagents/definitions.ts';
 import { createTitleService } from './titles/title-service.ts';
-import { createAgentRuntime } from './workers/runtime.ts';
+import { createAgentRuntime } from './workers/wiring.ts';
 
 const PROMPTS_DIR = fileURLToPath(new URL('../templates', import.meta.url));
 const LAST_ACTIVE_KEY = 'last_active_conversation_id';

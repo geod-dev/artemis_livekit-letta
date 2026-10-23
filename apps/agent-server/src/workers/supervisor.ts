@@ -1,13 +1,18 @@
-import { uuid } from '@artemis/core';
+import { errorMessage, uuid } from '@artemis/core';
+import type { Toolset } from '@artemis/tools';
+import { createBackgroundDelivery, type BackgroundDeliveryService } from '../tasks/delivery.ts';
+import { createTaskService, type TaskService, type TaskWorkers } from '../tasks/task-service.ts';
+import type { AgentToolContext } from '../tools/index.ts';
+import type { SubagentSpec, TaskPort } from '../tools/task-port.ts';
+import { isoAt } from '../util/time.ts';
 import type { TaskRecord } from '@artemis/storage';
-import type { WorkerEnv } from './env.ts';
+import type { WorkerBase, WorkerEnv } from './env.ts';
 import { KeyedRegistry } from './registry.ts';
 import { CommandTaskWorker, type CommandTaskInput } from './command-task-worker.ts';
 import { MainAgentWorker } from './main-agent-worker.ts';
 import { SubagentTaskWorker } from './subagent-task-worker.ts';
 import type { TaskWorker } from './task-worker.ts';
-import type { SubagentSpec, SubagentStartMode } from './types.ts';
-import { isoAt, messageOf } from './util.ts';
+import type { SubagentStartMode } from './types.ts';
 
 /** Reaper period of the main agent workers. */
 const REAPER_PERIOD_MS = 15_000;
@@ -29,21 +34,45 @@ function isLive(worker: TaskWorker): boolean {
  * with synthetic results for dangling tool uses, running tool calls -> cancelled,
  * inflight updates -> reverted, running tasks -> failed with an update.
  */
-export class WorkerSupervisor {
+export class WorkerSupervisor implements TaskWorkers {
+  readonly taskService: TaskService;
+  readonly delivery: BackgroundDeliveryService;
+  readonly toolset: Toolset<AgentToolContext>;
+  private readonly env: WorkerEnv;
   private readonly mains: KeyedRegistry<MainAgentWorker>;
-  private readonly tasks = new Map<string, TaskWorker>();
+  private readonly taskWorkers = new Map<string, TaskWorker>();
 
-  constructor(private readonly env: WorkerEnv) {
+  constructor(base: WorkerBase, createToolset: (tasks: TaskPort) => Toolset<AgentToolContext>) {
+    this.delivery = createBackgroundDelivery({
+      storage: base.storage,
+      hub: base.hub,
+      calls: base.calls,
+      clock: base.clock,
+      logger: base.logger,
+      wake: (conversationId) => this.wake(conversationId),
+    });
+    this.taskService = createTaskService(
+      {
+        storage: base.storage,
+        hub: base.hub,
+        clock: base.clock,
+        subagents: base.subagents,
+        maxSubagents: base.config.workers.maxSubagents,
+      },
+      this
+    );
+    this.toolset = createToolset(this.taskService);
+    this.env = { ...base, delivery: this.delivery, tasks: this.taskService, tools: this.toolset };
     this.mains = new KeyedRegistry<MainAgentWorker>({
       create: async (conversationId) => {
-        const worker = new MainAgentWorker(conversationId, env, (id) => this.hasActiveTasks(id));
+        const worker = new MainAgentWorker(conversationId, this.env, (id) => this.hasActiveTasks(id));
         await worker.start();
         return worker;
       },
-      idleMs: env.config.workers.idleTimeoutMs,
+      idleMs: base.config.workers.idleTimeoutMs,
       sweepEveryMs: REAPER_PERIOD_MS,
-      clock: env.clock,
-      logger: env.logger.child('reaper'),
+      clock: base.clock,
+      logger: base.logger.child('reaper'),
     });
   }
 
@@ -61,7 +90,7 @@ export class WorkerSupervisor {
     void this.mainAgent(conversationId)
       .then((worker) => worker.submit({ kind: 'update', modality: 'text', mode: 'text', effort: 'low', text: '' }).done)
       .catch((error: unknown) => {
-        this.env.logger.error('wake failed', { conversationId, error: messageOf(error) });
+        this.env.logger.error('wake failed', { conversationId, error: errorMessage(error) });
       });
   }
 
@@ -71,14 +100,14 @@ export class WorkerSupervisor {
    */
   registerSubagent(taskId: string, spec: SubagentSpec): SubagentTaskWorker {
     const worker = new SubagentTaskWorker(taskId, spec, this.env);
-    this.tasks.set(taskId, worker);
+    this.taskWorkers.set(taskId, worker);
     this.touchMainAgent(spec.conversationId);
     return worker;
   }
 
   /** Drops a registered worker whose task row could not be created (it never started). */
   forgetSubagent(taskId: string): void {
-    this.tasks.delete(taskId);
+    this.taskWorkers.delete(taskId);
   }
 
   /** Starts a registered subagent worker; its task row must already exist. */
@@ -86,7 +115,7 @@ export class WorkerSupervisor {
     try {
       await worker.start();
     } catch (error) {
-      await this.failTask(worker.taskId, messageOf(error), mode === 'background');
+      await this.failTask(worker.taskId, errorMessage(error), mode === 'background');
       if (mode === 'synchronous') throw error;
       return worker;
     }
@@ -102,7 +131,7 @@ export class WorkerSupervisor {
       clock: this.env.clock,
       logger: this.env.logger,
     });
-    this.tasks.set(input.taskId, worker);
+    this.taskWorkers.set(input.taskId, worker);
     this.touchMainAgent(input.conversationId);
     await worker.start();
     this.watch(worker, true);
@@ -111,7 +140,7 @@ export class WorkerSupervisor {
 
   /** Stops a running task worker; false when no such task is running in this process. */
   async stopTask(taskId: string, reason: string): Promise<boolean> {
-    const worker = this.tasks.get(taskId);
+    const worker = this.taskWorkers.get(taskId);
     if (!worker || !isLive(worker)) return false;
     await worker.stop(reason);
     return true;
@@ -123,7 +152,7 @@ export class WorkerSupervisor {
    * message respawns the worker.
    */
   async stopConversation(conversationId: string, reason = 'conversation archived'): Promise<void> {
-    const live = [...this.tasks.values()].filter((worker) => worker.conversationId === conversationId && isLive(worker));
+    const live = [...this.taskWorkers.values()].filter((worker) => worker.conversationId === conversationId && isLive(worker));
     await Promise.allSettled(live.map((worker) => worker.stop(reason)));
     await this.mains.dispose(conversationId, reason);
   }
@@ -131,7 +160,7 @@ export class WorkerSupervisor {
   /** A running task of the conversation keeps its main worker alive. */
   hasActiveTasks(conversationId: string): boolean {
     const now = this.env.clock.now();
-    for (const worker of this.tasks.values()) {
+    for (const worker of this.taskWorkers.values()) {
       if (worker.conversationId === conversationId && worker.isActive(now)) return true;
     }
     return false;
@@ -140,7 +169,7 @@ export class WorkerSupervisor {
   /** Subagent workers that are registered and not yet finished (spawning included). */
   runningSubagentCount(): number {
     let count = 0;
-    for (const worker of this.tasks.values()) {
+    for (const worker of this.taskWorkers.values()) {
       if (worker instanceof SubagentTaskWorker) count += 1;
     }
     return count;
@@ -173,7 +202,7 @@ export class WorkerSupervisor {
 
   /** Stops task workers, then the main workers (their turns are aborted). */
   async shutdown(): Promise<void> {
-    await Promise.allSettled([...this.tasks.values()].map((worker) => worker.dispose('shutdown')));
+    await Promise.allSettled([...this.taskWorkers.values()].map((worker) => worker.dispose('shutdown')));
     await this.mains.close('shutdown');
   }
 
@@ -181,12 +210,12 @@ export class WorkerSupervisor {
     void worker.outcome
       .then(({ task }) => this.onTaskEnded(task, deliver))
       .catch((error: unknown) => {
-        this.env.logger.error('task end handling failed', { taskId: worker.taskId, error: messageOf(error) });
+        this.env.logger.error('task end handling failed', { taskId: worker.taskId, error: errorMessage(error) });
       });
   }
 
   private async onTaskEnded(task: TaskRecord, deliver: boolean): Promise<void> {
-    this.tasks.delete(task.id);
+    this.taskWorkers.delete(task.id);
     this.touchMainAgent(task.conversationId);
     this.env.hub.publish(task.conversationId, {
       type: 'task',
@@ -199,7 +228,7 @@ export class WorkerSupervisor {
     try {
       await this.env.delivery.taskFinished(task);
     } catch (error) {
-      this.env.logger.error('delivering a finished task failed', { taskId: task.id, error: messageOf(error) });
+      this.env.logger.error('delivering a finished task failed', { taskId: task.id, error: errorMessage(error) });
     }
   }
 
@@ -216,7 +245,7 @@ export class WorkerSupervisor {
       endedAt: isoAt(this.env.clock.now()),
     });
     const task = finished ?? (await this.env.storage.tasks.get(taskId));
-    this.tasks.delete(taskId);
+    this.taskWorkers.delete(taskId);
     if (task) await this.onTaskEnded(task, deliver);
   }
 

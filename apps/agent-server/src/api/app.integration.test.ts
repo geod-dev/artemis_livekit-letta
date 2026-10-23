@@ -16,11 +16,11 @@ import { createConversationService } from '../conversations/service.ts';
 import { ConversationEventHub } from '../events/hub.ts';
 import { migrate } from '../migrate.ts';
 import { createMemoryCoordinator } from '../memory/coordinator.ts';
-import { createMemoryTools } from '../memory/tools.ts';
+import { createMemoryTools } from '../tools/memory-tools.ts';
 import { PromptRenderer } from '../prompts/renderer.ts';
 import { loadSubagentDefinitions } from '../subagents/definitions.ts';
 import { createTitleService } from '../titles/title-service.ts';
-import { createAgentRuntime } from '../workers/runtime.ts';
+import { createAgentRuntime } from '../workers/wiring.ts';
 import { createApp } from './app.ts';
 
 /**

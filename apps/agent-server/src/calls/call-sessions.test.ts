@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { CallControlEvent } from '@artemis/contracts/agent-server';
-import { FakeClock } from '../memory/test-support.ts';
-import { LocalCallSessions } from './call-sessions.ts';
+import { FakeClock } from '@artemis/core/testing';
+import { createCallSessions } from './call-sessions.ts';
 
 function setup() {
   const clock = new FakeClock();
-  return { clock, calls: new LocalCallSessions(clock) };
+  return { clock, calls: createCallSessions(clock) };
 }
 
 test('a dropped control channel ends the call after the reconnect grace period', () => {

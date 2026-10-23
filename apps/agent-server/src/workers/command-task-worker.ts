@@ -1,9 +1,10 @@
-import type { Clock, Logger } from '@artemis/core';
+import { type Clock, type Logger, errorMessage } from '@artemis/core';
 import type { Storage, TaskRecord } from '@artemis/storage';
 import type { ProcessExit, WorkspaceProcess, WorkspaceTransport } from '@artemis/workspace';
 import { TaskWorker } from './task-worker.ts';
 import type { TaskOutcome } from './types.ts';
-import { isoAt, messageOf, safely } from './util.ts';
+import { isoAt } from '../util/time.ts';
+import { safely } from './safely.ts';
 
 const PROGRESS_EVERY_MS = 2_000;
 const TAIL_BYTES = 8_192;
@@ -90,7 +91,7 @@ export class CommandTaskWorker extends TaskWorker {
     const drain = (async () => {
       for await (const chunk of process.output()) log.append(chunk.text);
     })().catch((error: unknown) => {
-      log.append(`\n[output error: ${messageOf(error)}]`);
+      log.append(`\n[output error: ${errorMessage(error)}]`);
     });
     const exit = await process.exited;
     let timer: { cancel(): void } | undefined;

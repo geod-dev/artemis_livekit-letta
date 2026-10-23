@@ -1,6 +1,8 @@
 import type { ChatAttachment, Modality, TextEffort, TurnMode } from '@artemis/contracts/chat-types';
 import type { BackgroundUpdateRecord, TaskRecord } from '@artemis/storage';
 
+export type { SubagentSpec } from '../tools/task-port.ts';
+
 export type WorkerKind = 'main-agent' | 'subagent-task' | 'command-task';
 
 /**
@@ -51,19 +53,6 @@ export interface TurnHandle {
 
 export interface TaskOutcome {
   task: TaskRecord;
-}
-
-export interface SubagentSpec {
-  conversationId: string;
-  subagentType: string;
-  title: string;
-  prompt: string;
-  originMode: TurnMode;
-  originTurnId: string | null;
-  originToolCallId: string | null;
-  parentTaskId: string | null;
-  resumedFromTaskId: string | null;
-  depth: number;
 }
 
 /**

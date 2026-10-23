@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { NotFoundError } from '@artemis/core';
 import { FakeClock } from '@artemis/core/testing';
 import type { BackgroundUpdateRecord } from '@artemis/storage';
-import type { BackgroundDeliveryService } from '../background/delivery.ts';
+import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
 import type { ConversationService, TurnOutcome, UpdateTurn, VoiceTurn } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';

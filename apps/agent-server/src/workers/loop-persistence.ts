@@ -1,9 +1,9 @@
-import type { LoopEvent, LoopOutcome } from '@artemis/agent-loop';
-import type { Clock } from '@artemis/core';
+import { AgentLoop, type LoopEvent, type LoopInput, type LoopOutcome } from '@artemis/agent-loop';
+import { type Clock, uuid } from '@artemis/core';
 import type { ConversationEvent } from '@artemis/contracts/chat-types';
-import type { ToolResult } from '@artemis/tools';
+import type { ToolContext, ToolResult } from '@artemis/tools';
 import type { Storage, ToolCallStatus } from '@artemis/storage';
-import type { CallStateFilter } from '../turns/envelope.ts';
+import type { CallStateFilter } from '../calls/call-state-filter.ts';
 
 /** Drives an `AgentLoop` run: `handle` is awaited for every event before the loop continues. */
 export async function drainLoop(events: AsyncIterable<LoopEvent>, handle: (event: LoopEvent) => Promise<void>): Promise<LoopOutcome> {
@@ -12,6 +12,15 @@ export async function drainLoop(events: AsyncIterable<LoopEvent>, handle: (event
     await handle(event);
   }
   throw new Error('The agent loop ended without an outcome');
+}
+
+/**
+ * One `AgentLoop` run whose every event is handed to `persistence` (persisted and
+ * published) before the loop continues. Resolves with the loop's outcome.
+ */
+export function runLoop<C extends ToolContext>(input: Omit<LoopInput<C>, 'newMessageId'>, persistence: LoopPersistence): Promise<LoopOutcome> {
+  const events = new AgentLoop().run<C>({ ...input, newMessageId: () => uuid() });
+  return drainLoop(events, (event) => persistence.handle(event));
 }
 
 interface LoopScope {

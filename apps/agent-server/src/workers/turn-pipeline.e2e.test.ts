@@ -1,23 +1,21 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import type { ConversationEvent } from '@artemis/contracts/chat-types';
 import { BusyError } from '@artemis/core';
 import type { LlmRequest } from '@artemis/llm';
-import { McpCatalog, McpClient } from '@artemis/mcp';
+import { McpCatalog } from '@artemis/mcp';
 import type { Storage } from '@artemis/storage';
-import type { AgentServerConfig } from '../config.ts';
+import { createTestDatabase, dropTestDatabase, type TestDatabase } from '@artemis/storage/postgres/testing';
 import { compose } from '../compose.ts';
+import type { AgentServerConfig } from '../config.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
-import { MemoryCoordinator } from '../memory/coordinator.ts';
 import { PromptRenderer } from '../prompts/renderer.ts';
-import { TitleService } from '../titles/title-service.ts';
-import { type AgentRuntime, createAgentRuntime } from './runtime.ts';
-import { FixedRouter, ManualClock, RecordingHub, ScriptedProvider, silentLogger, type Step, testConfig, until } from './test-support.ts';
+import { FixedRouter, ManualClock, NoMcp, NoMemory, NoTitles, RecordingHub, ScriptedProvider, silentLogger, type Step, testConfig, until } from '../../test/workers-support.ts';
+import { type AgentRuntime, createAgentRuntime } from './wiring.ts';
 import type { TurnSubmission } from './types.ts';
 
 /**
@@ -31,14 +29,6 @@ const skip = serverUrl === undefined ? 'set TEST_DATABASE_URL to run the turn pi
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ANSWER = 'Hi from the fake model';
-
-/** `pg` is a dependency of the storage package, not of the agent server: resolve it from there. */
-const requireFromStorage = createRequire(import.meta.resolve('@artemis/storage'));
-const { Pool } = requireFromStorage('pg') as { Pool: new (options: { connectionString: string }) => PgPool };
-interface PgPool {
-  query(text: string): Promise<unknown>;
-  end(): Promise<void>;
-}
 
 const textTurn = (text: string): TurnSubmission => ({ kind: 'user', modality: 'text', mode: 'text', effort: 'medium', text });
 
@@ -75,31 +65,6 @@ class FixedPrompts extends PromptRenderer {
   }
 }
 
-class NoMemory extends MemoryCoordinator {
-  async conversationActivated(): Promise<void> {}
-  async recallFor(): Promise<[]> {
-    return [];
-  }
-  async turnCompleted(): Promise<void> {}
-  async flush(): Promise<void> {}
-  start(): void {}
-  async stop(): Promise<void> {}
-}
-
-class NoTitles extends TitleService {
-  request(): void {}
-  async stop(): Promise<void> {}
-}
-
-class NoMcp extends McpClient {
-  async listTools(): Promise<never[]> {
-    return [];
-  }
-  async callTool(): Promise<never> {
-    throw new Error('MCP is not used in these tests');
-  }
-  async close(): Promise<void> {}
-}
 
 interface Rig {
   hub: RecordingHub;
@@ -123,7 +88,7 @@ async function buildRig(storage: Storage, provider: ScriptedProvider, overrides:
     memory: new NoMemory(),
     calls: createCallSessions(clock),
     titles: new NoTitles(),
-    workspace: compose.filesystemWorkspace({ root: workspaceRoot, displayRoot: '/workspace' }),
+    workspace: compose(config).workspace,
     catalog,
     mcp: new NoMcp(),
     memoryTools: [],
@@ -158,30 +123,17 @@ function turnEnds(hub: RecordingHub): Extract<ConversationEvent, { type: 'turn_e
 
 describe('turn pipeline over Postgres', { skip }, () => {
   let storage: Storage;
-  let databaseName: string;
+  let database: TestDatabase;
 
   before(async () => {
-    databaseName = `artemis_turns_${randomUUID().replaceAll('-', '')}`;
-    const admin = new Pool({ connectionString: serverUrl ?? '' });
-    try {
-      await admin.query(`CREATE DATABASE ${databaseName}`);
-    } finally {
-      await admin.end();
-    }
-    const url = new URL(serverUrl ?? '');
-    url.pathname = `/${databaseName}`;
-    storage = compose.postgresStorage({ connectionString: url.toString() });
+    database = await createTestDatabase(serverUrl ?? '');
+    storage = compose({ ...testConfig(tmpdir()), databaseUrl: database.url }).storage;
     await storage.migrate();
   });
 
   after(async () => {
     await storage?.close();
-    const cleanup = new Pool({ connectionString: serverUrl ?? '' });
-    try {
-      await cleanup.query(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
-    } finally {
-      await cleanup.end();
-    }
+    if (database) await dropTestDatabase(serverUrl ?? '', database.name);
   });
 
   test('a text turn persists uuid-keyed rows, publishes turn_start then a successful turn_end and touches last_message_at', async () => {

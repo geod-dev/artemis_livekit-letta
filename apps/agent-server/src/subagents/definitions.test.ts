@@ -10,7 +10,7 @@ import {
   parseSubagentDefinition,
 } from './definitions.ts';
 
-const REAL_AGENTS = fileURLToPath(new URL('../../prompts/agents', import.meta.url));
+const REAL_AGENTS = fileURLToPath(new URL('../../templates/agents', import.meta.url));
 
 describe('parseSubagentDefinition', () => {
   it('reads name, description and the body', () => {

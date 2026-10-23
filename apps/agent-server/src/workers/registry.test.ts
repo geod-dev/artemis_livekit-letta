@@ -1,52 +1,28 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Clock, Logger } from '@artemis/core';
+import { FakeClock as CoreFakeClock } from '@artemis/core/testing';
 import { type Reapable, KeyedRegistry } from './registry.ts';
 
-/** Manual clock: time moves only through `advance`, which fires due intervals in order. */
-class FakeClock implements Clock {
-  time = 0;
-  private readonly timers: { at: number; every: number; fn: () => void; cancelled: boolean }[] = [];
+/** The core manual clock, counting the reaper intervals that are still scheduled. */
+class CountingClock extends CoreFakeClock {
+  private open = 0;
 
-  now(): number {
-    return this.time;
-  }
-
-  setTimeout(fn: () => void, ms: number): { cancel(): void } {
-    return this.schedule(fn, ms, 0);
-  }
-
-  setInterval(fn: () => void, ms: number): { cancel(): void } {
-    return this.schedule(fn, ms, ms);
-  }
-
-  advance(ms: number): void {
-    const target = this.time + ms;
-    for (;;) {
-      const next = this.timers
-        .filter((timer) => !timer.cancelled && timer.at <= target)
-        .sort((a, b) => a.at - b.at)[0];
-      if (!next) break;
-      this.time = next.at;
-      if (next.every > 0) next.at += next.every;
-      else next.cancelled = true;
-      next.fn();
-    }
-    this.time = target;
+  override setInterval(fn: () => void, ms: number): { cancel(): void } {
+    const handle = super.setInterval(fn, ms);
+    let cancelled = false;
+    this.open += 1;
+    return {
+      cancel: () => {
+        if (!cancelled) this.open -= 1;
+        cancelled = true;
+        handle.cancel();
+      },
+    };
   }
 
   activeTimers(): number {
-    return this.timers.filter((timer) => !timer.cancelled).length;
-  }
-
-  private schedule(fn: () => void, ms: number, every: number) {
-    const timer = { at: this.time + ms, every, fn, cancelled: false };
-    this.timers.push(timer);
-    return {
-      cancel: () => {
-        timer.cancelled = true;
-      },
-    };
+    return this.open;
   }
 }
 
@@ -59,7 +35,7 @@ class FakeEntry implements Reapable {
 
   constructor(
     readonly key: string,
-    private readonly clock: FakeClock
+    private readonly clock: CountingClock
   ) {
     this.activity = clock.now();
   }
@@ -83,7 +59,7 @@ class FakeEntry implements Reapable {
 }
 
 function setup(options: { idleMs?: number; sweepEveryMs?: number; logger?: Logger } = {}) {
-  const clock = new FakeClock();
+  const clock = new CountingClock();
   const created: FakeEntry[] = [];
   const disposed: { key: string; reason: string }[] = [];
   const registry = new KeyedRegistry<FakeEntry>({
@@ -112,7 +88,7 @@ test('concurrent gets for one key create the entry once', async () => {
 
 test('a failed create is not cached and the next get tries again', async () => {
   let attempts = 0;
-  const clock = new FakeClock();
+  const clock = new CountingClock();
   const registry = new KeyedRegistry<FakeEntry>({
     create: async (key) => {
       attempts++;

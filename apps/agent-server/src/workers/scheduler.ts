@@ -1,8 +1,7 @@
 import { BusyError } from '@artemis/core';
 
 /**
- * FIFO promise-chain serializer with a pending limit (port of
- * pre-refactor assistant/runtime/scheduler.ts). One per main agent worker:
+ * FIFO promise-chain serializer with a pending limit. One per main agent worker:
  * user, voice and update turns of a conversation never overlap.
  */
 export class SerialScheduler {

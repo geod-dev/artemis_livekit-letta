@@ -13,16 +13,16 @@ import {
   type ModelRoute,
   type StopReason,
 } from '@artemis/llm';
+import { compose } from '../src/compose.ts';
 import { EphemeralStorage } from '@artemis/storage/testing';
-import type { AgentServerConfig } from '../config.ts';
-import { compose } from '../compose.ts';
-import { ConversationEventHub } from '../events/hub.ts';
-import { MemoryCoordinator } from '../memory/coordinator.ts';
-import type { ModelRouter, RouteKind } from '../models/routing.ts';
-import { PromptRenderer } from '../prompts/renderer.ts';
-import { createCallSessions } from '../calls/call-sessions.ts';
-import { TitleService } from '../titles/title-service.ts';
-import { createAgentRuntime, type AgentRuntime } from './runtime.ts';
+import type { AgentServerConfig } from '../src/config.ts';
+import { createCallSessions } from '../src/calls/call-sessions.ts';
+import { ConversationEventHub } from '../src/events/hub.ts';
+import type { MemoryCoordinator } from '../src/memory/coordinator.ts';
+import type { ModelRouter, RouteKind } from '../src/models/routing.ts';
+import { PromptRenderer } from '../src/prompts/renderer.ts';
+import type { TitleService } from '../src/titles/title-service.ts';
+import { type AgentRuntime, createAgentRuntime } from '../src/workers/wiring.ts';
 
 /** Test clock: `advance` moves time; timers are real (their delays are short in tests). */
 export class ManualClock implements Clock {
@@ -146,7 +146,7 @@ class FakePrompts extends PromptRenderer {
   }
 }
 
-class NoMemory extends MemoryCoordinator {
+export class NoMemory implements MemoryCoordinator {
   async conversationActivated(): Promise<void> {}
   async recallFor(): Promise<[]> {
     return [];
@@ -157,12 +157,13 @@ class NoMemory extends MemoryCoordinator {
   async stop(): Promise<void> {}
 }
 
-class NoTitles extends TitleService {
+export class NoTitles implements TitleService {
   request(): void {}
+  async idle(): Promise<void> {}
   async stop(): Promise<void> {}
 }
 
-class NoMcp extends McpClient {
+export class NoMcp extends McpClient {
   async listTools(): Promise<never[]> {
     return [];
   }
@@ -188,7 +189,7 @@ export function testConfig(workspaceRoot: string, overrides: Partial<AgentServer
     token: 'test',
     databaseUrl: '',
     assistant: { name: 'Test', timezone: 'Europe/Paris', presentTool: false },
-    models: { assistant: 'anthropic/test-model', task: 'openai-compatible/test', title: 'anthropic/test-model' },
+    models: { assistant: 'anthropic/test-model', task: 'anthropic/test-model', title: 'anthropic/test-model' },
     providers: {},
     workspace: { root: workspaceRoot, displayRoot: '/workspace', readOnlyPrefixes: ['data/'] },
     workers: { idleTimeoutMs: 120_000, backgroundAfterMs: 200, maxPendingTurns: 32, maxSubagents: 4, ...overrides },
@@ -240,7 +241,7 @@ export async function createHarness(
     memory: new NoMemory(),
     calls: createCallSessions(clock),
     titles: new NoTitles(),
-    workspace: compose.filesystemWorkspace({ root: workspaceRoot, displayRoot: '/workspace' }),
+    workspace: compose(config).workspace,
     catalog,
     mcp: new NoMcp(),
     memoryTools: [],

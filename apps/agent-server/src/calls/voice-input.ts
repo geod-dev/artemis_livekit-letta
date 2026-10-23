@@ -1,7 +1,7 @@
 import type { Clock } from '@artemis/core';
 
 /**
- * Voice input extraction (port of pre-refactor assistant/calls/voice-input.ts).
+ * Voice input extraction .
  * LiveKit re-sends the whole conversation on every completion request, so the
  * new utterance is the trailing run of user messages. Text is never an
  * identity: saying the same words twice is valid input. Only LiveKit item ids

@@ -8,6 +8,7 @@ import { MAX_TOOL_TEXT, type ToolContext, type ToolResult, Toolset } from '@arte
 import { type CommandHandoff, createWorkspaceTools } from '@artemis/tools/workspace-tools';
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { compose } from '../compose.ts';
+import { testConfig } from '../../test/workers-support.ts';
 
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -26,7 +27,7 @@ after(async () => {
 beforeEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   await mkdir(root, { recursive: true });
-  transport = compose.filesystemWorkspace({ root, ripgrep: 'off' });
+  transport = compose(testConfig(root)).workspace;
 });
 
 type Adopted = Parameters<CommandHandoff['adopt']>[0];
