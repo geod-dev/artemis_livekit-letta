@@ -1,8 +1,8 @@
 import { type ComponentProps, type RefObject, useEffect, useRef, useState } from 'react';
 import { PauseIcon, PlayIcon } from 'lucide-react';
+import { field, inkButton, mono, paper } from '@/components/ui/surfaces';
 import { formatMediaDuration } from '@/lib/media-format';
 import { cn } from '@/lib/shadcn/utils';
-import { field, inkButton, mono, paper } from '@/components/assistant-ui/shared/surfaces';
 
 interface AudioPlayerProps extends Omit<ComponentProps<'div'>, 'children'> {
   src: string;

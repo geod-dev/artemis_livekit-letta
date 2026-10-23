@@ -22,22 +22,16 @@ import { ThreadFollowupSuggestions } from '@/components/assistant-ui/chat/follow
 import { ThreadMessage } from '@/components/assistant-ui/chat/messages';
 import {
   EMPTY_COMPONENTS,
+  EasterEggContext,
+  type RecordingStatus,
+  RecordingStatusContext,
   ThreadComponentsContext,
   type ThreadProps,
 } from '@/components/assistant-ui/chat/thread-context';
 import { ThreadComposer } from '@/components/assistant-ui/composer/thread-composer';
-import { IconButton } from '@/components/assistant-ui/shared/icon-button';
-import { ConversationAtmosphere } from '@/components/chat/conversation-atmosphere';
-import { Mascot } from '@/components/chat/mascot';
-import {
-  MascotEasterEggContext,
-  MascotRecordingContext,
-  WelcomeContinuation,
-  useChatThread,
-} from '@/components/chat/thread-slots';
-import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
+import { IconButton } from '@/components/ui/icon-button';
+import { pickWelcomeSuggestions } from '@/content/welcome-suggestions';
 import { cn } from '@/lib/shadcn/utils';
-import { pickWelcomeSuggestions } from '@/lib/welcome-suggestions';
 
 export type { ThreadComponents, ThreadProps } from '@/components/assistant-ui/chat/thread-context';
 // No messages: the new-chat page. A thread that is still loading (only when
@@ -46,6 +40,8 @@ const isNewChatView = (s: AssistantState) => s.thread.messages.length === 0 && !
 
 export const Thread: FC<ThreadProps> = ({
   components = EMPTY_COMPONENTS,
+  callButton,
+  contextUsage,
   autoFocus = true,
   placeholder = 'Send a message...',
 }) => {
@@ -53,7 +49,13 @@ export const Thread: FC<ThreadProps> = ({
 
   return (
     <ThreadComponentsContext.Provider value={components}>
-      <ThreadRoot isEmpty={isEmpty} autoFocus={autoFocus} placeholder={placeholder} />
+      <ThreadRoot
+        isEmpty={isEmpty}
+        autoFocus={autoFocus}
+        placeholder={placeholder}
+        callButton={callButton}
+        contextUsage={contextUsage}
+      />
     </ThreadComponentsContext.Provider>
   );
 };
@@ -62,17 +64,20 @@ const ThreadRoot: FC<{
   isEmpty: boolean;
   autoFocus: boolean;
   placeholder: string;
-}> = ({ isEmpty, autoFocus, placeholder }) => {
+  callButton: ThreadProps['callButton'];
+  contextUsage: ThreadProps['contextUsage'];
+}> = ({ isEmpty, autoFocus, placeholder, callButton, contextUsage }) => {
   const aui = useAui();
   const {
     Welcome = ThreadWelcome,
     BeforeComposer,
     ComposerEffort,
+    Backdrop,
+    Overlay,
   } = useContext(ThreadComponentsContext);
-  const { callButton } = useChatThread();
   const viewportRef = useRef<HTMLDivElement>(null);
   const [mascotEasterEgg, setMascotEasterEgg] = useState(false);
-  const [recordingStatus, setRecordingStatus] = useState<VoiceRecorderStatus>('idle');
+  const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle');
   // A new chat starts at the top, even when the previous conversation was
   // scrolled down. Keep this independent of mascot positioning.
   const threadId = useAuiState((s) => s.threadListItem.id);
@@ -149,9 +154,9 @@ const ThreadRoot: FC<{
       className="aui-root aui-thread-root @container relative flex h-full flex-col"
       data-empty={isEmpty ? 'true' : undefined}
     >
-      {!isEmpty && <ConversationAtmosphere viewportRef={viewportRef} />}
-      <MascotEasterEggContext.Provider value={setMascotEasterEgg}>
-        <MascotRecordingContext.Provider value={setRecordingStatus}>
+      {!isEmpty && Backdrop && <Backdrop viewportRef={viewportRef} />}
+      <EasterEggContext.Provider value={setMascotEasterEgg}>
+        <RecordingStatusContext.Provider value={setRecordingStatus}>
           <ThreadPrimitive.Viewport
             // Bottom-anchored (the default): opens at the latest message, jumps to
             // the bottom on send, and follows a growing reply while the reader is
@@ -203,6 +208,7 @@ const ThreadRoot: FC<{
                   docked={!isEmpty}
                   ComposerEffort={ComposerEffort}
                   callButton={callButton}
+                  contextUsage={contextUsage}
                 />
                 <AuiIf condition={isNewChatView}>
                   <ThreadSuggestions />
@@ -210,14 +216,15 @@ const ThreadRoot: FC<{
               </ThreadPrimitive.ViewportFooter>
             </div>
           </ThreadPrimitive.Viewport>
-          {/* One persistent mascot can travel between the chat and settings header. */}
-          <Mascot
-            viewportRef={viewportRef}
-            easterEggEnabled={mascotEasterEgg}
-            recordingStatus={recordingStatus}
-          />
-        </MascotRecordingContext.Provider>
-      </MascotEasterEggContext.Provider>
+          {Overlay && (
+            <Overlay
+              viewportRef={viewportRef}
+              easterEggEnabled={mascotEasterEgg}
+              recordingStatus={recordingStatus}
+            />
+          )}
+        </RecordingStatusContext.Provider>
+      </EasterEggContext.Provider>
     </ThreadPrimitive.Root>
   );
 };
@@ -250,6 +257,7 @@ const ThreadWelcome: FC = () => {
 // move when the first character removes the suggestions.
 const ThreadSuggestions: FC = () => {
   const aui = useAui();
+  const { WelcomeFooter } = useContext(ThreadComponentsContext);
   const composerEmpty = useAuiState((s) => s.composer.isEmpty);
   const [starters, setStarters] = useState(pickWelcomeSuggestions);
   const icons = {
@@ -291,7 +299,7 @@ const ThreadSuggestions: FC = () => {
         );
       })}
       <div className="welcome-suggestions-footer">
-        <WelcomeContinuation tabIndex={composerEmpty ? 0 : -1} />
+        {WelcomeFooter && <WelcomeFooter tabIndex={composerEmpty ? 0 : -1} />}
         <button
           type="button"
           className="welcome-refresh"

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Command } from 'cmdk';
 import { MenuIcon, MessageCirclePlusIcon, SearchIcon, SettingsIcon, XIcon } from 'lucide-react';
+import { Dialog as DialogPrimitive } from 'radix-ui';
 import { useAuiState } from '@assistant-ui/react';
-import Drawer from '@mui/material/Drawer';
 import {
   ThreadListItems,
   ThreadListNew,
   ThreadListRoot,
   ThreadSearchResults,
-} from '@/components/assistant-ui/chat/thread-list';
+} from '@/components/chat/conversation-list';
 import { SidebarItem } from '@/components/chat/sidebar-item';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -53,6 +53,7 @@ export function Sidebar({
     const start = (event: TouchEvent) => {
       if (event.defaultPrevented || event.touches.length !== 1) return;
       const touch = event.touches[0];
+      if (!touch) return;
       gesture = { x: touch.clientX, y: touch.clientY, distance: 0, dragging: false };
     };
     const move = (event: TouchEvent) => {
@@ -62,8 +63,10 @@ export function Sidebar({
         setSwipeOffset(null);
         return;
       }
-      const dx = event.touches[0].clientX - gesture.x;
-      const dy = Math.abs(event.touches[0].clientY - gesture.y);
+      const touch = event.touches[0];
+      if (!touch) return;
+      const dx = touch.clientX - gesture.x;
+      const dy = Math.abs(touch.clientY - gesture.y);
       if (!gesture.dragging) {
         if (Math.max(Math.abs(dx), dy) < 8) return;
         // Lock direction once, so scrolling never turns into a sidebar gesture.
@@ -205,34 +208,11 @@ export function Sidebar({
         <MenuIcon className="size-5" />
       </Button>
       {mobileViewport && (
-        <Drawer
-          anchor="left"
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          ModalProps={{ keepMounted: true }}
-          transitionDuration={240}
-          slotProps={{
-            root: {
-              style: { zIndex: 50, ...(swipeOffset !== null && { visibility: 'visible' }) },
-            },
-            paper: {
-              ref: (element: unknown) => {
-                drawerPaper.current = element instanceof HTMLDivElement ? element : null;
-              },
-              style: {
-                ...(swipeOffset !== null && { visibility: 'visible' }),
-                translate: `${swipeOffset ?? 0}px 0`,
-                transition: swipeOffset !== null ? 'none' : undefined,
-              },
-              id: 'mobile-chat-drawer',
-              role: 'dialog',
-              'aria-modal': mobileOpen ? true : undefined,
-              'aria-labelledby': 'mobile-chat-drawer-title',
-              className: `app-sidebar surface-panel mobile-chat-drawer group/sidebar${swipeOffset !== null ? ' is-dragging' : ''}`,
-            },
-            backdrop: {
-              className: 'mobile-chat-backdrop',
-              style:
+        <DialogPrimitive.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay
+              className="mobile-chat-backdrop data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50"
+              style={
                 swipeOffset !== null
                   ? {
                       opacity:
@@ -241,15 +221,26 @@ export function Sidebar({
                       visibility: 'visible',
                       transition: 'none',
                     }
-                  : undefined,
-            },
-          }}
-        >
-          <h2 id="mobile-chat-drawer-title" className="sr-only">
-            Chats
-          </h2>
-          {content}
-        </Drawer>
+                  : undefined
+              }
+            />
+            <DialogPrimitive.Content
+              id="mobile-chat-drawer"
+              ref={drawerPaper}
+              aria-describedby={undefined}
+              className={`app-sidebar surface-panel mobile-chat-drawer group/sidebar data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:animate-in fixed inset-y-0 left-0 z-50 outline-none data-[state=open]:slide-in-from-left${swipeOffset !== null ? 'is-dragging' : ''}`}
+              style={{
+                translate: `${swipeOffset ?? 0}px 0`,
+                transition: swipeOffset !== null ? 'none' : undefined,
+              }}
+            >
+              <DialogPrimitive.Title id="mobile-chat-drawer-title" className="sr-only">
+                Chats
+              </DialogPrimitive.Title>
+              {content}
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
       )}
       <Dialog open={searchOpen} onOpenChange={onSearchOpenChange}>
         <DialogContent

@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { DownloadIcon, FileXIcon } from 'lucide-react';
+import { getMimeTypeIcon } from '@/components/files/file-icons';
 import { apiFetch } from '@/lib/api';
 import { workspaceUrl } from '@/lib/attachments';
-import { getMimeTypeIcon } from '@/lib/file-icons';
 import { fileKind } from '@/lib/file-kinds';
 import { formatFileSize } from '@/lib/media-format';
 import { TtlLruCache } from '@/lib/ttl-lru-cache';
@@ -50,7 +50,7 @@ function fileInfo(path: string): Promise<FileInfo> {
         if (!res.ok) return { status: 'missing' };
         return {
           status: 'ready',
-          type: (res.headers.get('content-type') ?? '').split(';')[0],
+          type: (res.headers.get('content-type') ?? '').split(';')[0] ?? '',
           size: Number(res.headers.get('content-length') ?? 0),
         };
       })

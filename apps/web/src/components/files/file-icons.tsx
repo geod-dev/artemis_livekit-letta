@@ -8,7 +8,7 @@ import {
   VideoIcon,
   createLucideIcon,
 } from 'lucide-react';
-import { type FileKind, fileKind } from './file-kinds';
+import { type FileKind, fileKind } from '@/lib/file-kinds';
 
 const FileMarkdownIcon = createLucideIcon('file-markdown', [
   [

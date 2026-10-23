@@ -1,9 +1,7 @@
 import { createContext, useContext } from 'react';
 import { type AgentRun, stripLeadingEmoji } from '@/lib/agent-runs';
 
-export type ActivityTask = AgentRun;
-
-export function taskTitle(task: Pick<ActivityTask, 'title' | 'kind'>): string {
+export function taskTitle(task: Pick<AgentRun, 'title' | 'kind'>): string {
   const title = (task.title.trim() || 'Background task')
     .replace(/^Background task (?:finished|failed|stopped):\s*/i, '')
     .replace(/\s+-\s+background task (?:finished|failed|stopped)$/i, '');
@@ -12,8 +10,8 @@ export function taskTitle(task: Pick<ActivityTask, 'title' | 'kind'>): string {
 }
 
 export const ActivityContext = createContext<{
-  tasks: ActivityTask[];
-  openTask: (task: ActivityTask) => void;
+  tasks: AgentRun[];
+  openTask: (task: AgentRun) => void;
   stopTask: (id: string) => Promise<void>;
   stopping: Set<string>;
   error: string | null;

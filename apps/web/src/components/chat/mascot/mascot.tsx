@@ -1,10 +1,21 @@
-import { type RefObject, type SVGProps, useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuiState } from '@assistant-ui/react';
 import { useAgent } from '@livekit/components-react';
-import { useChatThread } from '@/components/chat/thread-slots';
-import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
+import { useChatThread } from '@/components/chat/chat-thread-context';
+import type { VoiceRecorderStatus } from '@/components/voice';
 import { cn } from '@/lib/shadcn/utils';
+import {
+  type Box,
+  MAX_EYE_SHIFT,
+  MOODS,
+  type Mode,
+  SLEEPY_AFTER,
+  STABLE_FRAMES,
+} from './constants';
+import { clampToViewport, findSpot, toBox } from './geometry';
+import { MascotMark } from './mascot-mark';
+import { useRandomBlink } from './use-random-blink';
 
 /**
  * Artemis's mascot lives in a shared viewport overlay outside the scrolling content.
@@ -31,32 +42,6 @@ import { cn } from '@/lib/shadcn/utils';
  * 16×35 pills centred at x=37/63, y=50. The eyes clear the ring by ~13 units;
  * they never move more than MAX_EYE_SHIFT, so they never touch it.
  */
-
-type Mode = 'hidden' | 'loading' | 'welcome' | 'waiting' | 'writing' | 'idle';
-type Box = { x: number; y: number; s: number };
-
-const INLINE_SIZE = 23;
-const GAP_AFTER_TEXT = 6;
-const MAX_EYE_SHIFT = 4;
-const MOODS = ['neutral', 'curious', 'pleased'] as const;
-const SLEEPY_AFTER = 12_000;
-/** Frames of unchanged scroll required before the mascot travels. */
-const STABLE_FRAMES = 3;
-
-/** Shared Artemis mark for the app header and animated chat mascot. */
-export function MascotMark({ children, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="-2 -2 104 104" {...props}>
-      <circle cx="50" cy="50" r="43.75" fill="none" stroke="currentColor" strokeWidth="12.5" />
-      {children ?? (
-        <g fill="currentColor">
-          <rect x="29" y="32.5" width="16" height="35" rx="8" />
-          <rect x="55" y="32.5" width="16" height="35" rx="8" />
-        </g>
-      )}
-    </svg>
-  );
-}
 
 export function Mascot({
   viewportRef,
@@ -499,147 +484,4 @@ export function Mascot({
     </div>,
     document.body
   );
-}
-
-/** A box in the container's coordinates, on whole pixels. */
-function toBox(container: HTMLElement, x: number, y: number, size: number): Box {
-  const origin = container.getBoundingClientRect();
-  return { x: Math.round(x - origin.left), y: Math.round(y - origin.top), s: Math.round(size) };
-}
-
-/** Offscreen anchors get a visible destination instead of blocking movement. */
-function clampToViewport(box: Box, overlay: HTMLElement, viewport: HTMLElement): Box {
-  const origin = overlay.getBoundingClientRect();
-  const v = viewport.getBoundingClientRect();
-  const left = v.left + viewport.clientLeft - origin.left;
-  const top = v.top + viewport.clientTop - origin.top;
-  const size = Math.min(box.s, viewport.clientWidth, viewport.clientHeight);
-  return {
-    x: Math.max(left, Math.min(box.x, left + viewport.clientWidth - size)),
-    y: Math.max(top, Math.min(box.y, top + viewport.clientHeight - size)),
-    s: size,
-  };
-}
-
-/**
- * Where the mascot should be, in the overlay's coordinates, and the mode it
- * is really in. 'hold' means its next spot is not rendered yet. `onWrap`
- * receives the message it dropped below, if any.
- */
-function findSpot(
-  viewport: HTMLElement,
-  container: HTMLElement,
-  mode: Mode,
-  placed: boolean,
-  onWrap: (message: Element) => void
-): { box: Box; mode: Mode } | 'hold' | 'offscreen' | null {
-  const at = (x: number, y: number, size: number, as: Mode = mode) => ({
-    box: toBox(container, x, y, size),
-    mode: as,
-  });
-  const visibleAt = (x: number, y: number, size: number, as: Mode = mode) => {
-    const rect = viewport.getBoundingClientRect();
-    const left = rect.left + viewport.clientLeft;
-    const top = rect.top + viewport.clientTop;
-    const inside =
-      x >= left &&
-      y >= top &&
-      x + size <= left + viewport.clientWidth &&
-      y + size <= top + viewport.clientHeight;
-    return inside ? at(x, y, size, as) : 'offscreen';
-  };
-  if (mode === 'hidden') return null;
-  if (mode === 'welcome' || mode === 'loading') {
-    const anchor = viewport.querySelector(
-      `[data-mascot-anchor="${mode === 'loading' ? 'loading' : 'welcome'}"]`
-    );
-    // Welcome screen not rendered yet: stay where it is (hidden until placed).
-    if (!anchor) return placed ? 'hold' : null;
-    const r = anchor.getBoundingClientRect();
-    return visibleAt(r.left, r.top, r.width);
-  }
-
-  const waiting = viewport.querySelector('[data-mascot-anchor="waiting"]');
-  if (waiting) {
-    const r = waiting.getBoundingClientRect();
-    return visibleAt(r.left, r.top + (r.height - INLINE_SIZE) / 2, INLINE_SIZE, 'waiting');
-  }
-
-  const messages = viewport.querySelectorAll('[data-mascot-message]');
-  const last = messages[messages.length - 1];
-  if (!last) return null;
-  const end = lastCharacterRect(last);
-  if (end) {
-    const bounds = last.getBoundingClientRect();
-    if (end.right + GAP_AFTER_TEXT + INLINE_SIZE > bounds.right) {
-      onWrap(last);
-      // Link previews come between the text and the action bar: go below them,
-      // keeping the same offset from the action bar as below plain text.
-      const previews = last.parentElement?.querySelector(':scope > [data-mascot-previews]');
-      const shift = previews ? previews.getBoundingClientRect().bottom - bounds.bottom : 0;
-      return visibleAt(bounds.left, end.bottom + 2 + shift, INLINE_SIZE);
-    }
-    return visibleAt(
-      end.right + GAP_AFTER_TEXT,
-      end.top + end.height / 2 - INLINE_SIZE / 2,
-      INLINE_SIZE
-    );
-  }
-  const r = last.getBoundingClientRect();
-  return visibleAt(r.left, r.bottom - INLINE_SIZE, INLINE_SIZE);
-}
-
-/** The box of the last visible character in an element (skipping buttons and screen-reader text). */
-function lastCharacterRect(element: Element): DOMRect | null {
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => {
-      const parent = node.parentElement;
-      if (!node.textContent?.trim() || !parent) return NodeFilter.FILTER_REJECT;
-      const ignored = parent.closest('button, .sr-only, [aria-hidden="true"]');
-      // Modal libraries may aria-hide a visible app ancestor while a portal is
-      // open. Ignore only hidden elements inside the message being measured.
-      if (ignored && ignored !== element && element.contains(ignored)) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  let last: Text | null = null;
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) last = node as Text;
-  if (!last) return null;
-  const text = last.textContent ?? '';
-  const index = text.trimEnd().length - 1;
-  if (index < 0) return null;
-  const range = document.createRange();
-  range.setStart(last, index);
-  range.setEnd(last, index + 1);
-  const rects = range.getClientRects();
-  const rect = rects[rects.length - 1] ?? range.getBoundingClientRect();
-  return rect.width || rect.height ? rect : null;
-}
-
-/** Blinks at random intervals, sometimes twice in a row. */
-function useRandomBlink(rootRef: RefObject<HTMLDivElement | null>): boolean {
-  const [blinking, setBlinking] = useState(false);
-  useEffect(() => {
-    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let timer: number;
-    const schedule = (delay: number) => {
-      timer = window.setTimeout(() => {
-        setBlinking(
-          !motionQuery.matches &&
-            document.visibilityState === 'visible' &&
-            document.hasFocus() &&
-            rootRef.current?.dataset.mood !== 'sleepy'
-        );
-        timer = window.setTimeout(() => {
-          setBlinking(false);
-          schedule(Math.random() < 0.18 ? 240 : 2200 + Math.random() * 4300);
-        }, 170);
-      }, delay);
-    };
-    schedule(1500 + Math.random() * 3000);
-    return () => window.clearTimeout(timer);
-  }, [rootRef]);
-  return blinking;
 }

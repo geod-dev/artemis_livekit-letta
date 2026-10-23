@@ -8,25 +8,25 @@ import {
   useRef,
 } from 'react';
 import { ArrowUpIcon, AudioLinesIcon, PhoneOffIcon, SquareIcon } from 'lucide-react';
+import type { ConversationContextUsage } from '@artemis/contracts/chat-types';
 import { type AssistantState, AuiIf, ComposerPrimitive, useAuiState } from '@assistant-ui/react';
 import {
-  ComposerAddAttachment,
-  ComposerAttachments,
-} from '@/components/assistant-ui/composer/attachment';
+  RecordingStatusContext,
+  type ThreadCallButton,
+} from '@/components/assistant-ui/chat/thread-context';
 import { ComposerContext } from '@/components/assistant-ui/composer/context';
-import { ComposerVoice, ComposerVoiceButton } from '@/components/assistant-ui/composer/voice';
-import { IconButton } from '@/components/assistant-ui/shared/icon-button';
-import type { ChatThreadState } from '@/components/chat/thread-slots';
-import { MascotRecordingContext, useChatThread } from '@/components/chat/thread-slots';
+import { ComposerAddAttachment, ComposerAttachments } from '@/components/files/attachment';
 import { Button } from '@/components/ui/button';
-import { useVoiceRecorder } from '@/hooks/use-voice-recorder';
+import { IconButton } from '@/components/ui/icon-button';
+import { ComposerVoice, ComposerVoiceButton, useVoiceRecorder } from '@/components/voice';
 
 type ThreadComposerProps = {
   autoFocus: boolean;
   placeholder: string;
   docked: boolean;
   ComposerEffort?: ComponentType | undefined;
-  callButton: ChatThreadState['callButton'];
+  callButton: ThreadCallButton;
+  contextUsage: ConversationContextUsage | null;
 };
 
 // The composer moves between the welcome centre and the conversation footer.
@@ -76,12 +76,17 @@ export const ThreadComposer: FC<ThreadComposerProps> = ({
   docked,
   ComposerEffort,
   callButton,
+  contextUsage,
 }) => {
   const glideRef = useComposerGlide(docked);
   return (
     <div ref={glideRef} className="aui-thread-composer w-full">
       <ComposerRoot autoFocus={autoFocus} placeholder={placeholder}>
-        <ComposerAction ComposerEffort={ComposerEffort} callButton={callButton} />
+        <ComposerAction
+          ComposerEffort={ComposerEffort}
+          callButton={callButton}
+          contextUsage={contextUsage}
+        />
       </ComposerRoot>
     </div>
   );
@@ -116,15 +121,15 @@ const ComposerRoot: FC<{
 
 const ComposerAction: FC<{
   ComposerEffort?: ComponentType | undefined;
-  callButton: ChatThreadState['callButton'];
-}> = ({ ComposerEffort, callButton }) => {
-  const { contextUsage } = useChatThread();
+  callButton: ThreadCallButton;
+  contextUsage: ConversationContextUsage | null;
+}> = ({ ComposerEffort, callButton, contextUsage }) => {
   const isSending = useAuiState(
     (s) =>
       s.composer.submission !== undefined && !(s.thread.isRunning && s.thread.capabilities.cancel)
   );
   const recorder = useVoiceRecorder();
-  const setMascotRecording = useContext(MascotRecordingContext);
+  const setMascotRecording = useContext(RecordingStatusContext);
   useEffect(() => {
     setMascotRecording(recorder.status);
     return () => setMascotRecording('idle');

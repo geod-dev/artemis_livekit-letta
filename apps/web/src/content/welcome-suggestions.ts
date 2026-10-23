@@ -1,3 +1,5 @@
+import { pickOne } from '@/content/greetings';
+
 /** One suggestion from each area keeps the starting points varied. */
 type WelcomeSuggestion = {
   label: string;
@@ -90,6 +92,6 @@ export function pickWelcomeSuggestions(
 ): WelcomeSuggestion[] {
   return GROUPS.map((group, index) => {
     const choices = group.filter((item) => item.label !== previous[index]?.label);
-    return choices[Math.floor(Math.random() * choices.length)];
+    return pickOne(choices);
   });
 }

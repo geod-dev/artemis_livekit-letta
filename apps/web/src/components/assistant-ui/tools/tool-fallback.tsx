@@ -1,6 +1,7 @@
 import { memo, useCallback, useContext, useRef, useState } from 'react';
 import { ChevronDownIcon } from 'lucide-react';
 import { Streamdown } from 'streamdown';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import {
   type ToolCallMessagePartComponent,
   type ToolCallMessagePartStatus,
@@ -11,8 +12,10 @@ import { code } from '@streamdown/code';
 import {
   MARKDOWN_COMPONENTS,
   MARKDOWN_REHYPE_PLUGINS,
+  SHIKI_THEME,
 } from '@/components/assistant-ui/markdown/markdown-text';
 import { BashTerminal } from '@/components/assistant-ui/tools/bash-terminal';
+import { ToolActivityContext } from '@/components/assistant-ui/tools/tool-activity';
 import {
   type ToolCallUi,
   commandIsBackground,
@@ -22,10 +25,8 @@ import {
   toolCallUi,
 } from '@/components/assistant-ui/tools/tool-display';
 import { WebSearchResults } from '@/components/assistant-ui/tools/web-search-results';
-import { ActivityContext } from '@/components/chat/activity-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/shadcn/utils';
-import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { formatToolValue, readToolOutput } from '@/lib/tool-output';
 import { selectToolRenderer, toolResultFormat } from '@/lib/tool-renderer';
 
@@ -140,7 +141,7 @@ function ToolFallbackTrigger({
   const isCancelled = status?.type === 'incomplete' && status.reason === 'cancelled';
 
   const call = toolCall(toolName, argsText, ui);
-  const activity = useContext(ActivityContext);
+  const activity = useContext(ToolActivityContext);
   const run = activity?.tasks.find((task) => task.toolCallId === toolCallId);
   const display = getToolDisplay(call);
   const Icon = display.icon;
@@ -289,7 +290,7 @@ function ToolFallbackResult({
               plugins={TOOL_MARKDOWN_PLUGINS}
               components={MARKDOWN_COMPONENTS}
               rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-              shikiTheme={['github-light', 'github-dark']}
+              shikiTheme={SHIKI_THEME}
               className="aui-tool-fallback-result-content space-y-2 break-words [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:whitespace-pre-wrap"
             >
               {output.text}
@@ -365,7 +366,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   const renderer = selectToolRenderer(call, result, isRunning);
   const showCards = renderer.kind === 'generic';
   const [open, setOpen] = useState(false);
-  const activity = useContext(ActivityContext);
+  const activity = useContext(ToolActivityContext);
   if (toolName === TOOL_NAMES.runAgent) {
     const run = activity?.tasks.find((task) => task.toolCallId === toolCallId);
     const args = call.args;

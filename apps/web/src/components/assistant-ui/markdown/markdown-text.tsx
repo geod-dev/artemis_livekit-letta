@@ -16,21 +16,21 @@ import {
   defaultRehypePlugins,
   useIsCodeFenceIncomplete,
 } from 'streamdown';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import {
   type StreamdownTextComponents,
   StreamdownTextPrimitive,
 } from '@assistant-ui/react-streamdown';
 import { code } from '@streamdown/code';
-import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { LinkPreview } from '@/components/assistant-ui/markdown/link-preview';
+import { Source, SourceIcon, SourceTitle } from '@/components/assistant-ui/markdown/sources';
+import { WorkspaceFileCard, WorkspaceImage } from '@/components/files/workspace-file';
 import { apiFetch } from '@/lib/api';
 import { workspacePath } from '@/lib/attachments';
 import { rehypeCitations } from '@/lib/citations';
 import { cn } from '@/lib/shadcn/utils';
 import { TtlLruCache } from '@/lib/ttl-lru-cache';
 import { hostOf, safeHref } from '../utils/href';
-import { LinkPreview } from '@/components/assistant-ui/markdown/link-preview';
-import { Source, SourceIcon, SourceTitle } from '@/components/assistant-ui/markdown/sources';
-import { WorkspaceFileCard, WorkspaceImage } from '@/components/assistant-ui/files/workspace-file';
 
 /**
  * Streamdown's Mermaid plugin, loaded with the first diagram: it bundles the
@@ -54,7 +54,9 @@ const mermaid: DiagramPlugin = {
       );
     },
     render: async (id, source) =>
-      (await loadMermaid()).getMermaid(appMermaidConfig(config as MermaidConfig)).render(id, source),
+      (await loadMermaid())
+        .getMermaid(appMermaidConfig(config as MermaidConfig))
+        .render(id, source),
   }),
 };
 
@@ -85,7 +87,7 @@ function MermaidError({ chart, error }: MermaidErrorComponentProps) {
 }
 
 const MERMAID = { errorComponent: MermaidError };
-const SHIKI_THEME: ['github-light', 'github-dark'] = ['github-light', 'github-dark'];
+export const SHIKI_THEME: ['github-light', 'github-dark'] = ['github-light', 'github-dark'];
 
 /**
  * Streamdown's rehype plugins, with links resolved against the app's origin:
@@ -95,9 +97,14 @@ const SHIKI_THEME: ['github-light', 'github-dark'] = ['github-light', 'github-da
 type Pluggable = (typeof defaultRehypePlugins)[string];
 type Plugin = Extract<Pluggable, (...args: never[]) => unknown>;
 const [harden, hardenOptions] = defaultRehypePlugins.harden as [Plugin, object];
+const rehypePlugin = (name: string): Pluggable => {
+  const plugin = defaultRehypePlugins[name];
+  if (!plugin) throw new Error(`Missing rehype plugin: ${name}`);
+  return plugin;
+};
 export const MARKDOWN_REHYPE_PLUGINS: Pluggable[] = [
-  defaultRehypePlugins.raw,
-  defaultRehypePlugins.sanitize,
+  rehypePlugin('raw'),
+  rehypePlugin('sanitize'),
   [harden, { ...hardenOptions, defaultOrigin: window.location.origin }],
   rehypeCitations,
 ];
@@ -171,11 +178,7 @@ const labelText = (children: ReactNode) =>
 function SourceBadge({ href, children }: { href: string; children: ReactNode }) {
   const title = labelText(children)?.trim() || hostOf(href) || href;
   return (
-    <Source
-      href={href}
-      size="sm"
-      className="mx-0.5 max-w-full align-middle no-underline"
-    >
+    <Source href={href} size="sm" className="mx-0.5 max-w-full align-middle no-underline">
       <SourceIcon url={href} />
       <SourceTitle className="max-w-64">{title}</SourceTitle>
     </Source>
@@ -197,12 +200,6 @@ function MarkdownLink({ href, children, className, ...props }: ComponentProps<'a
   const safe = safeHref(href);
   const cited = (props as Record<string, unknown>)['data-citation'] !== undefined;
   if (cited && safe) return <SourceBadge href={safe}>{children}</SourceBadge>;
-  let favicon: string | undefined;
-  if (previewOpen && isWebLink && href) {
-    try {
-      favicon = new URL('/favicon.ico', href).href;
-    } catch {}
-  }
   return (
     <span
       className="inline-flex max-w-full flex-col align-baseline"
@@ -233,7 +230,6 @@ function MarkdownLink({ href, children, className, ...props }: ComponentProps<'a
           title={metadata?.title || labelText(children)}
           siteName={hostOf(safe)}
           description={metadata?.description}
-          favicon={favicon}
           layout="compact"
           className="mt-1 w-60 max-w-[min(15rem,80vw)]"
         />
@@ -252,10 +248,7 @@ function MarkdownImage(props: ComponentProps<typeof defaultComponents.img>) {
 /** Keep Markdown tables in the message flow instead of Streamdown's table card. */
 function MarkdownTable({ className, ...props }: ComponentProps<'table'>) {
   return (
-    <table
-      {...props}
-      className={cn(className, 'my-3 w-full border-collapse text-left text-sm')}
-    />
+    <table {...props} className={cn(className, 'my-3 w-full border-collapse text-left text-sm')} />
   );
 }
 

@@ -1,10 +1,11 @@
 /** Attachments and other files of the agent's workspace, as the browser sees them. */
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 /** Where the browser fetches a workspace file, by its path in the workspace. */
 export function workspaceUrl(path: string, { download = false } = {}): string {
-  const url = `/api/workspace/${path.split('/').map(encodeURIComponent).join('/')}`;
+  const url = `${CHAT_HTTP.workspace}/${path.split('/').map(encodeURIComponent).join('/')}`;
   return download ? `${url}?download` : url;
 }
 

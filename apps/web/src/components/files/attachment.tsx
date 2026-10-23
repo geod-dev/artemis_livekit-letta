@@ -7,10 +7,10 @@ import {
   useAui,
   useAuiState,
 } from '@assistant-ui/react';
-import { IconButton } from '@/components/assistant-ui/shared/icon-button';
+import { useAttachmentSrc } from '@/components/files/use-attachment-src';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { useAttachmentSrc } from '@/hooks/use-attachment-src';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/shadcn/utils';
 
 type AttachmentPreviewProps = {

@@ -24,16 +24,11 @@ import {
   ThreadComponentsContext,
   type ThreadGroupPart,
   defaultGroupBy,
-  taskAwareGroupBy,
 } from '@/components/assistant-ui/chat/thread-context';
-import { UserMessageAttachments } from '@/components/assistant-ui/composer/attachment';
-import { File } from '@/components/assistant-ui/files/file';
-import { Image } from '@/components/assistant-ui/files/image';
 import {
   MarkdownText,
   MessageLinkPreviews,
 } from '@/components/assistant-ui/markdown/markdown-text';
-import { field, mono } from '@/components/assistant-ui/shared/surfaces';
 import {
   type ToolCall,
   getToolGroupDisplay,
@@ -47,6 +42,10 @@ import {
   ToolGroupRoot,
   ToolGroupTrigger,
 } from '@/components/assistant-ui/tools/tool-group';
+import { UserMessageAttachments } from '@/components/files/attachment';
+import { File } from '@/components/files/file';
+import { Image } from '@/components/files/image';
+import { field, mono } from '@/components/ui/surfaces';
 import { dayKey, dayLabel, timeLabel } from '@/lib/message-days';
 import { cn } from '@/lib/shadcn/utils';
 
@@ -186,13 +185,8 @@ const ToolCallGroup: FC<PropsWithChildren<{ group: ThreadGroupPart }>> = ({ grou
 };
 
 const AssistantMessage: FC = () => {
-  const {
-    ToolFallback: ToolFallbackComponent = ToolFallback,
-    ToolGroup,
-    ReasoningGroup,
-    TaskGroup: TaskGroupComponent,
-  } = useContext(ThreadComponentsContext);
-  const groupBy = TaskGroupComponent ? taskAwareGroupBy : defaultGroupBy;
+  const { ToolFallback: ToolFallbackComponent = ToolFallback, ToolGroup } =
+    useContext(ThreadComponentsContext);
 
   const ACTION_BAR_PT = 'pt-1.5';
   // Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -209,7 +203,7 @@ const AssistantMessage: FC = () => {
         data-mascot-message=""
         className="peer/content text-foreground px-2 leading-relaxed wrap-break-word"
       >
-        <MessagePrimitive.GroupedParts groupBy={groupBy}>
+        <MessagePrimitive.GroupedParts groupBy={defaultGroupBy}>
           {({ part, children }) => {
             switch (part.type) {
               case 'group-chainOfThought':
@@ -218,8 +212,6 @@ const AssistantMessage: FC = () => {
                     {children}
                   </div>
                 );
-              case 'group-task':
-                return TaskGroupComponent ? <TaskGroupComponent group={part} /> : null;
               case 'group-tool':
                 if (ToolGroup) {
                   return <ToolGroup group={part}>{children}</ToolGroup>;
@@ -230,9 +222,6 @@ const AssistantMessage: FC = () => {
                 }
                 return <ToolCallGroup group={part}>{children}</ToolCallGroup>;
               case 'group-reasoning': {
-                if (ReasoningGroup) {
-                  return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
-                }
                 const running = part.status.type === 'running';
                 return (
                   <ReasoningRoot

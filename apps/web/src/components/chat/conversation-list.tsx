@@ -221,6 +221,7 @@ export function ThreadSearchResults({
 
   const renderItem = (index: number) => {
     const id = threadIds[index];
+    if (id === undefined) return null;
     return (
       <Command.Item
         key={id}

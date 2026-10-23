@@ -5,10 +5,10 @@ import {
   createActionRegistry,
   renderGenerativeUI,
 } from '@assistant-ui/react-generative-ui';
-import { PRESENT_TOOL, presentLibrary } from '@/lib/present-library';
-import { REPLY_ACTION, replyMessage, validatePresent } from '@/lib/generative-ui';
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
 import { ToolFallback } from '@/components/assistant-ui/tools/tool-fallback';
+import { REPLY_ACTION, replyMessage, validatePresent } from '@/lib/generative-ui';
+import { PRESENT_TOOL, presentLibrary } from '@/lib/present-library';
 
 /** The `present` vocabulary, with markdown rendered like message text (workspace files as cards). */
 const library = presentLibrary(({ value, children }) => (
@@ -20,17 +20,17 @@ const library = presentLibrary(({ value, children }) => (
 
 /** Keep a malformed or unexpectedly failing UI local to its own message. */
 class GenerativeUIErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
+  override state = { failed: false };
 
   static getDerivedStateFromError() {
     return { failed: true };
   }
 
-  componentDidCatch(_error: Error, _info: ErrorInfo) {
+  override componentDidCatch(_error: Error, _info: ErrorInfo) {
     // Rendering failures can include model supplied content; do not log it.
   }
 
-  render() {
+  override render() {
     if (this.state.failed) {
       return (
         <div

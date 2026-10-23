@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react';
 import { FileXIcon } from 'lucide-react';
-import {
-  type FileInfo,
-  fileName,
-  useFileInfo,
-} from '@/components/assistant-ui/files/workspace-file';
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
+import { getMimeTypeIcon } from '@/components/files/file-icons';
+import { type FileInfo, fileName, useFileInfo } from '@/components/files/workspace-file';
 import { apiFetch } from '@/lib/api';
 import { workspaceUrl } from '@/lib/attachments';
-import { getMimeTypeIcon } from '@/lib/file-icons';
 import { fileKind, isTextKind } from '@/lib/file-kinds';
 
 /**

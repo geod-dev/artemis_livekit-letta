@@ -1,10 +1,10 @@
 import { memo } from 'react';
 import { DownloadIcon } from 'lucide-react';
 import type { FileMessagePartComponent } from '@assistant-ui/react';
-import { getMimeTypeIcon } from '@/lib/file-icons';
+import { getMimeTypeIcon } from '@/components/files/file-icons';
+import { AudioPlayer, VideoPlayer } from '@/components/files/media-player';
 import { formatFileSize } from '@/lib/media-format';
 import { cn } from '@/lib/shadcn/utils';
-import { AudioPlayer, VideoPlayer } from '@/components/assistant-ui/files/media-player';
 
 type FileDataKind = 'data-uri' | 'url' | 'base64' | 'id';
 

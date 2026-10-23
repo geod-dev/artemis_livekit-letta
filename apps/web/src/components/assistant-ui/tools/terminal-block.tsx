@@ -1,6 +1,6 @@
 import { type ComponentProps, useId, useState } from 'react';
 import { CheckIcon, CopyIcon, Loader2Icon, XIcon } from 'lucide-react';
-import { ghostButton, mono, paper } from '@/components/assistant-ui/shared/surfaces';
+import { ghostButton, mono, paper } from '@/components/ui/surfaces';
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard';
 import { cn } from '@/lib/shadcn/utils';
 import { clamp, take } from '../utils/range';

@@ -45,7 +45,14 @@ export function greetingsFor(hour: number, name: string): string[] {
   return [...ANYTIME, ...timed].map((g) => (typeof g === 'string' ? g : g(name)));
 }
 
+/** One item, chosen at random. Throws when there is none to choose from. */
+export function pickOne<T>(items: readonly T[], random = Math.random): T {
+  const item = items[Math.floor(random() * items.length)];
+  if (item === undefined) throw new RangeError('pickOne needs at least one item');
+  return item;
+}
+
 export function pickGreeting(name: string, now = new Date(), random = Math.random): string {
   const pool = greetingsFor(now.getHours(), name);
-  return pool[Math.floor(random() * pool.length)];
+  return pickOne(pool, random);
 }

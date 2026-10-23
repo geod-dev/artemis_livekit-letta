@@ -10,23 +10,24 @@ import {
   XIcon,
 } from 'lucide-react';
 import type { ChatMessage } from '@artemis/contracts/chat-types';
-import { fileName } from '@/components/assistant-ui/files/workspace-file';
-import { WorkspaceFilePreview } from '@/components/assistant-ui/files/workspace-file-panel';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
-import { IconButton } from '@/components/assistant-ui/shared/icon-button';
+import { taskTitle, useActivity } from '@/components/chat/activity-context';
+import { TaskBubble } from '@/components/chat/task-bubble';
+import { TaskLabel } from '@/components/chat/task-label';
+import { fileName } from '@/components/files/workspace-file';
+import { WorkspaceFilePreview } from '@/components/files/workspace-file-panel';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { IconButton } from '@/components/ui/icon-button';
 import { type TaskKind, commandOutput, filterTaskKinds, groupAgentRuns } from '@/lib/agent-runs';
+import type { AgentRun } from '@/lib/agent-runs';
 import { workspacePath, workspaceUrl } from '@/lib/attachments';
 import { cn } from '@/lib/shadcn/utils';
 import { formatTaskDuration, taskDurationLabel, taskStatusLabel } from '@/lib/task-status';
-import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { readToolOutput } from '@/lib/tool-output';
-import { type ActivityTask, taskTitle, useActivity } from './activity-context';
-import { TaskBubble } from './task-bubble';
-import { TaskLabel } from './task-label';
 
 export type WorkspaceSelection =
-  { type: 'file'; path: string } | { type: 'task'; task: ActivityTask } | null;
+  { type: 'file'; path: string } | { type: 'task'; task: AgentRun } | null;
 export type WorkspaceTab = 'files' | 'tasks';
 
 /** Only files referenced in this conversation belong in its workspace list. */
@@ -73,7 +74,7 @@ export function TaskStopButton({
   className,
   showSpinner = false,
 }: {
-  task: ActivityTask & { runs?: ActivityTask[] };
+  task: AgentRun & { runs?: AgentRun[] };
   className?: string;
   showSpinner?: boolean;
 }) {

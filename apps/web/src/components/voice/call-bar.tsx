@@ -1,8 +1,8 @@
 import { Track } from 'livekit-client';
 import { MicIcon, MicOffIcon } from 'lucide-react';
 import { useAgent, useSessionContext, useTrackToggle } from '@livekit/components-react';
-import { AgentAudioVisualizerBar } from '@/components/agents-ui/agent-audio-visualizer-bar';
 import { Button } from '@/components/ui/button';
+import { AgentAudioVisualizerBar } from '@/components/voice/agent-audio-visualizer-bar';
 
 const STATE_LABEL: Record<string, string> = {
   connecting: 'Connecting…',

@@ -1,7 +1,7 @@
 import { type RefObject, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useAuiState } from '@assistant-ui/react';
 import { useAgent, useTrackVolume } from '@livekit/components-react';
-import { useChatThread } from '@/components/chat/thread-slots';
+import { useChatThread } from '@/components/chat/chat-thread-context';
 import { turnAtmosphere } from '@/lib/conversation-atmosphere';
 
 const DESKTOP = '(min-width: 1024px) and (hover: hover) and (pointer: fine)';

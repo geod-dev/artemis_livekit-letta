@@ -1,10 +1,10 @@
 import { SearchIcon } from 'lucide-react';
+import { SourceIcon } from '@/components/assistant-ui/markdown/sources';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ShimmerLabel, mono, paper } from '@/components/ui/surfaces';
 import { cn } from '@/lib/shadcn/utils';
 import type { WebResult, WebSearchOutput } from '@/lib/web-search';
 import { hostOf, safeHref } from '../utils/href';
-import { SourceIcon } from '@/components/assistant-ui/markdown/sources';
-import { ShimmerLabel, mono, paper } from '@/components/assistant-ui/shared/surfaces';
 
 /**
  * A web search as a small browser window: the query in its address bar, the

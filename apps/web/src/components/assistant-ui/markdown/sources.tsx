@@ -1,10 +1,7 @@
-import { type ComponentProps, memo, useState } from 'react';
+import type { ComponentProps } from 'react';
 import { type VariantProps, cva } from 'class-variance-authority';
-import { FileTextIcon } from 'lucide-react';
-import type { SourceMessagePartComponent } from '@assistant-ui/react';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/shadcn/utils';
-import { hostOf, safeHref } from '../utils/href';
+import { hostOf } from '../utils/href';
 
 const sourceVariants = cva(
   'inline-flex items-center justify-center gap-1 rounded-md text-xs font-medium transition-colors motion-reduce:transition-none [&_svg]:size-3 [&_svg]:shrink-0',
@@ -38,71 +35,26 @@ const sourceVariants = cva(
   }
 );
 
-const defaultFaviconUrl = (domain: string) => `https://icons.duckduckgo.com/ip3/${domain}.ico`;
-
-function SourceIcon({
-  url,
-  className,
-  faviconUrl = defaultFaviconUrl,
-  ...props
-}: ComponentProps<'span'> & {
-  url: string;
-  faviconUrl?: ((domain: string) => string) | undefined;
-}) {
+/** A letter avatar for the cited host. Favicons are not fetched: that would send the reader's browsing to a third party. */
+function SourceIcon({ url, className, ...props }: ComponentProps<'span'> & { url: string }) {
   const domain = hostOf(url);
-  const src = domain === undefined ? undefined : faviconUrl(domain);
-  const [errorSrc, setErrorSrc] = useState<string | undefined>(undefined);
-  const hasError = src === undefined || errorSrc === src;
-
-  if (hasError) {
-    return (
-      <span
-        data-slot="source-icon-fallback"
-        className={cn(
-          'bg-muted flex size-3 shrink-0 items-center justify-center rounded-sm text-[10px] font-medium',
-          className
-        )}
-        {...props}
-      >
-        {domain?.charAt(0).toUpperCase() || '?'}
-      </span>
-    );
-  }
-
   return (
-    <img
-      data-slot="source-icon"
-      src={src}
-      alt=""
-      className={cn('size-3 shrink-0 rounded-sm', className)}
-      onError={() => setErrorSrc(src)}
-      {...(props as ComponentProps<'img'>)}
-      // A server-rendered image that fails before hydration never fires onError.
-      ref={(el) => {
-        if (el?.complete && el.naturalWidth === 0) setErrorSrc(src);
-      }}
-    />
+    <span
+      data-slot="source-icon-fallback"
+      className={cn(
+        'bg-muted flex size-3 shrink-0 items-center justify-center rounded-sm text-[10px] font-medium',
+        className
+      )}
+      {...props}
+    >
+      {domain?.charAt(0).toUpperCase() || '?'}
+    </span>
   );
 }
 
 function SourceTitle({ className, ...props }: ComponentProps<'span'>) {
   return (
     <span data-slot="source-title" className={cn('max-w-37.5 truncate', className)} {...props} />
-  );
-}
-
-function DocumentSourceIcon({ className, ...props }: ComponentProps<'span'>) {
-  return (
-    <span
-      data-slot="source-document-icon"
-      className={cn(
-        'text-muted-foreground flex size-3 shrink-0 items-center justify-center',
-        className
-      )}
-      {...props}
-    >
-      <FileTextIcon className="size-3" />
-    </span>
   );
 }
 
@@ -131,53 +83,4 @@ function Source({
   );
 }
 
-const SourcesImpl: SourceMessagePartComponent = (part) => {
-  if (part.sourceType === 'url' && part.url) {
-    const href = safeHref(part.url);
-    const domain = hostOf(part.url);
-    const displayTitle = part.title || domain || part.url;
-    const content = (
-      <>
-        <SourceIcon url={part.url} />
-        <SourceTitle>{displayTitle}</SourceTitle>
-      </>
-    );
-
-    return href ? (
-      <Source href={href}>{content}</Source>
-    ) : (
-      <span data-slot="source" className={cn(sourceVariants(), 'cursor-default')}>
-        {content}
-      </span>
-    );
-  }
-
-  if (part.sourceType === 'document') {
-    return (
-      <Badge
-        variant="secondary"
-        className="focus-visible:border-ring focus-visible:ring-ring/50 outline-none focus-visible:ring-1"
-      >
-        <span data-slot="source" className="inline-flex items-center gap-1.5">
-          <DocumentSourceIcon />
-          <SourceTitle>{part.title}</SourceTitle>
-        </span>
-      </Badge>
-    );
-  }
-
-  return null;
-};
-
-const Sources = memo(SourcesImpl) as unknown as SourceMessagePartComponent & {
-  Root: typeof Source;
-  Icon: typeof SourceIcon;
-  Title: typeof SourceTitle;
-};
-
-Sources.displayName = 'Sources';
-Sources.Root = Source;
-Sources.Icon = SourceIcon;
-Sources.Title = SourceTitle;
-
-export { Sources, Source, SourceIcon, SourceTitle };
+export { Source, SourceIcon, SourceTitle };

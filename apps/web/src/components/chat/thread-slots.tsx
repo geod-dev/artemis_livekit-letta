@@ -1,61 +1,30 @@
-import { type CSSProperties, createContext, useContext, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useContext, useEffect, useRef, useState } from 'react';
 import { ArrowUpRightIcon, XIcon } from 'lucide-react';
 import { Popover } from 'radix-ui';
+import type { TextEffort } from '@artemis/contracts/chat-types';
 import {
   ComposerPrimitive,
   MessagePrimitive,
   QueueItemPrimitive,
   useAuiState,
 } from '@assistant-ui/react';
-import type { ConversationContextUsage, ConversationSummary, TextEffort } from '@artemis/contracts/chat-types';
-import type { ThreadComponents } from '@/components/assistant-ui/chat/thread';
-import { IconButton } from '@/components/assistant-ui/shared/icon-button';
-import { type ActivityTask, useActivity } from '@/components/chat/activity-context';
+import {
+  EasterEggContext,
+  type ThreadComponents,
+} from '@/components/assistant-ui/chat/thread-context';
+import { useActivity } from '@/components/chat/activity-context';
+import { useChatThread } from '@/components/chat/chat-thread-context';
+import { ConversationAtmosphere } from '@/components/chat/conversation-atmosphere';
+import { Mascot } from '@/components/chat/mascot';
 import { TaskLabel } from '@/components/chat/task-label';
-import { TaskStopButton } from '@/components/chat/workspace-panel';
+import { TaskStopButton } from '@/components/files/workspace-panel';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import type { TaskStatus } from '@/hooks/use-conversation';
-import type { VoiceRecorderStatus } from '@/hooks/use-voice-recorder';
-import { stripLeadingEmoji } from '@/lib/agent-runs';
-import { greetingsFor, pickGreeting } from '@/lib/greetings';
+import { IconButton } from '@/components/ui/icon-button';
+import { greetingsFor, pickGreeting } from '@/content/greetings';
+import { type AgentRun, stripLeadingEmoji } from '@/lib/agent-runs';
 import { cn } from '@/lib/shadcn/utils';
 import { formatTaskDuration, taskDurationLabel, taskStatusLabel } from '@/lib/task-status';
-
-/** App state the thread slots need but assistant-ui does not track. */
-export interface ChatThreadState {
-  assistantName: string;
-  contextUsage: ConversationContextUsage | null;
-  effort: TextEffort;
-  setEffort: (effort: TextEffort) => void;
-  callButton: {
-    label: string;
-    disabled: boolean;
-    active: boolean;
-    onClick: () => void;
-  };
-  /** A turn is running in this conversation (text or voice). */
-  busy: boolean;
-  tasks: TaskStatus[];
-  error: string | null;
-  /** Acknowledge background updates the user has seen. */
-  markRead: (updateIds: string[]) => void;
-  recentConversation: ConversationSummary | null;
-  resumeConversation: (id: string) => void;
-  conversationStats: { total: number; activeThisWeek: number } | null;
-}
-
-export const ChatThreadContext = createContext<ChatThreadState | null>(null);
-export const MascotEasterEggContext = createContext<(enabled: boolean) => void>(() => {});
-export const MascotRecordingContext = createContext<(status: VoiceRecorderStatus) => void>(
-  () => {}
-);
-
-export function useChatThread() {
-  const state = useContext(ChatThreadContext);
-  if (!state) throw new Error('ChatThreadContext is missing');
-  return state;
-}
 
 /**
  * New chat: the assistant says hello with one big line, a fresh one each time.
@@ -64,7 +33,7 @@ export function useChatThread() {
  */
 function Welcome() {
   const { assistantName } = useChatThread();
-  const setMascotEasterEgg = useContext(MascotEasterEggContext);
+  const setMascotEasterEgg = useContext(EasterEggContext);
   const [greeting, setGreeting] = useState<string | null>(null);
   const chooseAnotherGreeting = () => {
     const choices = greetingsFor(new Date().getHours(), assistantName).filter(
@@ -235,7 +204,10 @@ function ComposerEffortControl() {
           max={EFFORT_VALUES.length - 1}
           step={1}
           value={index}
-          onChange={(event) => setEffort(EFFORT_VALUES[Number(event.target.value)])}
+          onChange={(event) => {
+            const next = EFFORT_VALUES[Number(event.target.value)];
+            if (next) setEffort(next);
+          }}
           aria-label="Text response effort"
           aria-valuetext={EFFORT_LABELS[effort]}
           className="effort-slider absolute inset-0 z-10 h-full w-full cursor-pointer"
@@ -311,7 +283,9 @@ function useReadWhenSeen(updateId: string | undefined, unread: boolean) {
       }
     };
     const observer = new IntersectionObserver(
-      ([entry]) => {
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
         visible = entry.isIntersecting;
         check();
       },
@@ -356,7 +330,7 @@ function SystemMessage() {
       (custom.updateId && t.updateId === custom.updateId) ||
       (custom.taskId && t.id === custom.taskId)
   );
-  const task: ActivityTask = {
+  const task: AgentRun = {
     ...recordedTask,
     id: recordedTask?.id ?? custom.taskId ?? custom.updateId ?? text,
     title: recordedTask?.agentTitle ?? recordedTask?.title ?? text,
@@ -453,4 +427,7 @@ export const THREAD_COMPONENTS: ThreadComponents = {
   SystemMessage,
   ComposerEffort: ComposerEffortControl,
   BeforeComposer,
+  WelcomeFooter: WelcomeContinuation,
+  Backdrop: ConversationAtmosphere,
+  Overlay: Mascot,
 };

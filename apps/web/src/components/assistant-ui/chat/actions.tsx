@@ -15,8 +15,8 @@ import {
   MessagePrimitive,
   useAui,
 } from '@assistant-ui/react';
-import { IconButton } from '@/components/assistant-ui/shared/icon-button';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 
 export const AssistantActionBar: FC = () => {
   return (

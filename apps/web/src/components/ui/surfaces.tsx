@@ -11,8 +11,6 @@ export const ghostButton =
 export const inkButton =
   'bg-foreground text-background transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:opacity-90 active:scale-[0.96] motion-reduce:transition-none';
 
-export const live = 'text-primary';
-
 export const mono = 'font-mono text-[11px] tracking-tight';
 
 export function ShimmerLabel({

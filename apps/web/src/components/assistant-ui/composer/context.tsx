@@ -2,8 +2,8 @@
 // https://www.assistant-ui.com/elements/composer-context
 // Accept the aggregate usage when no category breakdown is available.
 import type { ComponentProps } from 'react';
-import { ghostButton, mono } from '@/components/assistant-ui/shared/surfaces';
 import { clamp } from '@/components/assistant-ui/utils/range';
+import { ghostButton, mono } from '@/components/ui/surfaces';
 import { cn } from '@/lib/shadcn/utils';
 
 const floating = 'bg-popover text-popover-foreground border border-border/60 shadow-md';

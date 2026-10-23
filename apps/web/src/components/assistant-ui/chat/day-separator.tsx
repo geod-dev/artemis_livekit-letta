@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
+import { mono } from '@/components/ui/surfaces';
 import { cn } from '@/lib/shadcn/utils';
-import { mono } from '@/components/assistant-ui/shared/surfaces';
 
 /** The rule, label, rule line that opens a new day. */
 export function DayHeader({

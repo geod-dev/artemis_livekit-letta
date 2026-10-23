@@ -6,11 +6,7 @@
     "types": ["vite/client"],
     "paths": {
       "@/*": ["./src/*"]
-    },
-    // Temporary: the existing sources predate these base options (about 80 errors).
-    // Remove both overrides once the web sources are migrated.
-    "noUncheckedIndexedAccess": false,
-    "noImplicitOverride": false
+    }
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]

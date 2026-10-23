@@ -7,12 +7,12 @@ import {
   PlugZapIcon,
   SunIcon,
 } from 'lucide-react';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import { McpServers } from '@/components/settings/mcp-servers';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import { apiFetch, isRecord, responseJson } from '@/lib/api';
 import { cn } from '@/lib/shadcn/utils';
-import { type Theme, applyTheme, getStoredTheme } from '@/lib/theme';
+import { type Theme, applyTheme, getStoredTheme } from '@/providers/theme';
 
 type SettingsSection = 'appearance' | 'mcp';
 
@@ -40,9 +40,11 @@ function storedSection(): SettingsSection {
  */
 export function SettingsDialog({
   open,
+  assistantName,
   onOpenChange,
 }: {
   open: boolean;
+  assistantName: string;
   onOpenChange: (open: boolean) => void;
 }) {
   const [section, setSection] = useState<SettingsSection>(storedSection);
@@ -191,7 +193,7 @@ export function SettingsDialog({
                 <div>
                   <h2 className="text-lg font-bold">Appearance</h2>
                   <p className="text-muted-foreground mt-1 text-sm">
-                    Choose how Artemis looks on this device.
+                    Choose how {assistantName} looks on this device.
                   </p>
                 </div>
                 <fieldset className="space-y-3">

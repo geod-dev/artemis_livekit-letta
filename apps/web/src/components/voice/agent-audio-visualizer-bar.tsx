@@ -14,7 +14,7 @@ import {
   type TrackReferenceOrPlaceholder,
   useMultibandTrackVolume,
 } from '@livekit/components-react';
-import { useAgentAudioVisualizerBarAnimator } from '@/hooks/agents-ui/use-agent-audio-visualizer-bar';
+import { useAgentAudioVisualizerBarAnimator } from '@/components/voice/use-agent-audio-visualizer-bar';
 import { cn } from '@/lib/shadcn/utils';
 
 /**

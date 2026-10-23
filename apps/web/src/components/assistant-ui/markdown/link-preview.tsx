@@ -1,5 +1,5 @@
 import { type ComponentProps, useState } from 'react';
-import { field, mono, paper } from '@/components/assistant-ui/shared/surfaces';
+import { field, mono, paper } from '@/components/ui/surfaces';
 import { cn } from '@/lib/shadcn/utils';
 import { hostOf, safeHref } from '../utils/href';
 
@@ -10,7 +10,6 @@ interface LinkPreviewProps extends Omit<ComponentProps<'article'>, 'children' | 
   image?: string | undefined;
   imageAlt?: string | undefined;
   siteName?: string | undefined;
-  favicon?: string | undefined;
   layout?: 'card' | 'compact' | undefined;
 }
 
@@ -21,19 +20,16 @@ export function LinkPreview({
   image,
   imageAlt,
   siteName,
-  favicon,
   layout = 'card',
   className,
   ...props
 }: LinkPreviewProps) {
   const [failedImage, setFailedImage] = useState<string | undefined>();
-  const [failedFavicon, setFailedFavicon] = useState<string | undefined>();
   const safeUrl = safeHref(href);
   const host = hostOf(href);
   const site = siteName ?? host;
   const label = title || host || safeUrl || 'Untitled link';
   const hasImage = image !== undefined && image !== '' && failedImage !== image;
-  const hasFavicon = favicon !== undefined && favicon !== '' && failedFavicon !== favicon;
 
   const imageFrame = hasImage ? (
     <div
@@ -68,26 +64,16 @@ export function LinkPreview({
       {imageFrame}
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
         <div className="flex min-w-0 items-center gap-1.5">
-          {hasFavicon ? (
-            <img
-              data-slot="link-preview-favicon"
-              src={favicon}
-              alt=""
-              className="size-4 shrink-0 rounded-sm object-cover"
-              onError={() => setFailedFavicon(favicon)}
-            />
-          ) : (
-            <span
-              aria-hidden
-              data-slot="link-preview-site-initial"
-              className={cn(
-                field,
-                'text-foreground/45 flex size-4 shrink-0 items-center justify-center rounded-sm text-[9px] font-medium'
-              )}
-            >
-              {site?.charAt(0).toUpperCase() ?? '?'}
-            </span>
-          )}
+          <span
+            aria-hidden
+            data-slot="link-preview-site-initial"
+            className={cn(
+              field,
+              'text-foreground/45 flex size-4 shrink-0 items-center justify-center rounded-sm text-[9px] font-medium'
+            )}
+          >
+            {site?.charAt(0).toUpperCase() ?? '?'}
+          </span>
           {site ? <span className={cn(mono, 'text-foreground/40 truncate')}>{site}</span> : null}
         </div>
         {safeUrl ? (

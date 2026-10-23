@@ -1,38 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TokenSource } from 'livekit-client';
 import { MessageCirclePlusIcon, PanelRightIcon } from 'lucide-react';
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import type { ConversationSummary, TextEffort } from '@artemis/contracts/chat-types';
 import { AssistantRuntimeProvider, AuiConfig, Tools } from '@assistant-ui/react';
 import { RoomAudioRenderer, SessionProvider, useSession } from '@livekit/components-react';
-import type { ConversationSummary, TextEffort } from '@artemis/contracts/chat-types';
-import { CHAT_HTTP } from '@artemis/contracts/chat-http';
-import { apiFetch } from '@/lib/api';
-import { StartAudioButton } from '@/components/agents-ui/start-audio-button';
 import { Thread } from '@/components/assistant-ui/chat/thread';
-import { WorkspaceFilePanelContext } from '@/components/assistant-ui/files/workspace-file';
 import { generativeUIToolkit } from '@/components/assistant-ui/tools/generative-ui';
-import { ActivityContext, type ActivityTask } from '@/components/chat/activity-context';
-import { CallBar } from '@/components/chat/call-bar';
+import { ToolActivityContext } from '@/components/assistant-ui/tools/tool-activity';
+import { ActivityContext } from '@/components/chat/activity-context';
+import { ChatThreadContext, type ChatThreadState } from '@/components/chat/chat-thread-context';
 import { LoadingBar } from '@/components/chat/loading-bar';
 import { Sidebar } from '@/components/chat/sidebar';
-import {
-  ChatThreadContext,
-  type ChatThreadState,
-  THREAD_COMPONENTS,
-  WelcomeStats,
-} from '@/components/chat/thread-slots';
+import { THREAD_COMPONENTS, WelcomeStats } from '@/components/chat/thread-slots';
+import { WorkspaceFilePanelContext } from '@/components/files/workspace-file';
 import {
   WorkspacePanel,
   type WorkspaceSelection,
   type WorkspaceTab,
-} from '@/components/chat/workspace-panel';
+} from '@/components/files/workspace-panel';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
+import { CallBar, StartAudioButton } from '@/components/voice';
 import { useActivityTasks } from '@/hooks/use-activity';
 import { useChatRuntime } from '@/hooks/use-chat-runtime';
 import { useContextUsage } from '@/hooks/use-context-usage';
 import { useConversation } from '@/hooks/use-conversation';
 import { useConversations } from '@/hooks/use-conversations';
+import type { AgentRun } from '@/lib/agent-runs';
+import { apiFetch } from '@/lib/api';
 
 /** UI for the tools the agent runs (generative UI). */
 const AUI_CONFIG = AuiConfig({ tools: Tools({ toolkit: generativeUIToolkit }) });
@@ -108,7 +105,7 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
     setWorkspaceSelection({ type: 'file', path });
     setWorkspaceOpen(true);
   }, []);
-  const openTask = useCallback((task: ActivityTask) => {
+  const openTask = useCallback((task: AgentRun) => {
     setWorkspaceTab('tasks');
     setWorkspaceSelection({ type: 'task', task });
     setWorkspaceOpen(true);
@@ -327,84 +324,94 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
           />
           <ChatThreadContext.Provider value={threadState}>
             <ActivityContext.Provider value={{ ...activity, openTask }}>
-              <WorkspaceFilePanelContext.Provider value={setOpenFile}>
-                <main className="app-main flex min-w-0 flex-1 flex-col">
-                  <header
-                    data-empty={conversation.blank || !shownId ? true : undefined}
-                    className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6"
-                  >
-                    <div className="app-topbar-title min-w-0 flex-1">
+              <ToolActivityContext.Provider value={{ tasks: activity.tasks, openTask }}>
+                <WorkspaceFilePanelContext.Provider value={setOpenFile}>
+                  <main className="app-main flex min-w-0 flex-1 flex-col">
+                    <header
+                      data-empty={conversation.blank || !shownId ? true : undefined}
+                      className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6"
+                    >
+                      <div className="app-topbar-title min-w-0 flex-1">
+                        {!conversation.blank && shownId && (
+                          <h1
+                            key={shownId}
+                            className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
+                          >
+                            {shownTitle ?? 'Conversation'}
+                          </h1>
+                        )}
+                      </div>
+                      {(conversation.blank || !shownId) && <WelcomeStats />}
                       {!conversation.blank && shownId && (
-                        <h1
-                          key={shownId}
-                          className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="New chat"
+                          onClick={newChat}
+                          className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
                         >
-                          {shownTitle ?? 'Conversation'}
-                        </h1>
+                          <MessageCirclePlusIcon className="size-5" />
+                        </Button>
                       )}
+                      {activeId && (
+                        <Button
+                          ref={workspaceTrigger}
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={
+                            workspaceOpen ? 'Close files and tasks' : 'Open files and tasks'
+                          }
+                          aria-expanded={workspaceOpen}
+                          aria-controls={workspaceOpen ? 'conversation-workspace' : undefined}
+                          onClick={() => setWorkspaceOpen((open) => !open)}
+                          className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground size-10 shrink-0 rounded-[var(--control-radius)] border-0 bg-transparent p-0 transition-colors duration-150"
+                        >
+                          <PanelRightIcon className="size-5" />
+                        </Button>
+                      )}
+                    </header>
+                    {inCall && <CallBar mascotActive={callOnCurrentConversation} />}
+                    <div className="min-h-0 flex-1">
+                      <WorkspaceFilePanelContext.Provider value={setOpenFile}>
+                        <Thread
+                          autoFocus={
+                            window.matchMedia('(hover: hover) and (pointer: fine)').matches
+                          }
+                          components={THREAD_COMPONENTS}
+                          callButton={threadState.callButton}
+                          contextUsage={contextUsage}
+                          placeholder={
+                            inCall
+                              ? 'Type here too, I’m still listening…'
+                              : `An idea, a question, a little of everything…`
+                          }
+                        />
+                      </WorkspaceFilePanelContext.Provider>
                     </div>
-                    {(conversation.blank || !shownId) && <WelcomeStats />}
-                    {!conversation.blank && shownId && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label="New chat"
-                        onClick={newChat}
-                        className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
-                      >
-                        <MessageCirclePlusIcon className="size-5" />
-                      </Button>
-                    )}
-                    {activeId && (
-                      <Button
-                        ref={workspaceTrigger}
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={
-                          workspaceOpen ? 'Close files and tasks' : 'Open files and tasks'
-                        }
-                        aria-expanded={workspaceOpen}
-                        aria-controls={workspaceOpen ? 'conversation-workspace' : undefined}
-                        onClick={() => setWorkspaceOpen((open) => !open)}
-                        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground size-10 shrink-0 rounded-[var(--control-radius)] border-0 bg-transparent p-0 transition-colors duration-150"
-                      >
-                        <PanelRightIcon className="size-5" />
-                      </Button>
-                    )}
-                  </header>
-                  {inCall && <CallBar mascotActive={callOnCurrentConversation} />}
-                  <div className="min-h-0 flex-1">
-                    <WorkspaceFilePanelContext.Provider value={setOpenFile}>
-                      <Thread
-                        autoFocus={window.matchMedia('(hover: hover) and (pointer: fine)').matches}
-                        components={THREAD_COMPONENTS}
-                        placeholder={
-                          inCall
-                            ? 'Type here too, I’m still listening…'
-                            : `An idea, a question, a little of everything…`
-                        }
-                      />
-                    </WorkspaceFilePanelContext.Provider>
-                  </div>
-                </main>
-                {activeId && workspaceOpen && (
-                  <WorkspacePanel
-                    tab={workspaceTab}
-                    setTab={setWorkspaceTab}
-                    selection={workspaceSelection}
-                    setSelection={setWorkspaceSelection}
-                    messages={conversation.messages}
-                    error={activity.error}
-                    onClose={closeWorkspace}
-                  />
-                )}
-              </WorkspaceFilePanelContext.Provider>
+                  </main>
+                  {activeId && workspaceOpen && (
+                    <WorkspacePanel
+                      tab={workspaceTab}
+                      setTab={setWorkspaceTab}
+                      selection={workspaceSelection}
+                      setSelection={setWorkspaceSelection}
+                      messages={conversation.messages}
+                      error={activity.error}
+                      onClose={closeWorkspace}
+                    />
+                  )}
+                </WorkspaceFilePanelContext.Provider>
+              </ToolActivityContext.Provider>
             </ActivityContext.Provider>
           </ChatThreadContext.Provider>
         </div>
-        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        <SettingsDialog
+          open={settingsOpen}
+          assistantName={assistantName}
+          onOpenChange={setSettingsOpen}
+        />
       </AssistantRuntimeProvider>
       <StartAudioButton
         label="Allow audio playback"
