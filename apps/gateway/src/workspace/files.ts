@@ -27,9 +27,9 @@ export async function describeWorkspaceFile(
   if (target === null) return null;
   const prefix = await readPrefix(workspace, path, SERVING_SNIFF_BYTES);
   const contentType = inspectedMimeType(prefix);
+  // PDFs are never shown inline: a PDF served from the app origin would run with the session cookie.
   const viewable =
     /^(image|audio|video)\//.test(contentType) ||
-    contentType === 'application/pdf' ||
     contentType === 'application/json' ||
     contentType.startsWith('text/');
   return { path: target, size: info.size, contentType, viewable };

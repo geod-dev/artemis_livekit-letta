@@ -4,14 +4,16 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { MAX_DEVICE_FILE_BYTES, saveDeviceFile } from './files';
+import { composeWorkspace } from '../compose';
+import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
+import { saveDeviceFile } from './files';
 import { DeviceHub } from './hub';
 import { createDeviceRoutes } from './api';
 
 test('binary export is bound to its pending device call and returns only metadata', async () => {
   const root = await mkdtemp(join(tmpdir(), 'device-export-'));
-  const hub = new DeviceHub();
-  const routes = createDeviceRoutes(hub, root);
+  const hub = new DeviceHub({ baseUrl: () => 'http://localhost' });
+  const routes = createDeviceRoutes(hub, composeWorkspace(root));
   try {
     const session = await hub.register('pc', [
       { name: 'filesystem_export', inputSchema: { type: 'object' } },
@@ -37,13 +39,11 @@ test('binary export is bound to its pending device call and returns only metadat
       name: string;
       size: number;
       sha256: string;
-      link: string;
     };
     assert.deepEqual(await readFile(join(root, metadata.path)), bytes);
     assert.equal(metadata.size, bytes.length);
     assert.equal(metadata.name, 'RIB (banque).pdf');
     assert.equal(metadata.sha256, createHash('sha256').update(bytes).digest('hex'));
-    assert.match(metadata.link, /RIB%20%28banque%29.pdf/);
     assert.equal((await routes.fetch(request())).status, 409);
     hub.result('pc', session, rpc!.id, {
       content: [{ type: 'text', text: JSON.stringify(metadata) }],
@@ -62,28 +62,26 @@ test('oversized and incomplete uploads leave no workspace file', async () => {
   const root = await mkdtemp(join(tmpdir(), 'device-export-'));
   try {
     await assert.rejects(
-      saveDeviceFile(
+      saveDeviceFile(composeWorkspace(root),
         new Request('http://localhost', {
           method: 'POST',
-          headers: { 'Content-Length': String(MAX_DEVICE_FILE_BYTES + 1) },
+          headers: { 'Content-Length': String(MAX_UPLOAD_BYTES + 1) },
           body: 'x',
         }),
         '/private/RIB.pdf',
-        root,
         () => {}
       ),
       /25 MB/
     );
     assert.deepEqual(await readdir(root), []);
     await assert.rejects(
-      saveDeviceFile(
+      saveDeviceFile(composeWorkspace(root),
         new Request('http://localhost', {
           method: 'POST',
           headers: { 'Content-Length': '20' },
           body: 'short',
         }),
         '/private/RIB.pdf',
-        root,
         () => {}
       ),
       /Incomplete/
@@ -114,7 +112,7 @@ test('an interrupted upload is cancelled and its partial file is removed', async
       signal: abort.signal,
       duplex: 'half',
     } as RequestInit);
-    const upload = saveDeviceFile(request, '/admin/rib.pdf', root, () => {
+    const upload = saveDeviceFile(composeWorkspace(root), request, '/admin/rib.pdf', () => {
       // Abort after the first chunk has reached disk and the reader is waiting.
       setTimeout(() => abort.abort(), 10);
     });

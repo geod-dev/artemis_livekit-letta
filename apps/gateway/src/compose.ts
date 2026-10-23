@@ -10,9 +10,11 @@ import type { WorkspaceTransport } from '@artemis/workspace';
 import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
 import { mkdirSync } from 'node:fs';
 import { AgentServerClient } from './agent-server/client';
-import { AttachmentStore } from './assistant/attachments/attachment-store';
+import { AttachmentStore } from './attachments/attachment-store';
 import type { AppConfig } from './config';
 import { DeviceHub } from './devices/hub';
+import type { LinkMetadata } from './link-preview/link-description';
+import { linkPreview } from './link-preview/link-preview';
 import { createGroqTranscriber, type Transcriber } from './vendor/groq/transcription';
 import { createVoiceTokenIssuer, type VoiceTokenIssuer } from './vendor/livekit/tokens';
 
@@ -24,6 +26,8 @@ export interface GatewayDependencies {
   deviceHub: DeviceHub;
   voiceTokens: VoiceTokenIssuer;
   transcriber: Transcriber;
+  /** Title and description of a public page; refuses private destinations. */
+  linkPreview: (href: string) => Promise<LinkMetadata>;
 }
 
 /**
@@ -41,12 +45,13 @@ export function composeGateway(config: AppConfig): GatewayDependencies {
     config,
     agentServer: new AgentServerClient(config.agentServer),
     workspace,
-    attachments: new AttachmentStore(workspace),
+    attachments: new AttachmentStore(workspace, config.workspace.dataDir),
     deviceHub: new DeviceHub({ baseUrl: () => config.deviceBaseUrl }),
     voiceTokens: createVoiceTokenIssuer(config.livekit),
     transcriber: createGroqTranscriber({
       apiKey: config.transcription.groqApiKey,
       model: config.transcription.model,
     }),
+    linkPreview,
   };
 }

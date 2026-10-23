@@ -1,48 +1,20 @@
 import { Hono } from 'hono';
 import { basename } from 'node:path';
 import type { WorkspaceTransport } from '@artemis/workspace';
-import { MAX_ATTACHMENT_BYTES } from '../assistant/attachments/attachment-policy';
-import type { AttachmentStore } from '../assistant/attachments/attachment-store';
-import { describeWorkspaceFile } from '../assistant/workspace-files';
 import { errorResponse } from '../http';
+import { describeWorkspaceFile } from '../workspace/files';
 
-/** Files: attachment uploads, and read access to the agent's workspace. */
-export function createFileRoutes(attachments: AttachmentStore, workspace: WorkspaceTransport): Hono {
-  const files = new Hono();
-
-  /** Upload one file (multipart field `file`) as an attachment. */
-  files.post('/attachments', async (c) => {
-    const bounded = await readBoundedBody(c.req.raw, MAX_ATTACHMENT_BYTES + 1024 * 1024);
-    if (!bounded.ok) return errorResponse(bounded.error, bounded.status);
-    const request = new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: new Uint8Array(bounded.body) });
-    const file = (await request.formData().catch(() => null))?.get('file');
-    if (!file || typeof file === 'string') return errorResponse('file is required', 400);
-    if (file.size > MAX_ATTACHMENT_BYTES) return errorResponse('File is larger than 25 MB', 413);
-    try {
-      return Response.json(await attachments.save(file), { status: 201 });
-    } catch (error) {
-      return errorResponse(error, error instanceof Error && /25 MB/.test(error.message) ? 413 : 400);
-    }
-  });
-
-  /** Discard an uploaded composer file if no conversation has used it. */
-  files.delete('/attachments', async (c) => {
-    const path = c.req.query('path') ?? '';
-    if (path.length > 500) return errorResponse('Invalid attachment path', 400);
-    await attachments.registry
-      .removeUnused(path)
-      .catch((error) => console.error('[files] attachment removal failed:', error));
-    return new Response(null, { status: 204 });
-  });
+/** Read access to the agent's workspace: any file the agent or a user placed there. */
+export function createWorkspaceFileRoutes(workspace: WorkspaceTransport): Hono {
+  const routes = new Hono();
 
   /**
    * Any file in the workspace, by its workspace path: attachments, and the files
    * the agent shares in its replies. Viewable types display in the browser
-   * (`?download` forces a download); text formats are served as plain text and
-   * every response is sandboxed, so no file runs as a page of the app. PDFs are
-   * exempt from the sandbox, which would block the browser's PDF viewer.
+   * (`?download` forces a download); every response is sandboxed, so no file
+   * runs as a page of the app. PDFs and other types are always downloads.
    */
-  files.get('/workspace/*', async (c) => {
+  routes.get('/workspace/*', async (c) => {
     const path = c.req.path;
     const marker = path.indexOf('/workspace/');
     const encoded = marker >= 0 ? path.slice(marker + '/workspace/'.length) : '';
@@ -55,7 +27,7 @@ export function createFileRoutes(attachments: AttachmentStore, workspace: Worksp
     return new Response(stream, { status: plan.status, headers: plan.headers });
   });
 
-  return files;
+  return routes;
 }
 
 export function planWorkspaceResponse(
@@ -77,8 +49,8 @@ export function planWorkspaceResponse(
     'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(basename(file.path))}`,
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-cache',
+    'Content-Security-Policy': 'sandbox',
   };
-  if (contentType !== 'application/pdf') headers['Content-Security-Policy'] = 'sandbox';
   const range = parseByteRange(rangeHeader, file.size);
   if (range === false) {
     headers['Content-Range'] = `bytes */${file.size}`;
@@ -114,35 +86,6 @@ function parseByteRange(value: string | null, size: number): { start: number; en
     end = Math.min(end, size - 1);
   }
   return { start, end };
-}
-
-async function readBoundedBody(
-  request: Request,
-  maxBytes: number
-): Promise<{ ok: true; body: Buffer } | { ok: false; status: number; error: string }> {
-  const declared = request.headers.get('content-length');
-  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) {
-    return { ok: false, status: 413, error: 'Request body is too large' };
-  }
-  if (!request.body) return { ok: true, body: Buffer.alloc(0) };
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > maxBytes) {
-        await reader.cancel().catch(() => {});
-        return { ok: false, status: 413, error: 'Request body is too large' };
-      }
-      chunks.push(value);
-    }
-  } catch (error) {
-    return { ok: false, status: 400, error: error instanceof Error ? error.message : String(error) };
-  }
-  return { ok: true, body: Buffer.concat(chunks, size) };
 }
 
 function safeDecode(path: string): string {

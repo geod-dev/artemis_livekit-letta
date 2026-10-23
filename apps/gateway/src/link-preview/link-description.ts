@@ -12,7 +12,7 @@ function decodeEntities(text: string): string {
     (original, entity: string) => {
       if (!entity.startsWith('#')) return named[entity.toLowerCase()] ?? original;
       const point =
-        entity[1].toLowerCase() === 'x'
+        entity.charAt(1).toLowerCase() === 'x'
           ? parseInt(entity.slice(2), 16)
           : parseInt(entity.slice(1), 10);
       return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : original;
@@ -25,13 +25,13 @@ export type LinkMetadata = { title?: string; description?: string };
 /** Social titles are written for previews; fall back to the document title. */
 export function linkMetadata(html: string): LinkMetadata {
   const descriptions = new Map<string, string>();
-  const head = html
-    .split(/<\/head\s*>/i)[0]
-    .replace(/<!--[^]*?-->|<script\b[^]*?<\/script\s*>/gi, '');
+  const head = (html.split(/<\/head\s*>/i)[0] ?? '').replace(/<!--[^]*?-->|<script\b[^]*?<\/script\s*>/gi, '');
   for (const tag of head.matchAll(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const attrs = new Map<string, string>();
-    for (const attr of tag[0].matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
-      attrs.set(attr[1].toLowerCase(), attr[2] ?? attr[3] ?? attr[4]);
+    for (const [, key = '', quoted, single, bare] of tag[0].matchAll(
+      /([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g
+    )) {
+      attrs.set(key.toLowerCase(), quoted ?? single ?? bare ?? '');
     }
     const name = (attrs.get('name') ?? attrs.get('property'))?.toLowerCase();
     const content = attrs.get('content');

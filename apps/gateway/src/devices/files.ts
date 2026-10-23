@@ -1,16 +1,27 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, rename, rm } from 'node:fs/promises';
-import { join, posix, win32 } from 'node:path';
+import { posix, win32 } from 'node:path';
+import type { WorkspaceTransport } from '@artemis/workspace';
+import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
 
-export const MAX_DEVICE_FILE_BYTES = 25 * 1024 * 1024;
+/** The metadata a device file upload returns; only this enters the device's MCP result. */
+export interface DeviceFileMetadata {
+  name: string;
+  size: number;
+  sha256: string;
+  /** Workspace-relative path of the stored file. */
+  path: string;
+}
 
-/** Stream bytes to disk; only the resulting metadata ever enters an MCP result. */
+/**
+ * Stream a device's bytes into the workspace in chunks. `checkCall` throws when
+ * the pending device call that asked for the file is no longer valid.
+ */
 export async function saveDeviceFile(
+  workspace: WorkspaceTransport,
   request: Request,
   sourcePath: string,
-  workspace: string,
   checkCall: () => void
-) {
+): Promise<DeviceFileMetadata> {
   const name =
     posix
       .basename(win32.basename(sourcePath))
@@ -23,17 +34,16 @@ export async function saveDeviceFile(
     !request.headers.has('Content-Length') ||
     !Number.isSafeInteger(length) ||
     length < 0 ||
-    length > MAX_DEVICE_FILE_BYTES
+    length > MAX_UPLOAD_BYTES
   )
-    throw new Error('Upload requires a Content-Length of at most 25 MB');
+    throw new Error(`Upload requires a Content-Length of at most ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`);
   const path = `data/device-files/${randomUUID()}/${name}`;
-  const directory = join(workspace, posix.dirname(path));
-  await mkdir(directory, { recursive: true });
-  const temporary = join(directory, '.upload');
+  const directory = posix.dirname(path);
+  const upload = await workspace.openWrite(path);
   const hash = createHash('sha256');
   let size = 0;
+  let committed = false;
   try {
-    const file = await open(temporary, 'wx');
     const reader = request.body.getReader();
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(55_000)]);
     const cancel = () => {
@@ -48,39 +58,25 @@ export async function saveDeviceFile(
         signal.throwIfAborted();
         if (done) break;
         size += value.byteLength;
-        if (size > MAX_DEVICE_FILE_BYTES || size > length)
-          throw new Error('File exceeds upload limit');
+        if (size > MAX_UPLOAD_BYTES || size > length) throw new Error('File exceeds upload limit');
         hash.update(value);
-        let offset = 0;
-        while (offset < value.length) {
-          const written = await file.write(value, offset, value.length - offset);
-          offset += written.bytesWritten;
-        }
+        await upload.write(value);
       }
       checkCall();
       if (size !== length) throw new Error('Incomplete file upload');
     } finally {
       signal.removeEventListener('abort', cancel);
       await reader.cancel().catch(() => {});
-      await file.close();
     }
     checkCall();
-    await rename(temporary, join(workspace, path));
+    await upload.commit(path);
+    committed = true;
     checkCall();
-    return {
-      name,
-      size,
-      sha256: hash.digest('hex'),
-      path,
-      workspacePath: `/workspace/${path}`,
-      link: `[Download file](${path
-        .split('/')
-        .map(encodeURIComponent)
-        .join('/')
-        .replace(/[()]/g, (c) => '%' + c.charCodeAt(0).toString(16))})`,
-    };
+    return { name, size, sha256: hash.digest('hex'), path };
   } catch (error) {
-    await rm(directory, { recursive: true, force: true });
+    if (committed) await workspace.deleteFile(path).catch(() => {});
+    else await upload.abort().catch(() => {});
+    await workspace.removeEmptyDirectory(directory).catch(() => {});
     throw error;
   }
 }

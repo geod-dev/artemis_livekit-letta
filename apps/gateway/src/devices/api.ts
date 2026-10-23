@@ -1,18 +1,25 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import { config } from '../assistant/config';
+import type { WorkspaceTransport } from '@artemis/workspace';
+import { errorResponse } from '../http';
 import { saveDeviceFile } from './files';
-import { DeviceHub, deviceHub } from './hub';
+import type { DeviceHub } from './hub';
 
-export function createDeviceRoutes(hub: DeviceHub, workspace = config.workspace.dir): Hono {
+/** The text of a failure, for the device client: the message without the error's class name. */
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** The HTTP API a device client uses: registration, its event stream, requests and results. */
+export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport): Hono {
   const routes = new Hono();
   routes.post('/register', bodyLimit({ maxSize: 256_000 }), async (c) => {
     try {
       const body = await c.req.json();
       return c.json({ session: await hub.register(body.name, body.tools) });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return errorResponse(errorText(e), 400);
     }
   });
   const sessionOf = (c: { req: { header: (name: string) => string | undefined } }) =>
@@ -24,12 +31,12 @@ export function createDeviceRoutes(hub: DeviceHub, workspace = config.workspace.
     try {
       const sourcePath = hub.beginFileUpload(name, session, id);
       return c.json(
-        await saveDeviceFile(c.req.raw, sourcePath, workspace, () =>
+        await saveDeviceFile(workspace, c.req.raw, sourcePath, () =>
           hub.checkFileUpload(name, session, id)
         )
       );
     } catch (error) {
-      return c.json({ error: String(error) }, 409);
+      return errorResponse(errorText(error), 409);
     }
   });
   routes.get('/:name/events', (c) => {
@@ -38,7 +45,7 @@ export function createDeviceRoutes(hub: DeviceHub, workspace = config.workspace.
     try {
       hub.openStream(name, session);
     } catch (e) {
-      return c.json({ error: String(e) }, 409);
+      return errorResponse(errorText(e), 409);
     }
     return streamSSE(c, async (stream) => {
       const controller = new AbortController();
@@ -65,14 +72,14 @@ export function createDeviceRoutes(hub: DeviceHub, workspace = config.workspace.
       }
     });
   });
-  // Older client scripts continue to work with a bounded heartbeat lease.
+  // A poll returns the pending requests as they arrive, and renews the device's lease like a heartbeat.
   routes.get('/:name/poll', async (c) => {
     try {
       return c.json({
         requests: await hub.poll(c.req.param('name'), sessionOf(c), c.req.raw.signal),
       });
     } catch (e) {
-      return c.json({ error: String(e) }, 409);
+      return errorResponse(errorText(e), 409);
     }
   });
   routes.post('/:name/heartbeat', (c) => {
@@ -80,7 +87,7 @@ export function createDeviceRoutes(hub: DeviceHub, workspace = config.workspace.
       hub.heartbeat(c.req.param('name'), sessionOf(c));
       return c.json({ ok: true });
     } catch (e) {
-      return c.json({ error: String(e) }, 409);
+      return errorResponse(errorText(e), 409);
     }
   });
   routes.post('/:name/disconnect', async (c) => {
@@ -88,7 +95,7 @@ export function createDeviceRoutes(hub: DeviceHub, workspace = config.workspace.
       await hub.unregister(c.req.param('name'), sessionOf(c));
       return c.json({ ok: true });
     } catch (e) {
-      return c.json({ error: String(e) }, 503);
+      return errorResponse(errorText(e), 503);
     }
   });
   // A 10 MB screenshot is about 13.4 MB when base64 encoded in JSON.
@@ -105,9 +112,8 @@ export function createDeviceRoutes(hub: DeviceHub, workspace = config.workspace.
       );
       return c.json({ ok: true });
     } catch (e) {
-      return c.json({ error: String(e) }, 409);
+      return errorResponse(errorText(e), 409);
     }
   });
   return routes;
 }
-export const devices = createDeviceRoutes(deviceHub);

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { isVoiceAgent } from './http';
+import { bearerToken, sameSecret } from './http';
 
 const COOKIE = 'artemis_session';
 const TTL = 90 * 24 * 60 * 60;
@@ -12,7 +12,7 @@ export function equalSecret(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-export function createAuth(password: string, deviceToken: string) {
+export function createAuth(password: string, deviceToken: string, voiceToken: string) {
   if (!password) throw new Error('Set ARTEMIS_PASSWORD in .env before starting the gateway');
   const sign = (value: string) =>
     createHmac('sha256', password).update(`artemis-session:${value}`).digest('base64url');
@@ -32,7 +32,7 @@ export function createAuth(password: string, deviceToken: string) {
   app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     const path = c.req.path;
-    const internal = path.startsWith('/api/voice/conversations/') && isVoiceAgent(c.req.raw);
+    const internal = path.startsWith('/api/voice/conversations/') && sameSecret(bearerToken(c.req.raw), voiceToken);
     const device =
       path.startsWith('/api/devices/') &&
       deviceToken &&

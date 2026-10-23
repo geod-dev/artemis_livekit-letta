@@ -9,12 +9,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { Hono } from 'hono';
-import { AgentServerClient } from '../agent-server/client.ts';
-import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
-import { type AppConfig, validateConfig } from '../assistant/config.ts';
-import { createAuth } from '../auth.ts';
-import { composeWorkspace } from '../compose.ts';
-import { createConversationRoutes } from './conversations.ts';
+import { AgentServerClient } from '../agent-server/client';
+import { AttachmentStore } from '../attachments/attachment-store';
+import { type AppConfig, validateConfig } from '../config';
+import { createAuth } from '../auth';
+import { composeWorkspace } from '../compose';
+import { createConversationRoutes } from './conversations';
 
 const AGENT_TOKEN = 'gateway-errors-agent-token';
 const PASSWORD = 'gateway-errors-password';
@@ -85,8 +85,8 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
 /** The gateway's composition from server.ts: auth in front of the gateway routes. */
 function buildGateway(config: AppConfig): Hono {
   const agent = new AgentServerClient(config.agentServer);
-  const app = createAuth(config.auth.password, config.auth.deviceToken);
-  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(config.workspace.dir))));
+  const app = createAuth(config.auth.password, config.auth.deviceToken, config.voiceGatewayToken);
+  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(config.workspace.dir), config.workspace.dataDir)));
   return app;
 }
 
@@ -123,7 +123,7 @@ async function withGateway<T>(agentUrl: string, agentToken: string, run: (gw: Se
         session: (path, init = {}) => {
           const headers = new Headers(init.headers);
           headers.set('Origin', origin);
-          headers.set('Cookie', cookie);
+          headers.set('Cookie', cookie ?? '');
           return fetch(`${origin}${path}`, { ...init, headers });
         },
       });

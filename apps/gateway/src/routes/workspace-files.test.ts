@@ -3,17 +3,14 @@ import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { Hono } from 'hono';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
-import { MAX_ATTACHMENT_BYTES } from '../assistant/attachments/attachment-policy.ts';
-import { composeWorkspace } from '../compose.ts';
 import type { WorkspaceTransport } from '@artemis/workspace';
-import { describeWorkspaceFile } from '../assistant/workspace-files.ts';
-import { createFileRoutes, planWorkspaceResponse } from './files.ts';
+import { composeWorkspace } from '../compose';
+import { describeWorkspaceFile } from '../workspace/files';
+import { createWorkspaceFileRoutes, planWorkspaceResponse } from './workspace-files';
 
-/** The file routes over a workspace rooted at `root`. */
+/** The workspace file routes over a workspace rooted at `root`. */
 function routesFor(root: string): Hono {
-  const workspace = composeWorkspace(root);
-  return new Hono().route('/api', createFileRoutes(new AttachmentStore(workspace), workspace));
+  return new Hono().route('/api', createWorkspaceFileRoutes(composeWorkspace(root)));
 }
 
 test('workspace file GET and HEAD use inspected MIME and bounded byte ranges', async () => {
@@ -95,24 +92,9 @@ test('workspace response planning bounds ranges and preserves HEAD semantics', (
   assert.equal(invalid.noBody, true);
 });
 
-test('upload rejects oversized streamed bodies before multipart parsing without content-length', async () => {
-    const root = await mkdtemp(join(process.cwd(), '.test-workspace-upload-'));
-    const app = routesFor(root);
-    const oversized = new Uint8Array(MAX_ATTACHMENT_BYTES + 1024 * 1024 + 1);
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(oversized);
-        controller.close();
-      },
-    });
-    const request = new Request('http://localhost/api/attachments', {
-      method: 'POST',
-      headers: { 'content-type': 'multipart/form-data; boundary=missing-content-length' },
-      body,
-      duplex: 'half',
-    } as RequestInit);
-    const response = await app.fetch(request);
-    assert.equal(response.status, 413);
-    assert.match((await response.json() as { error: string }).error, /too large/i);
-    await rm(root, { recursive: true, force: true });
+test('a PDF is never shown inline and is sandboxed like every other file', () => {
+  const pdf = { path: 'files/report.pdf', size: 8, contentType: 'application/pdf', viewable: false };
+  const plan = planWorkspaceResponse(pdf, 'GET', false, null);
+  assert.match(plan.headers['Content-Disposition'] ?? '', /^attachment;/);
+  assert.equal(plan.headers['Content-Security-Policy'], 'sandbox');
 });

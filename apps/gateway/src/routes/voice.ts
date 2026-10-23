@@ -1,19 +1,39 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
-import { randomUUID } from 'node:crypto';
+import { voicePath } from '@artemis/contracts/agent-server';
 import type { AgentServerClient } from '../agent-server/client';
-import { config } from '../assistant/config';
-import { errorResponse, isVoiceAgent, jsonObject, PROXY_BODY_LIMIT, routeError, withQuery } from '../http';
+import { bearerToken, errorResponse, jsonObject, PROXY_BODY_LIMIT, requestLimit, routeError, sameSecret, withQuery } from '../http';
+/** The LiveKit token port of the voice routes; the vendor is chosen in compose. */
+export interface VoiceTokenPort {
+  forCall(conversationId: string, callMode: 'short' | 'long'): Promise<LiveKitConnection>;
+  warmup(): Promise<LiveKitConnection>;
+}
+
+/** The browser's connection details for a LiveKit room. */
+export interface LiveKitConnection {
+  serverUrl: string;
+  roomName: string;
+  participantName: string;
+  participantToken: string;
+}
 
 const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
+/** The token request is a conversation id and a mode; anything larger is not one. */
+const TOKEN_BODY_LIMIT = 16 * 1024;
+
+export interface VoiceRouteDeps {
+  agentServer: AgentServerClient;
+  voiceTokens: VoiceTokenPort;
+  /** The voice agent's shared bearer token, required on its endpoints. */
+  voiceGatewayToken: string;
+}
 
 /**
  * Voice calls. The gateway issues LiveKit tokens to the browser and relays the
  * voice agent's endpoints (authenticated by its shared bearer token) to the
  * agent-server, which owns the call state, the voice turns and their delivery.
  */
-export function createVoiceRoutes(agent: AgentServerClient): Hono {
+export function createVoiceRoutes({ agentServer, voiceTokens, voiceGatewayToken }: VoiceRouteDeps): Hono {
   const voice = new Hono();
   voice.onError(routeError);
 
@@ -29,56 +49,22 @@ export function createVoiceRoutes(agent: AgentServerClient): Hono {
    *
    * Protected by the gateway's browser-session authentication.
    */
-  voice.post('/token', async (c) => {
+  voice.post('/token', requestLimit(TOKEN_BODY_LIMIT), async (c) => {
     try {
-      const body = await jsonObject(c.req.raw);
+      const body = await jsonObject(c.req.raw, TOKEN_BODY_LIMIT);
       if (!body) return errorResponse('Body must be a JSON object', 400);
       const conversationId = body.conversationId;
       const mode = body.mode;
       if (mode !== undefined && mode !== 'short' && mode !== 'long') return errorResponse('mode must be short or long', 400);
-      if (conversationId === undefined) return Response.json(await warmupToken(), NO_STORE);
+      if (conversationId === undefined) return Response.json({ ...(await voiceTokens.warmup()), conversation: null }, NO_STORE);
       if (typeof conversationId !== 'string' || conversationId.length > 200) return errorResponse('conversationId is invalid', 400);
-      const conversation = await agent.conversation(conversationId);
+      const conversation = await agentServer.conversation(conversationId);
       // Open the session and configure voice effort and thinking before the user speaks.
-      void agent.warm(conversation.id, 'voice').catch((error) => {
+      void agentServer.warm(conversation.id, 'voice').catch((error) => {
         console.error('[voice] warm-up failed', error);
       });
-
-      const roomName = `call-${conversation.id}-${randomUUID().slice(0, 8)}`;
-      const token = new AccessToken(config.livekit.apiKey, config.livekit.apiSecret, {
-        identity: `user-${randomUUID().slice(0, 8)}`,
-        name: 'user',
-        ttl: '30m',
-      });
-      token.addGrant({
-        room: roomName,
-        roomJoin: true,
-        canPublish: true,
-        canPublishData: true,
-        canSubscribe: true,
-      });
-      token.roomConfig = new RoomConfiguration({
-        agents: [
-          new RoomAgentDispatch({
-            agentName: config.livekit.agentName,
-            metadata: JSON.stringify({
-              conversation_id: conversation.id,
-              call_mode: mode === 'long' ? 'long' : 'short',
-            }),
-          }),
-        ],
-      });
-
-      return Response.json(
-        {
-          serverUrl: config.livekit.url,
-          roomName,
-          participantName: 'user',
-          participantToken: await token.toJwt(),
-          conversation,
-        },
-        NO_STORE
-      );
+      const token = await voiceTokens.forCall(conversation.id, mode === 'long' ? 'long' : 'short');
+      return Response.json({ ...token, conversation }, NO_STORE);
     } catch (error) {
       return errorResponse(error);
     }
@@ -86,7 +72,7 @@ export function createVoiceRoutes(agent: AgentServerClient): Hono {
 
   // The voice agent's endpoints.
   voice.use('/conversations/*', async (c, next) => {
-    if (!isVoiceAgent(c.req.raw)) return errorResponse('Unauthorized', 401);
+    if (!sameSecret(bearerToken(c.req.raw), voiceGatewayToken)) return errorResponse('Unauthorized', 401);
     await next();
   });
   voice.use('/conversations/*', bodyLimit({ maxSize: PROXY_BODY_LIMIT }));
@@ -98,51 +84,30 @@ export function createVoiceRoutes(agent: AgentServerClient): Hono {
    * interruption).
    */
   voice.post('/conversations/:id/v1/chat/completions', (c) =>
-    agent.relay(c.req.raw, `${voicePath(c.req.param('id'))}/chat/completions`)
+    agentServer.relay(c.req.raw, `${voicePath(c.req.param('id'))}/chat/completions`)
   );
 
   /** The voice agent's control channel for one call; `?mode=long` opens a new call in long mode. */
-  voice.get('/conversations/:id/call', (c) => agent.relay(c.req.raw, withQuery(c, `${voicePath(c.req.param('id'))}/call`)));
+  voice.get('/conversations/:id/call', (c) => agentServer.relay(c.req.raw, withQuery(c, `${voicePath(c.req.param('id'))}/call`)));
 
   voice.get('/conversations/:id/call/state', (c) =>
-    agent.relay(c.req.raw, `${voicePath(c.req.param('id'))}/call/state`)
+    agentServer.relay(c.req.raw, `${voicePath(c.req.param('id'))}/call/state`)
   );
 
   /** Speaks a queued background update: the agent-server runs its voice turn and streams the text. */
   voice.post('/conversations/:id/call/updates/:updateId', (c) =>
-    agent.relay(c.req.raw, `${voicePath(c.req.param('id'))}/call/updates/${encodeURIComponent(c.req.param('updateId'))}`)
+    agentServer.relay(c.req.raw, `${voicePath(c.req.param('id'))}/call/updates/${encodeURIComponent(c.req.param('updateId'))}`)
   );
 
   voice.post('/conversations/:id/call/updates/:updateId/ack', (c) =>
-    agent.relay(
+    agentServer.relay(
       c.req.raw,
       `${voicePath(c.req.param('id'))}/call/updates/${encodeURIComponent(c.req.param('updateId'))}/ack`
     )
   );
 
   /** The call ended: unspoken updates go to the chat. */
-  voice.post('/conversations/:id/ended', (c) => agent.relay(c.req.raw, `${voicePath(c.req.param('id'))}/ended`));
+  voice.post('/conversations/:id/ended', (c) => agentServer.relay(c.req.raw, `${voicePath(c.req.param('id'))}/ended`));
 
   return voice;
-}
-
-function voicePath(id: string): string {
-  return `/v1/voice/conversations/${encodeURIComponent(id)}`;
-}
-
-async function warmupToken() {
-  const roomName = `warmup-${randomUUID().slice(0, 8)}`;
-  const token = new AccessToken(config.livekit.apiKey, config.livekit.apiSecret, {
-    identity: `user-${randomUUID().slice(0, 8)}`,
-    name: 'user',
-    ttl: '5m',
-  });
-  token.addGrant({ room: roomName, roomJoin: true });
-  return {
-    serverUrl: config.livekit.url,
-    roomName,
-    participantName: 'user',
-    participantToken: await token.toJwt(),
-    conversation: null,
-  };
 }

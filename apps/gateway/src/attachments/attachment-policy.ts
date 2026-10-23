@@ -4,10 +4,12 @@
  * the workspace is reached only through its interface.
  */
 
-export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-export const MAX_RECORDING_BYTES = 25 * 1024 * 1024;
-/** Larger uploads are not read to sniff their type; their name and size decide. */
-export const MAX_SNIFF_BYTES = 5 * 1024 * 1024;
+/** The largest upload: a composer attachment, a voice recording or a device file. */
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+/** Leading bytes that decide an upload's type; larger files are never read whole for it. */
+export const SNIFF_BYTES = 8192;
+/** The gateway's retention state, in its own state directory (not in the workspace). */
+export const ATTACHMENT_RETENTION_FILE = 'attachment-retention.json';
 
 /** Uploads live under this workspace directory; the agent-server owns everything else under `data/`. */
 export const ATTACHMENT_DIRECTORY = 'data/attachments';
@@ -29,4 +31,20 @@ export function safeName(name: string): string {
     .replace(/^[.\s]+/, '')
     .trim();
   return clean.slice(-120) || 'file';
+}
+
+/** The upload is larger than the limit. Routes answer 413 for this class only. */
+export class PayloadTooLargeError extends Error {
+  constructor(message = `Upload is larger than ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`) {
+    super(message);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
+/** The upload or the turn names an attachment that cannot be used. Routes answer 400 for this class. */
+export class InvalidAttachmentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAttachmentError';
+  }
 }

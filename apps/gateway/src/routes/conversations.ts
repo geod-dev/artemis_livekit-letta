@@ -1,12 +1,17 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { type MessageDeleteResponse, conversationPath } from '@artemis/contracts/agent-server';
+import {
+  type ChatAttachment,
+  MAX_TURN_ATTACHMENTS,
+  MAX_TURN_TEXT_LENGTH,
+  TEXT_EFFORTS,
+  type TextEffort,
+} from '@artemis/contracts/chat-types';
 import type { AgentServerClient } from '../agent-server/client';
-import type { ChatAttachment, TextEffort } from '../chat-types';
-import type { AttachmentStore } from '../assistant/attachments/attachment-store';
+import { InvalidAttachmentError } from '../attachments/attachment-policy';
+import type { AttachmentStore } from '../attachments/attachment-store';
 import { errorResponse, jsonObject, PROXY_BODY_LIMIT, routeError, withQuery } from '../http';
-
-const MAX_ATTACHMENTS = 10;
-const TEXT_EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 /**
  * The chat API. Conversations, messages, tasks and live events belong to the
@@ -28,10 +33,11 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
   conversations.delete('/:id', async (c) => {
     const id = c.req.param('id');
     const response = await agent.relay(c.req.raw, conversationPath(id));
-    if (response.ok) {
-      await store.registry.releaseReferences(id).catch((error) => {
-        console.error('[conversations] could not release attachment references:', error);
-      });
+    if (!response.ok) return response;
+    try {
+      await store.registry.releaseReferences(id);
+    } catch (error) {
+      return errorResponse(error);
     }
     return response;
   });
@@ -56,7 +62,8 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
   /**
    * Send a text message, with optional attachments (uploaded first to
    * /api/attachments). The turn runs in the background; its output reaches the
-   * browser through the conversation event stream.
+   * browser through the conversation event stream. The shape is checked here;
+   * the agent-server validates the turn and is the authority on its limits.
    */
   conversations.post('/:id/messages', async (c) => {
     const id = c.req.param('id');
@@ -66,9 +73,9 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
     const effort = body.effort;
     const attachments = body.attachments === undefined ? [] : body.attachments;
     const clientMessageId = body.clientMessageId;
-    if (typeof text !== 'string' || text.length > 100_000)
-      return errorResponse('text must be a string of at most 100000 characters', 400);
-    if (effort !== undefined && !TEXT_EFFORTS.includes(String(effort))) {
+    if (typeof text !== 'string' || text.length > MAX_TURN_TEXT_LENGTH)
+      return errorResponse(`text must be a string of at most ${MAX_TURN_TEXT_LENGTH} characters`, 400);
+    if (effort !== undefined && !(TEXT_EFFORTS as readonly string[]).includes(String(effort))) {
       return errorResponse(`effort must be one of ${TEXT_EFFORTS.join(', ')}`, 400);
     }
     if (
@@ -100,15 +107,15 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
       })
     )
       return errorResponse('attachments must be a list of valid attachment objects', 400);
-    if (attachments.length > MAX_ATTACHMENTS) {
-      return errorResponse(`At most ${MAX_ATTACHMENTS} attachments per message`, 400);
+    if (attachments.length > MAX_TURN_ATTACHMENTS) {
+      return errorResponse(`At most ${MAX_TURN_ATTACHMENTS} attachments per message`, 400);
     }
     if (!text.trim() && attachments.length === 0) return errorResponse('text is required', 400);
     let resolved: ChatAttachment[];
     try {
       resolved = await store.resolve(attachments as ChatAttachment[]);
     } catch (error) {
-      return errorResponse(error, 400);
+      return error instanceof InvalidAttachmentError ? errorResponse(error.message, 400) : errorResponse(error);
     }
     const response = await agent.relay(
       c.req.raw,
@@ -122,53 +129,40 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
     );
     // Only an accepted turn keeps its uploads; a refused or unknown conversation must not pin them.
     if (response.status === 202) {
-      await store.registry.addReferences(id, resolved).catch((error) => {
-        console.error('[conversations] could not persist attachment references:', error);
-      });
+      try {
+        await store.registry.addReferences(id, resolved.map((a) => a.path));
+      } catch (error) {
+        return errorResponse(error);
+      }
     }
     return response;
   });
 
   /**
    * Delete a user message and everything after it, in place. The conversation
-   * keeps its id; its uploads are re-referenced from the messages that remain.
+   * keeps its id; its uploads are re-referenced from the attachments the
+   * agent-server reports as remaining.
    */
   conversations.delete('/:id/messages/:messageId', async (c) => {
     const id = c.req.param('id');
     const messageId = c.req.param('messageId');
     if (messageId.length > 200) return errorResponse('Invalid message id', 400);
     const response = await agent.relay(c.req.raw, `${conversationPath(id)}/messages/${encodeURIComponent(messageId)}`);
-    if (response.ok) {
-      await store.registry.setReferences(id, await attachmentsInConversation(agent, id)).catch((error) => {
-        console.error('[conversations] could not refresh attachment references:', error);
-      });
+    if (!response.ok) return response;
+    const payload = await response.text();
+    try {
+      const { attachments } = JSON.parse(payload) as MessageDeleteResponse;
+      if (!Array.isArray(attachments)) throw new Error('agent-server sent no attachment list');
+      await store.registry.setReferences(id, attachments);
+    } catch (error) {
+      return errorResponse(error);
     }
-    return response;
+    return new Response(payload, { status: response.status, headers: response.headers });
   });
 
   return conversations;
 }
 
-function conversationPath(id: string): string {
-  return `/v1/conversations/${encodeURIComponent(id)}`;
-}
-
 function taskPath(id: string, taskId: string): string {
   return `${conversationPath(id)}/tasks/${encodeURIComponent(taskId)}`;
-}
-
-/** Every upload any message of the conversation still shows. */
-async function attachmentsInConversation(agent: AgentServerClient, id: string): Promise<ChatAttachment[]> {
-  const attachments = new Map<string, ChatAttachment>();
-  let before: string | undefined;
-  for (let page = 0; page < 1000; page++) {
-    const result = await agent.messagesPage(id, { limit: 100, ...(before ? { before } : {}) });
-    for (const message of result.messages) {
-      if (message.role !== 'user') continue;
-      for (const attachment of message.attachments ?? []) attachments.set(attachment.path, attachment);
-    }
-    if (!result.nextCursor) return [...attachments.values()];
-    before = result.nextCursor;
-  }
-  throw new Error('Conversation history exceeded the attachment reference scan limit');
 }

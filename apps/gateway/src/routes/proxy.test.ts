@@ -7,14 +7,13 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AgentServerClient } from '../agent-server/client.ts';
-import { config } from '../assistant/config.ts';
-import type { McpServer } from '../chat-types.ts';
-import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
-import { composeWorkspace } from '../compose.ts';
-import { createConversationRoutes } from './conversations.ts';
-import { createMcpRoutes } from './mcp.ts';
-import { createVoiceRoutes } from './voice.ts';
+import { AgentServerClient } from '../agent-server/client';
+import type { McpServer } from '../chat-types';
+import { AttachmentStore } from '../attachments/attachment-store';
+import { composeWorkspace } from '../compose';
+import { createConversationRoutes } from './conversations';
+import { createMcpRoutes } from './mcp-settings';
+import { createVoiceRoutes } from './voice';
 
 const AGENT_TOKEN = 'agent-server-test-token';
 const VOICE_TOKEN = 'voice-agent-test-token';
@@ -66,7 +65,7 @@ async function fakeAgentServer() {
   );
   app.delete('/v1/conversations/:id/messages/:messageId', (c) => {
     state.messages = [];
-    return c.json({ conversation: { ...CONVERSATION, id: c.req.param('id') } });
+    return c.json({ attachments: [] });
   });
   app.delete('/v1/conversations/:id', () => new Response(null, { status: 204 }));
   app.get('/v1/mcp', (c) =>
@@ -107,18 +106,26 @@ async function fakeAgentServer() {
   };
 }
 
+/** The voice token port is not used by these tests: the call and chat endpoints only relay. */
+const unusedVoiceTokens = {
+  forCall: async (): Promise<never> => {
+    throw new Error('not used by these tests');
+  },
+  warmup: async (): Promise<never> => {
+    throw new Error('not used by these tests');
+  },
+};
+
 /** The gateway's API routers, as startBackend mounts them, in front of a fake agent-server. */
 async function fixture() {
-  const previousVoiceToken = config.voiceGatewayToken;
   const root = await mkdtemp(join(tmpdir(), 'artemis-gateway-proxy-'));
-  config.voiceGatewayToken = VOICE_TOKEN;
-  const attachments = new AttachmentStore(composeWorkspace(root));
+  const attachments = new AttachmentStore(composeWorkspace(root), join(root, 'state'));
   const agentServer = await fakeAgentServer();
   const agent = new AgentServerClient({ url: agentServer.url, token: AGENT_TOKEN });
   const app = new Hono();
   app.route('/api/conversations', createConversationRoutes(agent, attachments));
   app.route('/api/mcp', createMcpRoutes(agent));
-  app.route('/api/voice', createVoiceRoutes(agent));
+  app.route('/api/voice', createVoiceRoutes({ agentServer: agent, voiceTokens: unusedVoiceTokens, voiceGatewayToken: VOICE_TOKEN }));
   return {
     app,
     agent,
@@ -126,7 +133,6 @@ async function fixture() {
     attachments,
     root,
     close: async () => {
-      config.voiceGatewayToken = previousVoiceToken;
       await agentServer.close();
       await rm(root, { recursive: true, force: true });
     },
@@ -236,7 +242,7 @@ test('rewinding a conversation releases the uploads its remaining messages no lo
     f.agentServer.state.messages = [{ id: 'm1', role: 'user', text: 'look', attachments: [upload] }];
     const rewind = await f.app.request('https://gateway.test/api/conversations/c1/messages/m1', { method: 'DELETE' });
     assert.equal(rewind.status, 200);
-    assert.equal((await rewind.json() as { conversation: { id: string } }).conversation.id, 'c1');
+    assert.deepEqual((await rewind.json() as { attachments: string[] }).attachments, []);
     assert.equal(await f.attachments.registry.removeUnused(upload.path), true);
   } finally {
     await f.close();
@@ -343,7 +349,7 @@ test('an unreachable agent-server is reported as unavailable', async () => {
   const app = new Hono();
   const agent = new AgentServerClient({ url: 'http://127.0.0.1:9', token: AGENT_TOKEN });
   const root = await mkdtemp(join(tmpdir(), 'artemis-gateway-unreachable-'));
-  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(root))));
+  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(root), join(root, 'state'))));
   try {
     const response = await app.request('https://gateway.test/api/conversations');
     assert.equal(response.status, 503);

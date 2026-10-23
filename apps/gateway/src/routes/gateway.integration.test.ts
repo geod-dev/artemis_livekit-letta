@@ -9,12 +9,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { Hono } from 'hono';
-import { AgentServerClient } from '../agent-server/client.ts';
-import { AttachmentStore } from '../assistant/attachments/attachment-store.ts';
-import { type AppConfig, validateConfig } from '../assistant/config.ts';
-import { createAuth } from '../auth.ts';
-import { composeWorkspace } from '../compose.ts';
-import { createConversationRoutes } from './conversations.ts';
+import { AgentServerClient } from '../agent-server/client';
+import { AttachmentStore } from '../attachments/attachment-store';
+import { type AppConfig, validateConfig } from '../config';
+import { createAuth } from '../auth';
+import { composeWorkspace } from '../compose';
+import { createConversationRoutes } from './conversations';
 
 const AGENT_TOKEN = 'gateway-integration-agent-token';
 const PASSWORD = 'gateway-integration-password';
@@ -94,7 +94,7 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
 
     const conversation = /^\/v1\/conversations\/([^/]+)$/.exec(path);
     if (method === 'GET' && conversation) {
-      const id = decodeURIComponent(conversation[1]);
+      const id = decodeURIComponent(conversation[1] ?? '');
       if (id === 'boom')
         return sendJson(res, 500, { error: 'The request could not be completed', requestId: 'upstream-500' });
       if (id === 'unavailable')
@@ -126,10 +126,10 @@ async function startFakeAgentServer(): Promise<FakeAgentServer> {
 /** The gateway's composition from server.ts: auth in front of the gateway routes, public health and readiness. */
 function buildGateway(config: AppConfig): Hono {
   const agent = new AgentServerClient(config.agentServer);
-  const app = createAuth(config.auth.password, config.auth.deviceToken);
+  const app = createAuth(config.auth.password, config.auth.deviceToken, config.voiceGatewayToken);
   app.get('/health', (c) => c.json({ status: 'ok' }));
   app.get('/ready', (c) => agent.relay(c.req.raw, '/ready'));
-  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(config.workspace.dir))));
+  app.route('/api/conversations', createConversationRoutes(agent, new AttachmentStore(composeWorkspace(config.workspace.dir), config.workspace.dataDir)));
   return app;
 }
 
@@ -165,7 +165,7 @@ before(async () => {
     headers: { 'Content-Type': 'application/json', Origin: origin },
   });
   assert.equal(login.status, 200);
-  cookie = login.headers.get('set-cookie')!.split(';')[0];
+  cookie = login.headers.get('set-cookie')!.split(';')[0] ?? '';
 });
 
 after(async () => {

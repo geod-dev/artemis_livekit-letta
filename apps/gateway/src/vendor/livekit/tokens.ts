@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { VOICE_DISPATCH_KEYS } from '@artemis/contracts/agent-server';
 import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
 import type { AppConfig } from '../../config';
 
@@ -40,8 +41,8 @@ export function createVoiceTokenIssuer(livekit: AppConfig['livekit']): VoiceToke
           new RoomAgentDispatch({
             agentName: livekit.agentName,
             metadata: JSON.stringify({
-              conversation_id: dispatch.conversationId,
-              call_mode: dispatch.callMode,
+              [VOICE_DISPATCH_KEYS.conversationId]: dispatch.conversationId,
+              [VOICE_DISPATCH_KEYS.callMode]: dispatch.callMode,
             }),
           }),
         ],

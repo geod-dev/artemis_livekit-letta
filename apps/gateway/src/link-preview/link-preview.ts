@@ -47,6 +47,7 @@ async function readPage(url: URL, signal: AbortSignal, redirects = 0): Promise<s
   signal.throwIfAborted();
   // Pin the validated address so DNS cannot change between validation and connection.
   const address = addresses[0];
+  if (!address) throw new Error('Private destination');
   return new Promise((resolve, reject) => {
     const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
       url,
