@@ -112,7 +112,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: apps/web/Dockerfile
       args:
         IP_ADDRESS: ${IP_ADDRESS:-127.0.0.1}
         ASSISTANT_NAME: ${ASSISTANT_NAME:-Artemis}

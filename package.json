@@ -11,7 +11,7 @@
     "check": "node scripts/check.mjs",
     "check:gateway": "node scripts/check.mjs gateway",
     "check:agent-server": "node scripts/check.mjs agent-server",
-    "check:frontend": "node scripts/check.mjs frontend",
+    "check:web": "node scripts/check.mjs web",
     "check:voice": "node scripts/check.mjs voice",
     "check:devices": "node scripts/check.mjs devices",
     "check:operations": "node scripts/check.mjs operations",

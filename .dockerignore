@@ -18,4 +18,4 @@
 **/*.keystore
 **/*.jks
 apps/gateway/.workspace
-frontend/dist
+apps/web/dist

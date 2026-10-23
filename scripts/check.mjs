@@ -13,10 +13,10 @@ const commands = {
     ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', 'tsconfig.json'], 'apps/agent-server'],
     ['tests', process.execPath, ['node_modules/tsx/dist/cli.mjs', '--test', 'src/**/*.test.ts'], 'apps/agent-server'],
   ],
-  frontend: [
-    ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'], 'frontend'],
-    ['lint', process.execPath, ['node_modules/eslint/bin/eslint.js', '.'], 'frontend'],
-    ['tests', process.execPath, ['--test', '--experimental-strip-types', '--no-warnings', 'src/**/*.test.ts'], 'frontend'],
+  web: [
+    ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'], 'apps/web'],
+    ['lint', process.execPath, ['node_modules/eslint/bin/eslint.js', '.'], 'apps/web'],
+    ['tests', process.execPath, ['--test', '--experimental-strip-types', '--no-warnings', 'src/**/*.test.ts'], 'apps/web'],
   ],
   voice: [
     ['tests', 'uv', ['run', '--locked', '--group', 'dev', 'pytest'], 'voice-agent'],
@@ -40,9 +40,9 @@ const commands = {
 
 const selected = process.argv[2];
 const groups = selected === 'all'
-  ? ['gateway', 'agent-server', 'frontend', 'voice', 'devices', 'packages', 'operations', 'schema']
+  ? ['gateway', 'agent-server', 'web', 'voice', 'devices', 'packages', 'operations', 'schema']
   : selected === undefined
-    ? ['gateway', 'agent-server', 'frontend', 'voice', 'devices', 'packages', 'operations', 'schema']
+    ? ['gateway', 'agent-server', 'web', 'voice', 'devices', 'packages', 'operations', 'schema']
     : [selected];
 
 if (groups.some((group) => !(group in commands))) {

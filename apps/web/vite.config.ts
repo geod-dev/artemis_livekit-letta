@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react';
 // One `.env` at the repo root is shared by Docker Compose, the backend, this app
 // and the voice agent. The browser reaches the backend through the `/api` proxy.
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, fileURLToPath(new URL('..', import.meta.url)), '');
+  const env = loadEnv(mode, fileURLToPath(new URL('../..', import.meta.url)), '');
   const assistantName = process.env.ASSISTANT_NAME || env.ASSISTANT_NAME || 'Artemis';
   const proxy = {
     '/api': {

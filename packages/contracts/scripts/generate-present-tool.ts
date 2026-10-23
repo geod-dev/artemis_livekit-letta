@@ -6,7 +6,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { toJSONSchema } from 'zod';
-import { presentLibrary, presentToolSchema } from '../../../frontend/src/lib/generative-ui.ts';
+import { presentLibrary, presentToolSchema } from '../../../apps/web/src/lib/generative-ui.ts';
 
 const generatedDirectory = new URL('../generated/', import.meta.url);
 // Without the schema's shared-prop warnings (see `presentToolSchema`).

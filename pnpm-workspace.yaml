@@ -1,6 +1,10 @@
 # One pnpm workspace and one lockfile (pnpm-lock.yaml at the root) for every
-# Node package except the frontend, which keeps its own hoisted install.
+# Node package, including the web app. The default isolated linker is kept;
+# public-hoist-pattern lists the UI declaration packages the web app needs.
 packages:
   - packages/*
   - apps/agent-server
   - apps/gateway
+  - apps/web
+onlyBuiltDependencies:
+  - esbuild
