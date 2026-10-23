@@ -1,10 +1,10 @@
 import { serve } from '@hono/node-server';
 import type { Server } from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { AgentServerClient } from './agent-server/client';
 import { loadConfig } from './assistant/config';
 import { startAttachmentCleanup, stopAttachmentCleanup } from './assistant/filesystem/attachment-retention';
 import { createAuth } from './auth';
+import { composeGateway } from './compose';
 import { errorResponse } from './http';
 
 interface BackendApplication {
@@ -38,7 +38,7 @@ export async function startBackend(): Promise<BackendApplication> {
     import('./routes/files'),
     import('./routes/utilities'),
   ]);
-  const agentServer = new AgentServerClient(config.agentServer);
+  const { agentServer } = composeGateway(config);
   startAttachmentCleanup();
   const app = createAuth(config.auth.password, config.auth.deviceToken);
   // The public liveness/readiness endpoints remain outside the /api auth middleware.

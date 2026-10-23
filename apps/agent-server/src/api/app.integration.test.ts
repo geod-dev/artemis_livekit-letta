@@ -9,14 +9,12 @@ import type { Hono } from 'hono';
 import type { ChatAttachment } from '@artemis/contracts/chat-types';
 import { consoleLogger, systemClock } from '@artemis/core';
 import { type LlmProvider, ProviderRegistry } from '@artemis/llm';
-import { AnthropicLlmProvider } from '@artemis/llm/anthropic';
 import { type ArtifactSink, McpCatalog, McpServerRegistry, type McpSettingsStore, mcpRevision } from '@artemis/mcp';
-import { SdkMcpClient } from '@artemis/mcp/sdk';
 import { MemoryStore, type RecallResult } from '@artemis/memory';
 import type { Storage } from '@artemis/storage';
-import { PostgresStorage } from '@artemis/storage/postgres';
-import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
+import type { WorkspaceTransport } from '@artemis/workspace';
 import type { CallSessions } from '../calls/call-sessions.ts';
+import { compose } from '../compose.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
 import { loadConfig } from '../config.ts';
 import { createConversationService } from '../conversations/service.ts';
@@ -131,11 +129,11 @@ async function buildHarness(): Promise<Harness> {
   const logger = consoleLogger('agent-server-it');
   const clock = systemClock;
 
-  const storage: Storage = new PostgresStorage({ connectionString: config.databaseUrl });
+  const storage: Storage = compose.postgresStorage({ connectionString: config.databaseUrl });
   await storage.migrate();
 
   const providers: LlmProvider[] = [
-    new AnthropicLlmProvider({ apiKey: 'integration-test-key', baseUrl: UNREACHABLE_URL, maxRetries: 0 }),
+    compose.anthropicProvider({ apiKey: 'integration-test-key', baseUrl: UNREACHABLE_URL, maxRetries: 0 }),
   ];
   const router = createModelRouter(config, new ProviderRegistry(providers));
   const prompts = new PromptRenderer(PROMPTS_DIR);
@@ -146,13 +144,13 @@ async function buildHarness(): Promise<Harness> {
   memory.start();
   await memoryStore.ensureReady();
 
-  const workspace = new FilesystemWorkspaceTransport({
+  const workspace = compose.filesystemWorkspace({
     root: config.workspace.root,
     displayRoot: config.workspace.displayRoot,
     runAs: config.workspace.runAs,
     ripgrep: 'auto',
   });
-  const mcpClient = new SdkMcpClient({ artifacts: workspaceArtifactSink(workspace), stdio: { cwd: config.workspace.root } });
+  const mcpClient = compose.sdkMcpClient({ artifacts: workspaceArtifactSink(workspace), stdio: { cwd: config.workspace.root } });
   const catalog: McpCatalog = new McpCatalog(mcpClient, () => registry.servers());
   const registry: McpServerRegistry = new McpServerRegistry(
     mcpSettingsStore(storage),
@@ -266,7 +264,7 @@ function mcpSettingsStore(storage: Storage): McpSettingsStore {
   };
 }
 
-function workspaceArtifactSink(workspace: FilesystemWorkspaceTransport): ArtifactSink {
+function workspaceArtifactSink(workspace: WorkspaceTransport): ArtifactSink {
   return {
     async save({ conversationId, name, mimeType, bytes }) {
       const safeName = name.replace(/[^\w.-]+/g, '_') || 'artifact';

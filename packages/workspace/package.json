@@ -6,7 +6,7 @@
   "description": "WorkspaceTransport abstraction (files + processes) with a local filesystem implementation.",
   "exports": {
     ".": "./src/index.ts",
-    "./filesystem": "./src/filesystem/index.ts"
+    "./filesystem": "./src/vendor/filesystem/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

@@ -14,8 +14,8 @@ import {
   type StopReason,
 } from '@artemis/llm';
 import { InMemoryStorage } from '@artemis/storage';
-import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
 import type { AgentServerConfig } from '../config.ts';
+import { compose } from '../compose.ts';
 import { ConversationEventHub } from '../events/hub.ts';
 import { MemoryCoordinator } from '../memory/coordinator.ts';
 import type { ModelRouter, RouteKind } from '../models/routing.ts';
@@ -242,7 +242,7 @@ export async function createHarness(
     memory: new NoMemory(),
     calls: createCallSessions(clock),
     titles: new NoTitles(),
-    workspace: new FilesystemWorkspaceTransport({ root: workspaceRoot, displayRoot: '/workspace' }),
+    workspace: compose.filesystemWorkspace({ root: workspaceRoot, displayRoot: '/workspace' }),
     catalog,
     mcp: new NoMcp(),
     memoryTools: [],

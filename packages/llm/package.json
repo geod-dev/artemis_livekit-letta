@@ -6,8 +6,8 @@
   "description": "LLM provider abstraction (LlmProvider) with Anthropic and OpenAI-compatible implementations.",
   "exports": {
     ".": "./src/index.ts",
-    "./anthropic": "./src/anthropic/index.ts",
-    "./openai-compatible": "./src/openai-compatible/index.ts"
+    "./anthropic": "./src/vendor/anthropic/index.ts",
+    "./openai-compatible": "./src/vendor/openai-compatible/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

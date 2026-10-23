@@ -1,12 +1,8 @@
 /**
- * Composition root: the only module that imports vendor implementations
- * (`@artemis/llm/anthropic`, `@artemis/llm/openai-compatible`,
- * `@artemis/storage/postgres`, `@artemis/memory/hindsight`,
- * `@artemis/workspace/filesystem`, `@artemis/mcp/sdk`).
- *
- * Boot: loadConfig -> PostgresStorage.migrate -> memory coordinator start ->
- * MCP registry load + catalog refresh -> supervisor.recover -> memory.ensureReady
- * (non-blocking) -> supervisor/outbox start -> serve (Hono on AGENT_SERVER_PORT).
+ * Boot (vendor implementations are constructed in `compose.ts`): loadConfig ->
+ * PostgresStorage.migrate -> memory coordinator start -> MCP registry load +
+ * catalog refresh -> supervisor.recover -> memory.ensureReady (non-blocking) ->
+ * supervisor/outbox start -> serve (Hono on AGENT_SERVER_PORT).
  * SIGTERM: stop accepting, stop workers (tasks end `failed: interrupted`), flush
  * the last active conversation's memory, stop the outbox, close storage.
  */
@@ -14,19 +10,15 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
-import { AnthropicLlmProvider } from '@artemis/llm/anthropic';
-import { OpenAiCompatibleLlmProvider } from '@artemis/llm/openai-compatible';
 import { type LlmProvider, ProviderRegistry } from '@artemis/llm';
 import { consoleLogger, systemClock } from '@artemis/core';
 import type { ChatAttachment } from '@artemis/contracts/chat-types';
 import { type ArtifactSink, McpCatalog, McpServerRegistry, type McpSettingsStore, mcpRevision } from '@artemis/mcp';
-import { SdkMcpClient } from '@artemis/mcp/sdk';
 import { MemoryStore, type RecallResult } from '@artemis/memory';
-import { HindsightMemoryStore } from '@artemis/memory/hindsight';
 import type { Storage } from '@artemis/storage';
-import { PostgresStorage } from '@artemis/storage/postgres';
-import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
+import type { WorkspaceTransport } from '@artemis/workspace';
 import { createApp } from './api/app.ts';
+import { compose } from './compose.ts';
 import { createCallSessions } from './calls/call-sessions.ts';
 import { type AgentServerConfig, loadConfig } from './config.ts';
 import { createConversationService } from './conversations/service.ts';
@@ -47,7 +39,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
   const logger = consoleLogger('agent-server');
   const clock = systemClock;
 
-  const storage = new PostgresStorage({ connectionString: config.databaseUrl });
+  const storage = compose.postgresStorage({ connectionString: config.databaseUrl });
   await storage.migrate();
 
   // Providers and routing: nothing else in the service knows vendor SDKs.
@@ -57,7 +49,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
 
   // Memory: Hindsight when configured; otherwise a store that recalls nothing and retains nowhere.
   const memoryStore: MemoryStore = config.memory.enabled
-    ? new HindsightMemoryStore({
+    ? compose.hindsightMemory({
         baseUrl: config.memory.hindsightUrl,
         apiKey: config.memory.hindsightApiKey,
         bankId: config.memory.bankId,
@@ -75,7 +67,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
     logger.warn('memory bank not ready', { message: errorMessage(error) });
   });
 
-  const workspace = new FilesystemWorkspaceTransport({
+  const workspace = compose.filesystemWorkspace({
     root: config.workspace.root,
     displayRoot: config.workspace.displayRoot,
     runAs: config.workspace.runAs,
@@ -83,7 +75,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
   });
 
   // MCP: manual servers in storage, device servers pushed by the gateway, catalog refreshed on change.
-  const mcpClient = new SdkMcpClient({ artifacts: workspaceArtifactSink(workspace), stdio: { cwd: config.workspace.root } });
+  const mcpClient = compose.sdkMcpClient({ artifacts: workspaceArtifactSink(workspace), stdio: { cwd: config.workspace.root } });
   const catalog: McpCatalog = new McpCatalog(mcpClient, () => registry.servers());
   const registry: McpServerRegistry = new McpServerRegistry(
     mcpSettingsStore(storage),
@@ -190,9 +182,9 @@ class DisabledMemoryStore extends MemoryStore {
 }
 
 function createProviders(config: AgentServerConfig): ProviderRegistry {
-  const providers: LlmProvider[] = [new AnthropicLlmProvider({ apiKey: config.providers.anthropicApiKey })];
+  const providers: LlmProvider[] = [compose.anthropicProvider({ apiKey: config.providers.anthropicApiKey })];
   if (config.providers.openAiCompatible) {
-    providers.push(new OpenAiCompatibleLlmProvider(config.providers.openAiCompatible));
+    providers.push(compose.openAiCompatibleProvider(config.providers.openAiCompatible));
   }
   return new ProviderRegistry(providers);
 }
@@ -214,7 +206,7 @@ function mcpSettingsStore(storage: Storage): McpSettingsStore {
 }
 
 /** MCP results (images, files) are saved under `data/artifacts/<conversation>/`, read-only for agents. */
-function workspaceArtifactSink(workspace: FilesystemWorkspaceTransport): ArtifactSink {
+function workspaceArtifactSink(workspace: WorkspaceTransport): ArtifactSink {
   return {
     async save({ conversationId, name, mimeType, bytes }) {
       const safeName = name.replace(/[^\w.-]+/g, '_') || 'artifact';

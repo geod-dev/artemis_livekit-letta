@@ -1,6 +1,6 @@
 -- Agent-server schema, database `artemis` (the `hindsight` database on the same
 -- pgvector instance belongs to Hindsight and is never touched from here).
--- Applied by packages/storage/src/postgres/migrator.ts in file-name order,
+-- Applied by packages/storage/src/vendor/postgres/migrator.ts in file-name order,
 -- each file in its own transaction, recorded in schema_migrations.
 
 CREATE TABLE conversations (

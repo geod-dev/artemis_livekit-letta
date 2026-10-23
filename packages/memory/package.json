@@ -6,7 +6,7 @@
   "description": "MemoryStore abstraction (retain/recall) with the Hindsight implementation.",
   "exports": {
     ".": "./src/index.ts",
-    "./hindsight": "./src/hindsight/index.ts"
+    "./hindsight": "./src/vendor/hindsight/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

@@ -10,9 +10,8 @@ import { BusyError } from '@artemis/core';
 import type { LlmRequest } from '@artemis/llm';
 import { McpCatalog, McpClient } from '@artemis/mcp';
 import type { Storage } from '@artemis/storage';
-import { PostgresStorage } from '@artemis/storage/postgres';
-import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
 import type { AgentServerConfig } from '../config.ts';
+import { compose } from '../compose.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
 import { MemoryCoordinator } from '../memory/coordinator.ts';
 import { PromptRenderer } from '../prompts/renderer.ts';
@@ -34,7 +33,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ANSWER = 'Hi from the fake model';
 
 /** `pg` is a dependency of the storage package, not of the agent server: resolve it from there. */
-const requireFromStorage = createRequire(import.meta.resolve('@artemis/storage/postgres'));
+const requireFromStorage = createRequire(import.meta.resolve('@artemis/storage'));
 const { Pool } = requireFromStorage('pg') as { Pool: new (options: { connectionString: string }) => PgPool };
 interface PgPool {
   query(text: string): Promise<unknown>;
@@ -124,7 +123,7 @@ async function buildRig(storage: Storage, provider: ScriptedProvider, overrides:
     memory: new NoMemory(),
     calls: createCallSessions(clock),
     titles: new NoTitles(),
-    workspace: new FilesystemWorkspaceTransport({ root: workspaceRoot, displayRoot: '/workspace' }),
+    workspace: compose.filesystemWorkspace({ root: workspaceRoot, displayRoot: '/workspace' }),
     catalog,
     mcp: new NoMcp(),
     memoryTools: [],
@@ -158,7 +157,7 @@ function turnEnds(hub: RecordingHub): Extract<ConversationEvent, { type: 'turn_e
 }
 
 describe('turn pipeline over Postgres', { skip }, () => {
-  let storage: PostgresStorage;
+  let storage: Storage;
   let databaseName: string;
 
   before(async () => {
@@ -171,7 +170,7 @@ describe('turn pipeline over Postgres', { skip }, () => {
     }
     const url = new URL(serverUrl ?? '');
     url.pathname = `/${databaseName}`;
-    storage = new PostgresStorage({ connectionString: url.toString() });
+    storage = compose.postgresStorage({ connectionString: url.toString() });
     await storage.migrate();
   });
 

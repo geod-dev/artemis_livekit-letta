@@ -6,7 +6,7 @@
   "description": "MCP server settings, client, catalog, registry and the mcp_describe/mcp_call/mcp_call_write bridge tools.",
   "exports": {
     ".": "./src/index.ts",
-    "./sdk": "./src/sdk/index.ts"
+    "./sdk": "./src/vendor/sdk/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
