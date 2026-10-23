@@ -82,6 +82,20 @@ Notes:
 - `pnpm smoke:agent-server` runs a live turn against an already-running agent server. It is
   not part of `pnpm check`.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request. It has two jobs:
+
+- `check` runs `pnpm install --frozen-lockfile` and `pnpm check`. It uses Node from
+  `.node-version`, pnpm from `packageManager`, and uv with Python 3.13. A pgvector Postgres
+  service container sets `TEST_DATABASE_URL`, so the Postgres integration tests run.
+- `compose` validates `docker-compose.yml`, `docker-compose.dev.yml` and
+  `docker-compose.coolify.yml` with placeholder values, then builds the `gateway`,
+  `agent-server`, `frontend` and `voice-agent` images.
+
+CI does not need Java. The Android build (Java 17) is not part of CI. CI does not deploy or
+publish anything.
+
 ## Where tests live
 
 - `apps/gateway/src/**/*.test.ts`, `apps/agent-server/src/**/*.test.ts`, and
