@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Toolset, TOOL_NAMES } from '@artemis/tools';
+import { Toolset } from '@artemis/tools';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { AgentServerConfig } from '../config.ts';
 import { createMemoryTools, type MemoryToolContext } from './tools.ts';
 import { FakeClock, FakeMemoryStore, fact } from './test-support.ts';

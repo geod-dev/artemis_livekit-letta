@@ -4,7 +4,7 @@ import {
   type ToolCallMessagePartComponent,
   groupPartByType,
 } from '@assistant-ui/react';
-import { TOOL_NAMES } from '@/lib/tool-names';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 

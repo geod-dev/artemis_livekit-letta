@@ -1,7 +1,8 @@
 import Ajv2020 from 'ajv/dist/2020.js';
 import type { ValidateFunction } from 'ajv';
 import type { JsonSchema } from '@artemis/llm';
-import { capText, errorResult, TOOL_NAMES, Tool, textResult, type ToolResult } from '@artemis/tools';
+import { capText, errorResult, Tool, textResult, type ToolResult } from '@artemis/tools';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { validatePresentTree } from '@artemis/contracts/present-validation';
 import presentComponents from '@artemis/contracts/present-components.json' with { type: 'json' };
 import presentTool from '@artemis/contracts/present-tool.json' with { type: 'json' };

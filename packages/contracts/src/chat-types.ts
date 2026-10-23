@@ -1,7 +1,7 @@
 /**
  * Shared API contracts for the frontend, the gateway (apps/gateway/) and the
- * agent-server. Keep this file free of runtime code and imports so every
- * package can consume it as types only.
+ * agent-server. Types and plain constants only, with no imports, so every
+ * package can consume it.
  */
 
 export type Modality = 'text' | 'voice';
@@ -16,7 +16,16 @@ export type TurnMode = 'text' | 'voice-short' | 'voice-long';
  * Effort for a text-chat turn. Voice uses medium effort with thinking disabled.
  * `xhigh` and `max` are accepted by the agent-server; the UI may offer them.
  */
-export type TextEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const TEXT_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type TextEffort = (typeof TEXT_EFFORTS)[number];
+
+/** Title of a conversation until the first turn (or the user) names it. */
+export const DEFAULT_CONVERSATION_TITLE = 'New chat';
+
+/** Largest accepted text of one turn, in characters. The agent-server enforces it. */
+export const MAX_TURN_TEXT_LENGTH = 100_000;
+/** Largest number of attachments on one turn. The agent-server enforces it. */
+export const MAX_TURN_ATTACHMENTS = 20;
 
 /** Context size of the last model request of the conversation (from provider usage). */
 export interface ConversationContextUsage {

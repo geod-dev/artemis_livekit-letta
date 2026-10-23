@@ -1,5 +1,6 @@
 import { type Clock, type Logger, systemClock, uuid } from '@artemis/core';
-import { type AnyTool, Tool, TOOL_NAMES, errorResult, textResult, type ToolResult } from '@artemis/tools';
+import { type AnyTool, Tool, errorResult, textResult, type ToolResult } from '@artemis/tools';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { TextEffort } from '@artemis/contracts/chat-types';
 import { type MemoryStore, type RecallBudget, recallBudget, renderRecalledMemories } from '@artemis/memory';
 import type { AgentServerConfig } from '../config.ts';

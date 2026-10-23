@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import type { ToolDisplay, ToolTaskRef } from '@artemis/contracts/chat-types';
 import { stripLeadingEmoji } from '../../../lib/agent-runs.ts';
-import { TOOL_NAMES } from '../../../lib/tool-names.ts';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 
 /**
  * How tool calls look in the thread: the one place that knows tools. A call

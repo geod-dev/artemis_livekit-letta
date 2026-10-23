@@ -25,7 +25,7 @@ import { WebSearchResults } from '@/components/assistant-ui/tools/web-search-res
 import { ActivityContext } from '@/components/chat/activity-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/shadcn/utils';
-import { TOOL_NAMES } from '@/lib/tool-names';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { formatToolValue, readToolOutput } from '@/lib/tool-output';
 import { selectToolRenderer, toolResultFormat } from '@/lib/tool-renderer';
 

@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { TOOL_NAMES } from '../names.ts';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { ToolContext } from '../context.ts';
 import { capText, errorResult, textResult, type ToolResult } from '../result.ts';
 import { Tool } from '../tool.ts';

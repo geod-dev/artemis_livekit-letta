@@ -1,6 +1,5 @@
 import {
   type AnyTool,
-  TOOL_NAMES,
   Tool,
   type ToolContext,
   type ToolResult,
@@ -8,6 +7,7 @@ import {
   errorResult,
   textResult,
 } from '@artemis/tools';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { CatalogTool, McpCatalog } from './catalog.ts';
 import type { McpClient } from './client.ts';
 

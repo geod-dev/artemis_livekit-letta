@@ -19,7 +19,7 @@ import { type TaskKind, commandOutput, filterTaskKinds, groupAgentRuns } from '@
 import { workspacePath, workspaceUrl } from '@/lib/attachments';
 import { cn } from '@/lib/shadcn/utils';
 import { formatTaskDuration, taskDurationLabel, taskStatusLabel } from '@/lib/task-status';
-import { TOOL_NAMES } from '@/lib/tool-names';
+import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { readToolOutput } from '@/lib/tool-output';
 import { type ActivityTask, taskTitle, useActivity } from './activity-context';
 import { TaskBubble } from './task-bubble';

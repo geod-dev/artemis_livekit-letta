@@ -6,6 +6,8 @@
   "description": "API contracts, the generative UI library and generated present-tool schemas shared by the web app, the gateway and the agent-server. No runtime dependencies: the UI library is a devDependency, read only by the frontend and the schema generator.",
   "exports": {
     "./chat-types": "./src/chat-types.ts",
+    "./chat-http": "./src/chat-http.ts",
+    "./tool-names": "./src/tool-names.ts",
     "./agent-server": "./src/agent-server.ts",
     "./present-validation": "./src/present-validation.ts",
     "./present-library": "./src/present-library.ts",
@@ -14,7 +16,8 @@
   },
   "dependencies": {},
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --experimental-strip-types --no-warnings \"src/**/*.test.ts\""
   },
   "devDependencies": {
     "@assistant-ui/react-generative-ui": "^0.0.24",
