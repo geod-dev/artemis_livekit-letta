@@ -6,8 +6,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { HttpError } from '../http.ts';
+import { composeDeviceProtocol } from '../compose.ts';
 import { createDeviceRoutes } from './api.ts';
+import { DeviceNameInUse } from './errors.ts';
 import { DeviceHub } from './hub.ts';
 import { createDeviceMcpRoutes } from './mcp-endpoint.ts';
 
@@ -21,7 +22,11 @@ const tools = [
 async function fixture() {
   let baseUrl = '',
     now = Date.now();
-  const hub = new DeviceHub({ baseUrl: () => baseUrl, now: () => now });
+  const hub = new DeviceHub({
+    baseUrl: () => baseUrl,
+    protocol: composeDeviceProtocol(),
+    now: () => now,
+  });
   // The file routes are not reached by these tests, so the workspace is not used.
   const workspace = {} as unknown as WorkspaceTransport;
   const app = new Hono();
@@ -102,7 +107,7 @@ test('each device is exposed as a standard MCP server that the agent-server can 
     assert.notEqual(reply.result?.isError, true);
     assert.equal(reply.result?.content?.[0]?.text, 'Opened');
 
-    await f.hub.unregister('laptop', session);
+    f.hub.unregister('laptop', session);
     assert.deepEqual(f.hub.servers(), []);
   } finally {
     await f.close();
@@ -141,7 +146,7 @@ test('devices with the same tool name have independent MCP endpoints and lifetim
     const [laptopServer, desktopServer] = stored;
     assert.notEqual(laptopServer?.url, desktopServer?.url);
     assert.notEqual(laptopServer?.headers?.Authorization, desktopServer?.headers?.Authorization);
-    await f.hub.unregister('laptop', laptop);
+    f.hub.unregister('laptop', laptop);
     assert.deepEqual(
       f.hub.servers().map((server) => server.name),
       ['device_desktop']
@@ -162,7 +167,7 @@ test('a connected device keeps its name, and a lapsed name can be registered aga
     // A second registration of a live name is refused, and the connected device is not evicted.
     await assert.rejects(
       f.hub.register('laptop', tools),
-      (error) => error instanceof HttpError && error.status === 409
+      (error) => error instanceof DeviceNameInUse
     );
     assert.equal(f.hub.servers().length, 1);
     assert.equal(f.hub.tools('laptop', session).length, 1);
@@ -175,7 +180,7 @@ test('a connected device keeps its name, and a lapsed name can be registered aga
     const replacement = await f.hub.register('laptop', tools);
     assert.notEqual(replacement, session);
     await assert.rejects(f.hub.poll('laptop', session, new AbortController().signal), /expired/);
-    await f.hub.unregister('laptop', session);
+    f.hub.unregister('laptop', session);
     assert.equal(f.hub.servers().length, 1);
     f.advance(75_001);
     await f.hub.expire();
@@ -188,7 +193,10 @@ test('a connected device keeps its name, and a lapsed name can be registered aga
 });
 
 test('requests queued before an aborted poll are delivered by the next poll', async () => {
-  const hub = new DeviceHub({ baseUrl: () => 'http://gateway.test' });
+  const hub = new DeviceHub({
+    baseUrl: () => 'http://gateway.test',
+    protocol: composeDeviceProtocol(),
+  });
   try {
     const session = await hub.register('laptop', tools);
     const pending = hub.call('laptop', session, 'open_url', { url: 'https://example.com' });
@@ -205,7 +213,10 @@ test('requests queued before an aborted poll are delivered by the next poll', as
 });
 
 test('device connections and disconnections are published to the gateway listener', async () => {
-  const hub = new DeviceHub({ baseUrl: () => 'http://gateway.test' });
+  const hub = new DeviceHub({
+    baseUrl: () => 'http://gateway.test',
+    protocol: composeDeviceProtocol(),
+  });
   const published: string[][] = [];
   hub.onChange(async () => {
     published.push(hub.servers().map((server) => server.name));
@@ -215,7 +226,9 @@ test('device connections and disconnections are published to the gateway listene
     for (let attempt = 0; attempt < 50 && published.length === 0; attempt++)
       await new Promise((resolve) => setTimeout(resolve, 10));
     assert.deepEqual(published, [['device_laptop']]);
-    await hub.unregister('laptop', session);
+    hub.unregister('laptop', session);
+    for (let attempt = 0; attempt < 50 && published.at(-1)?.length !== 0; attempt++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
     assert.deepEqual(published.at(-1), []);
   } finally {
     hub.close();
@@ -223,7 +236,10 @@ test('device connections and disconnections are published to the gateway listene
 });
 
 test('per-device request queues reject excess work and stay bounded', async () => {
-  const hub = new DeviceHub({ baseUrl: () => 'http://gateway.test' });
+  const hub = new DeviceHub({
+    baseUrl: () => 'http://gateway.test',
+    protocol: composeDeviceProtocol(),
+  });
   try {
     const session = await hub.register('laptop', tools);
     const calls = Array.from({ length: 32 }, () => hub.call('laptop', session, 'open_url', {}));

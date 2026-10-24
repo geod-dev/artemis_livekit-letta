@@ -8,38 +8,19 @@ import {
   type Tool,
   ToolSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { DeviceBinding, DeviceTool, DeviceToolResult } from '../../device-protocol.ts';
 
 /**
  * Server side of a connected device: one standard Streamable HTTP MCP endpoint
  * per device. The gateway authenticates the request and supplies the device's
- * tools and call handler; this module only speaks MCP.
+ * tools and call handler; this module only speaks MCP. The gateway reaches it
+ * only through its composition root (`apps/gateway/src/compose.ts`).
  */
 
 /** Most tools a device may list. */
 const MAX_DEVICE_TOOLS = 100;
 
-/** A tool a device exposes (the MCP `Tool` shape, as the gateway uses it). */
-export interface DeviceTool {
-  name: string;
-  description?: string;
-  inputSchema: { type: 'object'; properties?: Record<string, unknown>; [key: string]: unknown };
-  annotations?: Record<string, unknown>;
-}
-
-/** The result of a device tool call (the MCP `CallToolResult` shape). */
-export interface DeviceToolResult {
-  content: Array<{ type: string; [key: string]: unknown }>;
-  isError?: boolean;
-  [key: string]: unknown;
-}
-
-/** What one authenticated device request is served from. */
-export interface DeviceBinding {
-  /** MCP server name reported on `initialize`, e.g. `device_<name>`. */
-  serverName: string;
-  tools(): DeviceTool[];
-  call(tool: string, args: Record<string, unknown>): Promise<DeviceToolResult>;
-}
+export type { DeviceBinding, DeviceTool, DeviceToolResult };
 
 /** Validate a device's `tools` list (at most 100 tools); throws a zod error when invalid. */
 export function parseDeviceTools(value: unknown): DeviceTool[] {

@@ -3,8 +3,9 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
 import { HttpError, errorResponse, jsonObject, requestLimit } from '../http.ts';
-import { saveDeviceFile } from './files.ts';
+import { DeviceError } from './errors.ts';
 import type { DeviceHub } from './hub.ts';
+import { saveDeviceFile } from './upload.ts';
 
 const REGISTER_BODY_LIMIT = 256_000;
 /** A 10 MB screenshot is about 13.4 MB when base64 encoded in JSON. */
@@ -23,9 +24,17 @@ function checkDeclaredSize(request: Request): void {
     );
 }
 
+/** Answers a failure: device domain errors take their status, anything else is the shared envelope. */
+function failure(error: unknown, status?: number): Response {
+  return errorResponse(
+    error instanceof DeviceError ? new HttpError(error.message, error.status) : error,
+    status
+  );
+}
+
 /**
  * The HTTP API a device client uses: registration, its event stream, requests and results.
- * Client-facing failures are HttpErrors from the hub; anything else is a masked 500.
+ * The hub and the upload code throw DeviceErrors, which this module maps to statuses.
  */
 export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport): Hono {
   const routes = new Hono();
@@ -35,7 +44,7 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
     try {
       return c.json({ session: await hub.register(body.name, body.tools) });
     } catch (error) {
-      return errorResponse(error);
+      return failure(error);
     }
   });
   const sessionOf = (c: { req: { header: (name: string) => string | undefined } }) =>
@@ -44,16 +53,22 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
     const name = c.req.param('name'),
       session = sessionOf(c),
       id = c.req.param('id');
+    let sourcePath: string;
     try {
       checkDeclaredSize(c.req.raw);
-      const sourcePath = hub.beginFileUpload(name, session, id);
+      sourcePath = hub.beginFileUpload(name, session, id);
+    } catch (error) {
+      return failure(error);
+    }
+    try {
       return c.json(
         await saveDeviceFile(workspace, c.req.raw, sourcePath, () =>
           hub.checkFileUpload(name, session, id)
         )
       );
     } catch (error) {
-      return errorResponse(error);
+      hub.failFileUpload(session, id);
+      return failure(error);
     }
   });
   routes.get('/:name/events', (c) => {
@@ -62,30 +77,34 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
     try {
       hub.openStream(name, session);
     } catch (error) {
-      return errorResponse(error);
+      return failure(error);
     }
     return streamSSE(c, async (stream) => {
       const controller = new AbortController();
       stream.onAbort(() => {
         controller.abort();
-        void hub
-          .unregister(name, session)
-          .catch((error) => console.error('[devices] disconnect cleanup failed', error));
+        hub.unregister(name, session);
       });
       try {
         await stream.writeSSE({ event: 'connected', data: JSON.stringify({ name }) });
         while (!controller.signal.aborted) {
           const requests = await hub.poll(name, session, controller.signal, false);
-          for (const request of requests)
-            await stream.writeSSE({ event: 'request', data: JSON.stringify(request) });
+          for (const [index, request] of requests.entries()) {
+            try {
+              await stream.writeSSE({ event: 'request', data: JSON.stringify(request) });
+            } catch (error) {
+              // The unsent requests stay queued; the disconnect below fails their calls.
+              hub.requeue(name, session, requests.slice(index));
+              throw error;
+            }
+          }
           if (!controller.signal.aborted) await stream.writeSSE({ event: 'ping', data: '{}' });
         }
-      } catch {
-        /* A closed or expired connection leaves the shared registry. */
+      } catch (error) {
+        // A closed connection is the normal end of a stream; any other failure is logged.
+        if (!controller.signal.aborted) console.error('[devices] event stream failed', error);
       } finally {
-        await hub
-          .unregister(name, session)
-          .catch((error) => console.error('[devices] disconnect cleanup failed', error));
+        hub.unregister(name, session);
       }
     });
   });
@@ -96,7 +115,7 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
         requests: await hub.poll(c.req.param('name'), sessionOf(c), c.req.raw.signal),
       });
     } catch (error) {
-      return errorResponse(error);
+      return failure(error);
     }
   });
   routes.post('/:name/heartbeat', (c) => {
@@ -104,16 +123,12 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
       hub.heartbeat(c.req.param('name'), sessionOf(c));
       return c.json({ ok: true });
     } catch (error) {
-      return errorResponse(error);
+      return failure(error);
     }
   });
-  routes.post('/:name/disconnect', async (c) => {
-    try {
-      await hub.unregister(c.req.param('name'), sessionOf(c));
-      return c.json({ ok: true });
-    } catch (error) {
-      return errorResponse(error, 503);
-    }
+  routes.post('/:name/disconnect', (c) => {
+    hub.unregister(c.req.param('name'), sessionOf(c));
+    return c.json({ ok: true });
   });
   routes.post('/:name/results', requestLimit(RESULT_BODY_LIMIT), async (c) => {
     const body = await jsonObject(c.req.raw, RESULT_BODY_LIMIT);
@@ -129,7 +144,7 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
       );
       return c.json({ ok: true });
     } catch (error) {
-      return errorResponse(error);
+      return failure(error);
     }
   });
   return routes;

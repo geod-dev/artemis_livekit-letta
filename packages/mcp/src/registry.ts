@@ -104,7 +104,7 @@ export class McpServerRegistry {
     });
   }
 
-  /** Replace the connection-managed servers (the gateway's full list of connected devices). */
+  /** Replace the connection-managed servers (the owner's full list of them). */
   setManaged(servers: McpServer[]): Promise<void> {
     return this.serial(async () => {
       for (const server of servers) {

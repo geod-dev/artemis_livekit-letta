@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
-import { composeWorkspace } from '../compose.ts';
+import { composeDeviceProtocol, composeWorkspace } from '../compose.ts';
 import { createDeviceRoutes } from './api.ts';
-import { saveDeviceFile } from './files.ts';
 import { DeviceHub } from './hub.ts';
+import { saveDeviceFile, sweepDeviceFiles } from './upload.ts';
 
 test('binary export is bound to its pending device call and returns only metadata', async () => {
   const root = await mkdtemp(join(tmpdir(), 'device-export-'));
-  const hub = new DeviceHub({ baseUrl: () => 'http://localhost' });
+  const hub = new DeviceHub({
+    baseUrl: () => 'http://localhost',
+    protocol: composeDeviceProtocol(),
+  });
   const routes = createDeviceRoutes(hub, composeWorkspace(root));
   try {
     const session = await hub.register('pc', [
@@ -30,7 +33,7 @@ test('binary export is bound to its pending device call and returns only metadat
         headers: { 'X-Device-Session': s, 'Content-Length': String(bytes.length) },
         body: bytes,
       });
-    assert.equal((await routes.fetch(request('wrong-session'))).status, 409);
+    assert.equal((await routes.fetch(request('wrong-session'))).status, 410);
     assert.equal((await routes.fetch(request(session, 'unknown-call'))).status, 409);
     const response = await routes.fetch(request());
     assert.equal(response.status, 200);
@@ -121,6 +124,23 @@ test('an interrupted upload is cancelled and its partial file is removed', async
     await assert.rejects(upload);
     assert.ok(cancelled);
     assert.deepEqual(await readdir(join(root, 'data/device-files')), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('device exports older than the retention window are swept and newer ones kept', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'device-sweep-'));
+  const workspace = composeWorkspace(root);
+  try {
+    await workspace.writeFile('data/device-files/old-export/old.pdf', 'old');
+    await workspace.writeFile('data/device-files/new-export/new.pdf', 'new');
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    await utimes(join(root, 'data/device-files/old-export'), twoDaysAgo, twoDaysAgo);
+    assert.equal(await sweepDeviceFiles(workspace), 1);
+    assert.deepEqual(await readdir(join(root, 'data/device-files')), ['new-export']);
+    assert.equal(await readFile(join(root, 'data/device-files/new-export/new.pdf'), 'utf8'), 'new');
+    assert.equal(await sweepDeviceFiles(workspace), 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

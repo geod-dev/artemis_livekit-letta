@@ -1,13 +1,13 @@
 import type { McpServer } from '@artemis/contracts/chat-types';
 
 /** The device registry the sync reads and listens to. */
-export interface DeviceSource {
+interface DeviceSource {
   servers(): McpServer[];
   onChange(listener: () => Promise<void>): void;
 }
 
 /** The agent-server call that receives the managed MCP servers. */
-export interface ManagedMcpTarget {
+interface ManagedMcpTarget {
   setManagedMcp(servers: McpServer[]): Promise<void>;
 }
 

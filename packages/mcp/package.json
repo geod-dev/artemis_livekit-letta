@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MCP server settings, client, catalog, registry and the mcp_describe/mcp_call/mcp_call_write bridge tools. Subpaths: ./sdk (the vendor client, composition roots only) and ./device-server (serves a connected device as an MCP endpoint).",
+  "description": "MCP server settings, client, catalog, registry and the mcp_describe/mcp_call/mcp_call_write bridge tools. Subpaths: ./sdk (the vendor client, composition roots only), ./device-server (the vendor MCP endpoint for a connected device, composition roots only) and ./device-protocol (the device types, free of the SDK).",
   "exports": {
     ".": "./src/index.ts",
+    "./device-protocol": "./src/device-protocol.ts",
     "./device-server": "./src/vendor/sdk/device-server.ts",
     "./sdk": "./src/vendor/sdk/index.ts"
   },
