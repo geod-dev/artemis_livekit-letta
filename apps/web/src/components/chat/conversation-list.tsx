@@ -28,6 +28,7 @@ import {
 } from '@assistant-ui/react';
 import { useLongPress } from '@react-aria/interactions';
 import { SidebarItem } from '@/components/chat/sidebar-item';
+import { groupThreadList, startOfLocalDay } from '@/components/chat/thread-groups';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -67,19 +68,6 @@ export const ThreadListItems: FC<ComponentPropsWithoutRef<'div'> & { searchQuery
   );
 };
 
-const dateGroupLabel = (
-  date: Date | undefined,
-  startOfToday: number,
-  startOfYesterday: number
-): string => {
-  if (!date || date.getTime() >= startOfToday) return 'Today';
-  if (date.getTime() >= startOfYesterday) return 'Yesterday';
-  return 'Earlier';
-};
-
-const startOfLocalDay = (date: Date) =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-
 const subscribeToNextDay = (onDayChange: () => void) => {
   let timeout: number;
   const scheduleNextDay = () => {
@@ -111,52 +99,18 @@ const useStartOfToday = () =>
     getServerStartOfToday
   );
 
-type ThreadListGroup = { label: string; indices: number[] };
-
 /**
- * Filters the thread list by title and buckets the matches by last activity
- * (Today, Yesterday, Earlier). `groups` is null when no thread carries a date
- * or while the local day start is unknown during server render and hydration,
- * in which case `filteredIndices` keeps the runtime order.
+ * The thread list's search and day groups (see groupThreadList).
  */
 const useThreadListGroups = (searchQuery = '') => {
   const threadIds = useAuiState((s) => s.threads.threadIds);
   const threadItems = useAuiState((s) => s.threads.threadItems);
-
-  const query = searchQuery.trim().toLowerCase();
   const startOfToday = useStartOfToday();
 
-  return useMemo(() => {
-    const itemsById = new Map(threadItems.map((item) => [item.id, item]));
-    const dates = threadIds.map((id) => itemsById.get(id)?.lastMessageAt);
-    const filteredIndices = threadIds
-      .map((id, index) => ({ id, index }))
-      .filter(
-        ({ id }) => !query || (itemsById.get(id)?.title || 'New Chat').toLowerCase().includes(query)
-      )
-      .map(({ index }) => index);
-    if (startOfToday === undefined || !filteredIndices.some((index) => dates[index])) {
-      return { threadIds, filteredIndices, groups: null };
-    }
-
-    const yesterday = new Date(startOfToday);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const startOfYesterday = yesterday.getTime();
-    const time = (index: number) => dates[index]?.getTime() ?? Number.MAX_SAFE_INTEGER;
-    const sorted = [...filteredIndices].sort((a, b) => time(b) - time(a));
-
-    const result: ThreadListGroup[] = [];
-    for (const index of sorted) {
-      const label = dateGroupLabel(dates[index], startOfToday, startOfYesterday);
-      const lastGroup = result[result.length - 1];
-      if (lastGroup?.label === label) {
-        lastGroup.indices.push(index);
-      } else {
-        result.push({ label, indices: [index] });
-      }
-    }
-    return { threadIds, filteredIndices, groups: result };
-  }, [threadIds, threadItems, query, startOfToday]);
+  return useMemo(
+    () => ({ threadIds, ...groupThreadList(threadIds, threadItems, searchQuery, startOfToday) }),
+    [threadIds, threadItems, searchQuery, startOfToday]
+  );
 };
 
 const ThreadListItemGroups: FC<{ searchQuery?: string }> = ({ searchQuery = '' }) => {

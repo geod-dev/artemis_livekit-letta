@@ -1,4 +1,9 @@
-import { type Box, GAP_AFTER_TEXT, INLINE_SIZE, type Mode } from './constants';
+import {
+  type Box,
+  GAP_AFTER_TEXT,
+  INLINE_SIZE,
+  type Mode,
+} from '@/components/chat/mascot/constants';
 
 /** A box in the container's coordinates, on whole pixels. */
 export function toBox(container: HTMLElement, x: number, y: number, size: number): Box {

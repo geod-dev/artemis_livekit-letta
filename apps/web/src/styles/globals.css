@@ -9,7 +9,11 @@
 @import './controls.css';
 @import './interactions.css';
 @import './responsive.css';
-@import './generative-ui.css';
+@import './generative-ui/text-and-facts.css';
+@import './generative-ui/actions.css';
+@import './generative-ui/form-controls.css';
+@import './generative-ui/layout-and-cards.css';
+@import './generative-ui/data-display.css';
 /* Streamdown (message markdown) styles its controls with Tailwind classes. */
 @source "../../node_modules/streamdown/dist/*.js";
 @source "../../node_modules/@streamdown/code/dist/*.js";

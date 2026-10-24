@@ -3,7 +3,7 @@ import { ArrowUpIcon, MicIcon, SquareIcon, XIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAui } from '@assistant-ui/react';
 import { IconButton } from '@/components/ui/icon-button';
-import type { VoiceRecorder } from '@/components/voice/use-voice-recorder';
+import type { VoiceRecorder } from '@/hooks/use-voice-recorder';
 import { cn } from '@/lib/shadcn/utils';
 
 const BAR_WIDTH = 3;

@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
-import { MascotMark } from '@/components/chat/mascot';
 import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { sessionCheckFailure } from '@/components/auth-gate-session';
+import { MascotMark } from '@/components/chat/mascot/mascot-mark';
 import { apiFetch, isRecord, requestJson, responseJson } from '@/lib/api';
 
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -29,15 +30,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
         })
         .catch((e: unknown) => {
           if (revision !== checkRevision.current) return;
-          const status = e && typeof e === 'object' && 'status' in e ? e.status : null;
-          if (status === 401) {
-            setAuthenticated(false);
-            setError('');
-          } else {
-            // Keep an already running chat mounted during temporary outages.
-            if (!authenticatedRef.current) setAuthenticated(false);
-            setError('Unable to connect to the server. Check your connection and try again.');
-          }
+          const failure = sessionCheckFailure(e, authenticatedRef.current);
+          if (failure.signOut) setAuthenticated(false);
+          setError(failure.error);
         });
     };
     void check();

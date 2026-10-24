@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
-import type { McpServer, McpSettingsResponse, McpTransport } from '@artemis/contracts/chat-types';
 import { CHAT_HTTP } from '@artemis/contracts/chat-http';
-import { apiFetch } from '@/lib/api';
+import type { McpServer, McpSettingsResponse, McpTransport } from '@artemis/contracts/chat-types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -14,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { apiFetch } from '@/lib/api';
 import {
   BLANK_DRAFT,
   type McpServerDraft,

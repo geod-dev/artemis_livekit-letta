@@ -1,0 +1,125 @@
+/*
+ * Generative UI vocabulary (`present` tool), adapted from
+ * @assistant-ui/react-generative-ui@0.0.24's `generative-ui-style` registry item:
+ * https://r.assistant-ui.com/base/generative-ui-style.json. It targets the `data-aui`
+ * attributes the components render and reads the theme variables.
+ */
+
+/* Keep vendor selectors inside the app's generative UI root. */
+@scope (.aui-generative-root) {
+  [data-aui] {
+    box-sizing: border-box;
+  }
+  [data-aui='header'] {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  [data-aui='text'] {
+    line-height: 1.5;
+  }
+  [data-aui='caption'] {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: color-mix(in oklab, currentColor 62%, transparent);
+  }
+  [data-aui='text'][data-aui-size='sm'],
+  [data-aui='header'][data-aui-size='sm'] {
+    font-size: 0.75rem;
+  }
+  [data-aui='text'][data-aui-size='md'],
+  [data-aui='header'][data-aui-size='md'] {
+    font-size: 0.875rem;
+  }
+  [data-aui='text'][data-aui-size='lg'],
+  [data-aui='header'][data-aui-size='lg'] {
+    font-size: 1.125rem;
+  }
+  [data-aui='text'][data-aui-size='xl'],
+  [data-aui='header'][data-aui-size='xl'] {
+    font-size: 1.25rem;
+  }
+  [data-aui='text'][data-aui-size='2xl'],
+  [data-aui='header'][data-aui-size='2xl'] {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  [data-aui='text'][data-aui-size='3xl'],
+  [data-aui='header'][data-aui-size='3xl'] {
+    font-size: 2.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  [data-aui='text'][data-aui-weight='normal'] {
+    font-weight: 400;
+  }
+  [data-aui='text'][data-aui-weight='medium'] {
+    font-weight: 500;
+  }
+  [data-aui='text'][data-aui-weight='semibold'] {
+    font-weight: 600;
+  }
+  [data-aui='text'][data-aui-weight='bold'] {
+    font-weight: 700;
+  }
+  [data-aui='text'][data-aui-color='emphasis'] {
+    color: var(--foreground);
+  }
+  [data-aui='text'][data-aui-color='secondary'] {
+    color: color-mix(in oklab, currentColor 62%, transparent);
+  }
+  [data-aui='text'][data-aui-color='alpha-70'] {
+    color: color-mix(in oklab, var(--foreground) 70%, transparent);
+  }
+  [data-aui='text'][data-aui-color='white'] {
+    color: white;
+  }
+  [data-aui='text'][data-aui-color='white-70'] {
+    color: color-mix(in oklab, white 70%, transparent);
+  }
+  [data-aui='text'][data-aui-color='white-50'] {
+    color: color-mix(in oklab, white 50%, transparent);
+  }
+  [data-aui='fact'] {
+    margin: 0;
+  }
+  [data-aui='fact-label'] {
+    margin: 0;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: color-mix(in oklab, currentColor 62%, transparent);
+  }
+  [data-aui='fact-value'] {
+    margin: 0;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+  }
+  [data-aui='fact-delta'] {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    margin: 0 0 0 0.375rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    vertical-align: middle;
+  }
+  [data-aui='fact-delta'][data-aui-tone='good'] {
+    background-color: color-mix(in oklab, var(--aui-success) 15%, transparent);
+    color: var(--aui-success);
+  }
+  [data-aui='fact-delta'][data-aui-tone='bad'] {
+    background-color: color-mix(in oklab, var(--destructive) 15%, transparent);
+    color: var(--destructive);
+  }
+  [data-aui='fact-delta'][data-aui-tone='neutral'] {
+    background-color: var(--secondary);
+    color: var(--secondary-foreground);
+  }
+}

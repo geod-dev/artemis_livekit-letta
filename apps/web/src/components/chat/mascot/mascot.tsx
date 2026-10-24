@@ -1,10 +1,8 @@
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuiState } from '@assistant-ui/react';
 import { useAgent } from '@livekit/components-react';
-import { useChatThread } from '@/components/chat/chat-thread-context';
-import type { VoiceRecorderStatus } from '@/components/voice';
-import { cn } from '@/lib/shadcn/utils';
+import { MascotElementContext, useChatThread } from '@/components/chat/context';
 import {
   type Box,
   MAX_EYE_SHIFT,
@@ -12,10 +10,12 @@ import {
   type Mode,
   SLEEPY_AFTER,
   STABLE_FRAMES,
-} from './constants';
-import { clampToViewport, findSpot, toBox } from './geometry';
-import { MascotMark } from './mascot-mark';
-import { useRandomBlink } from './use-random-blink';
+} from '@/components/chat/mascot/constants';
+import { clampToViewport, findSpot, toBox } from '@/components/chat/mascot/geometry';
+import { MascotMark } from '@/components/chat/mascot/mascot-mark';
+import { useRandomBlink } from '@/hooks/use-random-blink';
+import type { RecordingStatus } from '@/hooks/use-voice-recorder';
+import { cn } from '@/lib/shadcn/utils';
 
 /**
  * Artemis's mascot lives in a shared viewport overlay outside the scrolling content.
@@ -50,7 +50,7 @@ export function Mascot({
 }: {
   viewportRef: RefObject<HTMLDivElement | null>;
   easterEggEnabled?: boolean;
-  recordingStatus?: VoiceRecorderStatus;
+  recordingStatus?: RecordingStatus;
 }) {
   const agent = useAgent();
   const { callButton, error } = useChatThread();
@@ -72,7 +72,9 @@ export function Mascot({
   });
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
-  const rootRef = useRef<HTMLDivElement>(null);
+  // The chat app shares its mascot element ref, so the atmosphere can measure the mascot.
+  const ownRootRef = useRef<HTMLDivElement>(null);
+  const rootRef = useContext(MascotElementContext) ?? ownRootRef;
   const eyesRef = useRef<SVGGElement>(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -112,7 +114,7 @@ export function Mascot({
       { duration: 480, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
     );
     return () => animation?.cancel();
-  }, [mode, threadId, completed, error]);
+  }, [mode, threadId, completed, error, rootRef]);
   const [showXMarks, setShowXMarks] = useState(false);
   const xMarksTimer = useRef<number | null>(null);
 
@@ -437,7 +439,7 @@ export function Mascot({
       motionQuery.removeEventListener('change', onMotionChange);
       markWrapped(null);
     };
-  }, [viewportRef]);
+  }, [viewportRef, rootRef]);
 
   const blinking = useRandomBlink(rootRef);
 

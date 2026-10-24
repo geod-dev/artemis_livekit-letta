@@ -5,18 +5,19 @@ import {
   DownloadIcon,
   FileIcon,
   Loader2Icon,
-  SquareIcon,
   TerminalIcon,
   XIcon,
 } from 'lucide-react';
 import type { ChatMessage } from '@artemis/contracts/chat-types';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
-import { MarkdownDocument } from '@/components/assistant-ui/markdown/markdown-text';
-import { taskTitle, useActivity } from '@/components/chat/activity-context';
-import { TaskBubble } from '@/components/chat/task-bubble';
-import { TaskLabel } from '@/components/chat/task-label';
+import { useActivity } from '@/components/chat/context';
 import { fileName } from '@/components/files/workspace-file';
 import { WorkspaceFilePreview } from '@/components/files/workspace-file-panel';
+import { MarkdownDocument } from '@/components/media/markdown/markdown-text';
+import { TaskBubble } from '@/components/tasks/task-bubble';
+import { TaskLabel } from '@/components/tasks/task-label';
+import { TaskStopButton } from '@/components/tasks/task-stop-button';
+import { taskTitle } from '@/components/tasks/task-title';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { type TaskKind, commandOutput, filterTaskKinds, groupAgentRuns } from '@/lib/agent-runs';
@@ -68,48 +69,6 @@ function conversationFiles(messages: ChatMessage[], opened: Set<string>, reports
 
 const actionClass =
   'size-8 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:size-10 [@media(hover:none)]:opacity-100';
-
-export function TaskStopButton({
-  task,
-  className,
-  showSpinner = false,
-}: {
-  task: AgentRun & { runs?: AgentRun[] };
-  className?: string;
-  showSpinner?: boolean;
-}) {
-  const { stopTask, stopping } = useActivity();
-  if (task.status !== 'running' || task.id.startsWith('launch:')) return null;
-  const running = task.runs?.filter((run) => run.status === 'running') ?? [task];
-  const pending = running.some((run) => stopping.has(run.id));
-  return (
-    <IconButton
-      label={pending ? 'Stopping task' : 'Stop task'}
-      disabled={pending}
-      onClick={() => void Promise.all(running.map((run) => stopTask(run.id)))}
-      className={className}
-    >
-      {pending ? (
-        <Loader2Icon aria-hidden className="size-4 animate-spin" />
-      ) : showSpinner ? (
-        <>
-          <Loader2Icon
-            aria-hidden
-            className="text-muted-foreground size-4 animate-spin group-focus-within:hidden group-hover:hidden [@media(hover:none)]:hidden"
-          />
-          <SquareIcon
-            aria-hidden
-            fill="currentColor"
-            strokeWidth={0}
-            className="hidden size-3.5 group-focus-within:block group-hover:block [@media(hover:none)]:block"
-          />
-        </>
-      ) : (
-        <SquareIcon aria-hidden fill="currentColor" strokeWidth={0} className="size-3.5" />
-      )}
-    </IconButton>
-  );
-}
 
 export function WorkspacePanel({
   tab,

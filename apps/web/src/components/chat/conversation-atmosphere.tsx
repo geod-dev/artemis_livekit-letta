@@ -1,7 +1,7 @@
-import { type RefObject, useEffect, useRef, useSyncExternalStore } from 'react';
+import { type RefObject, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useAuiState } from '@assistant-ui/react';
 import { useAgent, useTrackVolume } from '@livekit/components-react';
-import { useChatThread } from '@/components/chat/chat-thread-context';
+import { MascotElementContext, useChatThread } from '@/components/chat/context';
 import { turnAtmosphere } from '@/lib/conversation-atmosphere';
 
 const DESKTOP = '(min-width: 1024px) and (hover: hover) and (pointer: fine)';
@@ -57,6 +57,7 @@ export function ConversationAtmosphere({
           ? 'thinking'
           : turn;
   const lightRef = useRef<HTMLDivElement>(null);
+  const mascotRef = useContext(MascotElementContext);
 
   useEffect(() => {
     const light = lightRef.current;
@@ -65,7 +66,7 @@ export function ConversationAtmosphere({
     let frame = 0;
     const measure = () => {
       frame = 0;
-      const mascot = document.querySelector<HTMLElement>('.artemis-mascot');
+      const mascot = mascotRef?.current ?? null;
       const mark = mascot?.getBoundingClientRect();
       const bounds = light.getBoundingClientRect();
       if (!mark || !bounds.width || !bounds.height || mascot?.style.opacity === '0') return;
@@ -93,7 +94,7 @@ export function ConversationAtmosphere({
       viewport.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
     };
-  }, [environment, state, viewportRef]);
+  }, [environment, mascotRef, state, viewportRef]);
 
   if (!environment) return null;
   return (

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { DownloadIcon, FileXIcon } from 'lucide-react';
-import { getMimeTypeIcon } from '@/components/files/file-icons';
+import { getMimeTypeIcon } from '@/components/media/file-icons';
 import { apiFetch } from '@/lib/api';
 import { workspaceUrl } from '@/lib/attachments';
 import { fileKind } from '@/lib/file-kinds';

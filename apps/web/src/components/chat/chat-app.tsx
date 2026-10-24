@@ -5,14 +5,19 @@ import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import type { ConversationSummary, TextEffort } from '@artemis/contracts/chat-types';
 import { AssistantRuntimeProvider, AuiConfig, Tools } from '@assistant-ui/react';
 import { RoomAudioRenderer, SessionProvider, useSession } from '@livekit/components-react';
-import { Thread } from '@/components/assistant-ui/chat/thread';
-import { generativeUIToolkit } from '@/components/assistant-ui/tools/generative-ui';
-import { ToolActivityContext } from '@/components/assistant-ui/tools/tool-activity';
-import { ActivityContext } from '@/components/chat/activity-context';
-import { ChatThreadContext, type ChatThreadState } from '@/components/chat/chat-thread-context';
+import { Thread } from '@/components/chat-primitives/chat/thread';
+import { generativeUIToolkit } from '@/components/chat-primitives/tools/generative-ui';
+import {
+  ActivityContext,
+  ChatThreadContext,
+  type ChatThreadState,
+  MascotElementContext,
+  ToolActivityContext,
+} from '@/components/chat/context';
 import { LoadingBar } from '@/components/chat/loading-bar';
 import { Sidebar } from '@/components/chat/sidebar';
-import { THREAD_COMPONENTS, WelcomeStats } from '@/components/chat/thread-slots';
+import { WelcomeStats } from '@/components/chat/slots/welcome';
+import { THREAD_COMPONENTS } from '@/components/chat/thread-slots';
 import { WorkspaceFilePanelContext } from '@/components/files/workspace-file';
 import {
   WorkspacePanel,
@@ -22,7 +27,8 @@ import {
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
-import { CallBar, StartAudioButton } from '@/components/voice';
+import { CallBar } from '@/components/voice/call-bar';
+import { StartAudioButton } from '@/components/voice/start-audio-button';
 import { useActivityTasks } from '@/hooks/use-activity';
 import { useChatRuntime } from '@/hooks/use-chat-runtime';
 import { useContextUsage } from '@/hooks/use-context-usage';
@@ -91,6 +97,8 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('files');
   const [workspaceSelection, setWorkspaceSelection] = useState<WorkspaceSelection>(null);
   const workspaceTrigger = useRef<HTMLButtonElement>(null);
+  /** The mascot's element, shared with the atmosphere so it can measure the mascot. */
+  const mascotRef = useRef<HTMLDivElement>(null);
   const activity = useActivityTasks(
     conversation.shownId,
     conversation.tasks,
@@ -325,84 +333,86 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
           <ChatThreadContext.Provider value={threadState}>
             <ActivityContext.Provider value={{ ...activity, openTask }}>
               <ToolActivityContext.Provider value={{ tasks: activity.tasks, openTask }}>
-                <WorkspaceFilePanelContext.Provider value={setOpenFile}>
-                  <main className="app-main flex min-w-0 flex-1 flex-col">
-                    <header
-                      data-empty={conversation.blank || !shownId ? true : undefined}
-                      className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6"
-                    >
-                      <div className="app-topbar-title min-w-0 flex-1">
+                <MascotElementContext.Provider value={mascotRef}>
+                  <WorkspaceFilePanelContext.Provider value={setOpenFile}>
+                    <main className="app-main flex min-w-0 flex-1 flex-col">
+                      <header
+                        data-empty={conversation.blank || !shownId ? true : undefined}
+                        className="app-topbar flex h-16 shrink-0 items-center justify-between gap-2 ps-16 pe-0.5 lg:gap-3 lg:px-6"
+                      >
+                        <div className="app-topbar-title min-w-0 flex-1">
+                          {!conversation.blank && shownId && (
+                            <h1
+                              key={shownId}
+                              className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
+                            >
+                              {shownTitle ?? 'Conversation'}
+                            </h1>
+                          )}
+                        </div>
+                        {(conversation.blank || !shownId) && <WelcomeStats />}
                         {!conversation.blank && shownId && (
-                          <h1
-                            key={shownId}
-                            className="font-display animate-pop-in min-w-0 truncate text-base font-medium tracking-tight sm:text-lg"
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label="New chat"
+                            onClick={newChat}
+                            className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
                           >
-                            {shownTitle ?? 'Conversation'}
-                          </h1>
+                            <MessageCirclePlusIcon className="size-5" />
+                          </Button>
                         )}
+                        {activeId && (
+                          <Button
+                            ref={workspaceTrigger}
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={
+                              workspaceOpen ? 'Close files and tasks' : 'Open files and tasks'
+                            }
+                            aria-expanded={workspaceOpen}
+                            aria-controls={workspaceOpen ? 'conversation-workspace' : undefined}
+                            onClick={() => setWorkspaceOpen((open) => !open)}
+                            className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground size-10 shrink-0 rounded-[var(--control-radius)] border-0 bg-transparent p-0 transition-colors duration-150"
+                          >
+                            <PanelRightIcon className="size-5" />
+                          </Button>
+                        )}
+                      </header>
+                      {inCall && <CallBar mascotActive={callOnCurrentConversation} />}
+                      <div className="min-h-0 flex-1">
+                        <WorkspaceFilePanelContext.Provider value={setOpenFile}>
+                          <Thread
+                            autoFocus={
+                              window.matchMedia('(hover: hover) and (pointer: fine)').matches
+                            }
+                            components={THREAD_COMPONENTS}
+                            callButton={threadState.callButton}
+                            contextUsage={contextUsage}
+                            placeholder={
+                              inCall
+                                ? 'Type here too, I’m still listening…'
+                                : `An idea, a question, a little of everything…`
+                            }
+                          />
+                        </WorkspaceFilePanelContext.Provider>
                       </div>
-                      {(conversation.blank || !shownId) && <WelcomeStats />}
-                      {!conversation.blank && shownId && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label="New chat"
-                          onClick={newChat}
-                          className="mobile-new-chat-trigger ms-auto size-11 rounded-full lg:hidden"
-                        >
-                          <MessageCirclePlusIcon className="size-5" />
-                        </Button>
-                      )}
-                      {activeId && (
-                        <Button
-                          ref={workspaceTrigger}
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={
-                            workspaceOpen ? 'Close files and tasks' : 'Open files and tasks'
-                          }
-                          aria-expanded={workspaceOpen}
-                          aria-controls={workspaceOpen ? 'conversation-workspace' : undefined}
-                          onClick={() => setWorkspaceOpen((open) => !open)}
-                          className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground size-10 shrink-0 rounded-[var(--control-radius)] border-0 bg-transparent p-0 transition-colors duration-150"
-                        >
-                          <PanelRightIcon className="size-5" />
-                        </Button>
-                      )}
-                    </header>
-                    {inCall && <CallBar mascotActive={callOnCurrentConversation} />}
-                    <div className="min-h-0 flex-1">
-                      <WorkspaceFilePanelContext.Provider value={setOpenFile}>
-                        <Thread
-                          autoFocus={
-                            window.matchMedia('(hover: hover) and (pointer: fine)').matches
-                          }
-                          components={THREAD_COMPONENTS}
-                          callButton={threadState.callButton}
-                          contextUsage={contextUsage}
-                          placeholder={
-                            inCall
-                              ? 'Type here too, I’m still listening…'
-                              : `An idea, a question, a little of everything…`
-                          }
-                        />
-                      </WorkspaceFilePanelContext.Provider>
-                    </div>
-                  </main>
-                  {activeId && workspaceOpen && (
-                    <WorkspacePanel
-                      tab={workspaceTab}
-                      setTab={setWorkspaceTab}
-                      selection={workspaceSelection}
-                      setSelection={setWorkspaceSelection}
-                      messages={conversation.messages}
-                      error={activity.error}
-                      onClose={closeWorkspace}
-                    />
-                  )}
-                </WorkspaceFilePanelContext.Provider>
+                    </main>
+                    {activeId && workspaceOpen && (
+                      <WorkspacePanel
+                        tab={workspaceTab}
+                        setTab={setWorkspaceTab}
+                        selection={workspaceSelection}
+                        setSelection={setWorkspaceSelection}
+                        messages={conversation.messages}
+                        error={activity.error}
+                        onClose={closeWorkspace}
+                      />
+                    )}
+                  </WorkspaceFilePanelContext.Provider>
+                </MascotElementContext.Provider>
               </ToolActivityContext.Provider>
             </ActivityContext.Provider>
           </ChatThreadContext.Provider>
