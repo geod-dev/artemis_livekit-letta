@@ -1,23 +1,23 @@
 import type { LoopOutcome } from '@artemis/agent-loop';
-import { AppError, BusyError, errorMessage, NotFoundError, uuid } from '@artemis/core';
+import { AppError, errorMessage, NotFoundError, uuid } from '@artemis/core';
 import type { ImageBlock, LlmMessage, ToolUseBlock, UserContent } from '@artemis/llm';
 import type { ConversationRecord, RecalledMemory } from '@artemis/storage';
 import { CallStateFilter } from '../calls/call-state-filter.ts';
 import { depthAfter } from '../tasks/policy.ts';
 import type { AgentToolContext } from '../tools/index.ts';
-import { formatCurrentDateTime, renderUserTurn } from '../turns/render.ts';
-import { snapshotToolDefinitions, toLlmMessages } from './codecs.ts';
+import { formatCurrentDateTime, renderUserTurn } from './main-agent/render.ts';
+import { snapshotToolDefinitions, toLlmMessages } from './main-agent/codecs.ts';
 import { workspaceAccess, type WorkerEnv } from './env.ts';
-import { LoopPersistence, runLoop } from './loop-persistence.ts';
+import { LoopPersistence, runLoop } from './main-agent/loop-persistence.ts';
 import { claimUpdates } from './main-agent/claims.ts';
 import { inlineImages, userEnvelope } from './main-agent/envelope.ts';
 import { turnError, turnStatus, turnUsage } from './main-agent/outcome.ts';
 import type { TurnState } from './main-agent/turn-state.ts';
-import { McpReminder } from './mcp-reminder.ts';
+import { McpReminder } from './main-agent/mcp-reminder.ts';
 import { SerialScheduler } from './scheduler.ts';
-import { TurnFollowups } from './turn-followups.ts';
-import { type TurnResult, TurnPersistence } from './turn-persistence.ts';
-import type { TurnHandle, TurnOutcome, TurnSubmission } from './types.ts';
+import { TurnFollowups } from './main-agent/turn-followups.ts';
+import { type TurnResult, TurnPersistence } from './main-agent/turn-persistence.ts';
+import type { TurnHandle, TurnOutcome, TurnSubmission } from '../turns/types.ts';
 import { Worker } from './worker.ts';
 
 /** What a turn's model run produced: the loop outcome and, for voice turns, the call state. */
@@ -93,10 +93,9 @@ export class MainAgentWorker extends Worker {
     if (this.currentState === 'stopping' || this.currentState === 'stopped') {
       throw new AppError('worker_stopped', 'The conversation is shutting down its agent; retry', 409);
     }
-    if (this.scheduler.pending >= this.env.config.workers.maxPendingTurns) throw new BusyError();
     const turnId = uuid();
+    const done = this.scheduler.enqueue(() => this.runTurn(turnId, submission));
     this.touch();
-    const done = this.scheduler.run(() => this.runTurn(turnId, submission));
     return { turnId, done };
   }
 

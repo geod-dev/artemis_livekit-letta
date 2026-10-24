@@ -10,10 +10,8 @@ import { loadConfig } from '../config.ts';
 import { ConversationEventHub } from '../events/hub.ts';
 import { createModelRouter } from '../models/routing.ts';
 import { PromptRenderer } from '../prompts/renderer.ts';
-import type { WorkerSupervisor } from '../workers/supervisor.ts';
-import type { MainAgentWorker } from '../workers/main-agent-worker.ts';
-import type { TurnOutcome, TurnSubmission } from '../workers/types.ts';
-import { createConversationService } from './service.ts';
+import type { TurnOutcome, TurnSubmission } from '../turns/types.ts';
+import { createConversationService, type MainAgentHandle, type MainAgentPort } from './service.ts';
 
 class StubProvider extends LlmProvider {
   readonly id: string = 'anthropic';
@@ -54,9 +52,9 @@ function fake<T>(members: Partial<T>): T {
 }
 
 /** A main agent that records the submissions it receives and completes each one at once. */
-function recordingSupervisor(submitted: TurnSubmission[]): Pick<WorkerSupervisor, 'mainAgent' | 'peekMainAgent'> {
+function recordingSupervisor(submitted: TurnSubmission[]): MainAgentPort {
   const outcome: TurnOutcome = { turnId: 'turn_test', status: 'completed', text: '' };
-  const worker = fake<MainAgentWorker>({
+  const worker = fake<MainAgentHandle>({
     submit(submission: TurnSubmission) {
       submitted.push(submission);
       return { turnId: outcome.turnId, done: Promise.resolve(outcome) };

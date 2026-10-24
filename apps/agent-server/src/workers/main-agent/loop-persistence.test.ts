@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import type { LoopEvent } from '@artemis/agent-loop';
 import type { ConversationEvent } from '@artemis/contracts/chat-types';
 import { EphemeralStorage } from '@artemis/storage/testing';
-import { projectHistory } from '../conversations/history.ts';
-import { CallStateFilter } from '../calls/call-state-filter.ts';
+import { projectHistory } from '../../conversations/history.ts';
+import { CallStateFilter } from '../../calls/call-state-filter.ts';
 import { LoopPersistence } from './loop-persistence.ts';
-import { ManualClock } from '../../test/workers-support.ts';
+import { ManualClock } from '../../../test/workers-support.ts';
 
 const CONVERSATION = 'c1';
 const TURN = 'turn_1';

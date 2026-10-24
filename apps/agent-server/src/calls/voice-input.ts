@@ -1,5 +1,4 @@
-import type { Clock } from '@artemis/core';
-import { isRecord } from '../util/content.ts';
+import { type Clock, isRecord } from '@artemis/core';
 
 /**
  * Voice input extraction.

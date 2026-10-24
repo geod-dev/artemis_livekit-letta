@@ -1,8 +1,6 @@
-import { type Logger, uuid } from '@artemis/core';
+import { isRecord, type Logger, uuid } from '@artemis/core';
 import type { Storage } from '@artemis/storage';
-
-const RESTART_REASON = 'interrupted by restart';
-const RESTART_TEXT = 'Interrupted by a server restart';
+import { RESTART_REASON, RESTART_TEXT } from './restart.ts';
 
 export interface RecoveryDeps {
   storage: Storage;
@@ -31,11 +29,11 @@ export async function recoverAfterRestart({ storage, logger, failTask }: Recover
 
 /** A transcript that ends with tool uses no result was stored for (interrupted turn): answer them as errors. */
 async function closeDanglingToolUses(storage: Storage, conversationId: string): Promise<void> {
-  const transcript = await storage.messages.transcript(conversationId, null);
-  const last = transcript.at(-1);
+  // The newest conversation message only (`page` with limit 1 is the transcript's last row).
+  const [last] = (await storage.messages.page(conversationId, { limit: 1 })).items;
   if (!last || last.role !== 'assistant') return;
-  const toolUseIds = (last.content as Array<{ type?: string; id?: string }>).flatMap((block) =>
-    block.type === 'tool_use' && block.id ? [block.id] : []
+  const toolUseIds = last.content.flatMap((block: unknown) =>
+    isRecord(block) && block.type === 'tool_use' && typeof block.id === 'string' ? [block.id] : []
   );
   if (toolUseIds.length === 0) return;
   await storage.messages.append({

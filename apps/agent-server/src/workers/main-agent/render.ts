@@ -2,7 +2,7 @@ import type { ChatAttachment } from '@artemis/contracts/chat-types';
 import type { ImageBlock, UserContent } from '@artemis/llm';
 import { renderRecalledMemories } from '@artemis/memory';
 import type { DeliveredUpdate, UserTurnEnvelope } from '@artemis/storage';
-import { toMemoryFact } from '../memory/to-memory-fact.ts';
+import { toMemoryFact } from '../../memory/to-memory-fact.ts';
 
 /**
  * Renders the user message of a turn. Everything volatile lives here, AFTER

@@ -12,7 +12,7 @@ import { MainAgentWorker } from './main-agent-worker.ts';
 import { RESTART_FAILURE } from './restart.ts';
 import { recoverAfterRestart } from './recovery.ts';
 import { KeyedRegistry } from './registry.ts';
-import { SubagentTaskWorker } from './subagent-task-worker.ts';
+import { SubagentTaskWorker } from './main-agent/subagent-task-worker.ts';
 import type { TaskWorker } from './task-worker.ts';
 import type { SubagentStartMode } from './types.ts';
 

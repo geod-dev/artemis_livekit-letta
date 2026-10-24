@@ -1,5 +1,5 @@
 import type { BackgroundUpdateRecord } from '@artemis/storage';
-import type { TurnSubmission } from '../types.ts';
+import type { TurnSubmission } from '../../turns/types.ts';
 
 /** Per-turn bookkeeping shared by the steps of one turn. */
 export interface TurnState {

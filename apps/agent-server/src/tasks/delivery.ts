@@ -1,5 +1,5 @@
 import type { Clock, Logger } from '@artemis/core';
-import { prefixedId, uuid } from '@artemis/core';
+import { errorMessage, prefixedId, uuid } from '@artemis/core';
 import type { ChatMessage } from '@artemis/contracts/chat-types';
 import type { BackgroundUpdateRecord, Storage, TaskRecord } from '@artemis/storage';
 import type { ConversationEventHub } from '../events/hub.ts';
@@ -32,6 +32,7 @@ export interface BackgroundDeliveryService {
   rollback(conversationId: string, token: string): Promise<void>;
   markRead(conversationId: string, ids: string[]): Promise<number>;
   unreadCount(conversationId: string): Promise<number>;
+  /** Never rejects: a failure is logged at error level. */
   callEnded(conversationId: string, pendingUpdateIds: string[]): Promise<void>;
   /** Event rows (`role:'event'`) of the updates not yet delivered (held, queued, inflight). */
   eventRows(conversationId: string): Promise<ChatMessage[]>;
@@ -126,10 +127,15 @@ class StorageBackgroundDelivery implements BackgroundDeliveryService {
   }
 
   async callEnded(conversationId: string, pendingUpdateIds: string[]): Promise<void> {
-    if (!(await this.live(conversationId))) return;
-    const unqueued = await this.deps.storage.updates.unqueue(conversationId, pendingUpdateIds);
-    this.changed(conversationId);
-    if (unqueued > 0) this.deps.wake(conversationId);
+    try {
+      if (!(await this.live(conversationId))) return;
+      const unqueued = await this.deps.storage.updates.unqueue(conversationId, pendingUpdateIds);
+      this.changed(conversationId);
+      if (unqueued > 0) this.deps.wake(conversationId);
+    } catch (error) {
+      // Call end runs detached from any request: a failure is logged, never thrown.
+      this.deps.logger.error('call-end delivery failed', { conversationId, error: errorMessage(error) });
+    }
   }
 
   async eventRows(conversationId: string): Promise<ChatMessage[]> {

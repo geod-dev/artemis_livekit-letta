@@ -1,7 +1,7 @@
 import type { ChatMessage, Modality } from '@artemis/contracts/chat-types';
+import { isRecord } from '@artemis/core';
 import type { BackgroundUpdateRecord, MessageRecord, ToolCallRecord } from '@artemis/storage';
 import { taskUpdateLabel } from '../tasks/labels.ts';
-import { isRecord } from '../util/content.ts';
 
 /**
  * Pure projection of stored messages into UI rows. Row ids are shared with live SSE events:

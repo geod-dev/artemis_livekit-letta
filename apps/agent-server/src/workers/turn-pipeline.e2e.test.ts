@@ -16,7 +16,7 @@ import { createCallSessions } from '../calls/call-sessions.ts';
 import { PromptRenderer } from '../prompts/renderer.ts';
 import { FixedRouter, ManualClock, NoMcp, NoMemory, NoTitles, RecordingHub, ScriptedProvider, silentLogger, type Step, testConfig, testWorkspace, until } from '../../test/workers-support.ts';
 import { type AgentRuntime, createAgentRuntime } from './wiring.ts';
-import type { TurnSubmission } from './types.ts';
+import type { TurnSubmission } from '../turns/types.ts';
 import { integrationDatabaseUrl } from '../../test/integration-env.ts';
 
 /**

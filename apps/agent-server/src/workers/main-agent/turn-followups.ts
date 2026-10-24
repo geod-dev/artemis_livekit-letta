@@ -1,11 +1,11 @@
 import { type Logger, errorMessage } from '@artemis/core';
 import type { RecalledMemory, Storage, TurnRecord } from '@artemis/storage';
-import type { MemoryCoordinator } from '../memory/coordinator.ts';
-import type { TitleService } from '../titles/title-service.ts';
-import { updateQuery } from './main-agent/envelope.ts';
-import type { TurnState } from './main-agent/turn-state.ts';
-import { safely } from './safely.ts';
-import type { TurnSubmission } from './types.ts';
+import type { MemoryCoordinator } from '../../memory/coordinator.ts';
+import type { TitleService } from '../../titles/title-service.ts';
+import { updateQuery } from './envelope.ts';
+import type { TurnState } from './turn-state.ts';
+import { safely } from '../safely.ts';
+import type { TurnSubmission } from '../../turns/types.ts';
 
 export interface TurnFollowupsDeps {
   storage: Pick<Storage, 'turns' | 'conversations'>;

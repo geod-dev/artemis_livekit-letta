@@ -5,8 +5,8 @@ import type { ImageBlock } from '@artemis/llm';
 import type { BackgroundUpdateRecord, DeliveredUpdate, RecalledMemory, UserTurnEnvelope } from '@artemis/storage';
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { updateEventRow } from '../../tasks/delivery.ts';
-import { inlineImageType } from '../codecs.ts';
-import type { TurnSubmission } from '../types.ts';
+import { inlineImageType } from './codecs.ts';
+import type { TurnSubmission } from '../../turns/types.ts';
 import type { TurnState } from './turn-state.ts';
 
 const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;

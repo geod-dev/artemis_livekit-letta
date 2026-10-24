@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { UserTurnEnvelope } from '@artemis/storage';
-import { CallStateFilter } from '../calls/call-state-filter.ts';
+import { CallStateFilter } from '../../calls/call-state-filter.ts';
 import { formatCurrentDateTime, renderUserTurn } from './render.ts';
 
 const envelope = (overrides: Partial<UserTurnEnvelope> = {}): UserTurnEnvelope => ({

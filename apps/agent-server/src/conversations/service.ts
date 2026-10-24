@@ -13,11 +13,23 @@ import type { AgentServerConfig } from '../config.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { ModelRouter } from '../models/routing.ts';
 import type { PromptRenderer } from '../prompts/renderer.ts';
-import type { WorkerSupervisor } from '../workers/supervisor.ts';
-import type { TurnHandle } from '../workers/types.ts';
+import type { TurnHandle, TurnSubmission } from '../turns/types.ts';
 import { projectHistory } from './history.ts';
 
-export type { TurnHandle, TurnOutcome } from '../workers/types.ts';
+/** One conversation's main agent, as the conversation service drives it. */
+export interface MainAgentHandle {
+  submit(submission: TurnSubmission): TurnHandle;
+  /** Aborts the running turn; false when none runs. */
+  cancel(): boolean;
+}
+
+/** The main agents of conversations (the worker supervisor implements it). */
+export interface MainAgentPort {
+  /** Starts the conversation's main agent when needed. Throws `NotFoundError`. */
+  mainAgent(conversationId: string): Promise<MainAgentHandle>;
+  /** The running main agent, without starting one. */
+  peekMainAgent(conversationId: string): MainAgentHandle | undefined;
+}
 
 /** A spoken turn of a call. `mode` is resolved once the main agent is ready, so a call that fails to start opens no response. */
 export interface VoiceTurn {
@@ -71,7 +83,7 @@ interface ConversationServiceDeps {
   events: ConversationEventHub;
   config: Pick<AgentServerConfig, 'assistant' | 'workspace'>;
   /** Starts, peeks at and submits turns to the main agents of conversations. */
-  supervisor: Pick<WorkerSupervisor, 'mainAgent' | 'peekMainAgent'>;
+  supervisor: MainAgentPort;
   /** Tool definitions frozen with the system prompt (the order sent to the provider). */
   toolDefinitions: () => ToolDefinition[];
   /** Live rows not yet in storage (held background updates), first page only. */

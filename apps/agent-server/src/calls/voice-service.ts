@@ -1,6 +1,7 @@
 import { errorMessage, type Logger, NotFoundError } from '@artemis/core';
 import type { TurnMode } from '@artemis/contracts/chat-types';
-import type { ConversationService, TurnHandle, TurnOutcome } from '../conversations/service.ts';
+import type { ConversationService } from '../conversations/service.ts';
+import type { TurnHandle, TurnOutcome } from '../turns/types.ts';
 import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
 import type { CallSessions } from './call-sessions.ts';
 

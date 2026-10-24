@@ -3,15 +3,15 @@ import { AppError, errorMessage, uuid } from '@artemis/core';
 import type { LlmMessage, ToolDefinition, ToolUseBlock } from '@artemis/llm';
 import { mcpToolsSection } from '@artemis/mcp';
 import type { TurnUsage } from '@artemis/storage';
-import { needsUserInput } from '../subagents/definitions.ts';
-import type { AgentToolContext } from '../tools/index.ts';
-import { workspaceAccess, type WorkerEnv } from './env.ts';
+import { needsUserInput } from '../../subagents/definitions.ts';
+import type { AgentToolContext } from '../../tools/index.ts';
+import { workspaceAccess, type WorkerEnv } from '../env.ts';
 import { LoopPersistence, runLoop } from './loop-persistence.ts';
-import { TaskWorker } from './task-worker.ts';
-import type { SubagentSpec, TaskOutcome } from './types.ts';
+import { TaskWorker } from '../task-worker.ts';
+import type { SubagentSpec, TaskOutcome } from '../types.ts';
 import { toLlmMessages } from './codecs.ts';
-import { turnUsage } from './main-agent/outcome.ts';
-import { isoAt } from '../util/time.ts';
+import { turnUsage } from './outcome.ts';
+import { isoAt } from '../../util/time.ts';
 
 /** Longest chain of resumed tasks replayed into one transcript. */
 const MAX_RESUME_CHAIN = 20;

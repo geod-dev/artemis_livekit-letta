@@ -1,7 +1,7 @@
 import { type Logger, errorMessage } from '@artemis/core';
 import { mcpToolsReminder, type McpCatalog } from '@artemis/mcp';
 import type { ConversationRecord, Storage } from '@artemis/storage';
-import { safely } from './safely.ts';
+import { safely } from '../safely.ts';
 
 export interface McpReminderDeps {
   storage: Pick<Storage, 'conversations'>;

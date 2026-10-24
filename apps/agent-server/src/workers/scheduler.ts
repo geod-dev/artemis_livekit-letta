@@ -20,9 +20,9 @@ export class SerialScheduler {
     return this.queued === 0;
   }
 
-  /** Queue `job`; rejects with `BusyError` when `maxPending` would be exceeded. */
-  run<T>(job: () => Promise<T>): Promise<T> {
-    if (this.queued >= this.maxPending) return Promise.reject(new BusyError());
+  /** Queue `job`; throws `BusyError` synchronously when `maxPending` would be exceeded. The only pending-limit check. */
+  enqueue<T>(job: () => Promise<T>): Promise<T> {
+    if (this.queued >= this.maxPending) throw new BusyError();
     this.queued++;
     const result = this.tail.then(job);
     const release = () => {
@@ -30,6 +30,15 @@ export class SerialScheduler {
     };
     this.tail = result.then(release, release);
     return result;
+  }
+
+  /** `enqueue` as a promise: a full queue rejects with `BusyError`. */
+  run<T>(job: () => Promise<T>): Promise<T> {
+    try {
+      return this.enqueue(job);
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }
 
   /** Resolves once every job queued so far has settled. */
