@@ -38,3 +38,30 @@ test('upload rejects oversized streamed bodies before multipart parsing without 
     await rm(state, { recursive: true, force: true });
   }
 });
+
+test('discarding an upload refuses an oversized path and reports a failed removal', async () => {
+  const removed: string[] = [];
+  const store = {
+    registry: {
+      removeUnused: async (path: string) => {
+        removed.push(path);
+        if (path === 'uploads/broken') throw new Error('disk gone');
+      },
+    },
+  } as unknown as AttachmentStore;
+  const app = new Hono().route('/api', createAttachmentRoutes(store));
+  const oversized = await app.request(
+    `http://localhost/api/attachments?path=${'a'.repeat(501)}`,
+    { method: 'DELETE' }
+  );
+  assert.equal(oversized.status, 400);
+  const discarded = await app.request('http://localhost/api/attachments?path=uploads%2Fok', {
+    method: 'DELETE',
+  });
+  assert.equal(discarded.status, 204);
+  const failed = await app.request('http://localhost/api/attachments?path=uploads%2Fbroken', {
+    method: 'DELETE',
+  });
+  assert.equal(failed.status, 500);
+  assert.deepEqual(removed, ['uploads/ok', 'uploads/broken']);
+});

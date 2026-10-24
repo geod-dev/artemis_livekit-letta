@@ -18,8 +18,9 @@ export function createLinkPreviewRoutes({
     if (!href || href.length > 4096) return errorResponse('url is required', 400);
     try {
       return Response.json(await linkPreview(href));
-    } catch {
-      // Preview failures do not prevent the original link from being displayed.
+    } catch (error) {
+      // Preview failures do not prevent the original link from being displayed; the reason is logged for debugging.
+      console.debug('[link-preview] no preview for a link', error);
       return Response.json({});
     }
   });

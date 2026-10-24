@@ -3,7 +3,29 @@ import { once } from 'node:events';
 import { type IncomingMessage, type ServerResponse, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
-import { type PreviewNetwork, linkPreview } from './link-preview.ts';
+import { MAX_CONCURRENT_PREVIEWS, type PreviewNetwork, linkPreview } from './link-preview.ts';
+
+test('link previews beyond the concurrency cap fail before any connection', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  // The held previews resolve to a private address after the gate, so they are refused without connecting.
+  const held: PreviewNetwork = {
+    lookup: async () => {
+      await gate;
+      return [{ address: '10.0.0.1', family: 4 }];
+    },
+  };
+  const inFlight = Array.from({ length: MAX_CONCURRENT_PREVIEWS }, () =>
+    linkPreview('http://example.test/', held)
+  );
+  await assert.rejects(linkPreview('http://example.test/', held), /Too many link previews/);
+  release();
+  for (const preview of inFlight) await assert.rejects(preview, /Private destination/);
+  // The slots are free again once the held previews have settled.
+  await assert.rejects(linkPreview('http://127.0.0.1/', held), /Private destination/);
+});
 
 // The refusals below happen before any connection, and IP literals resolve without DNS.
 // The redirect, redirect-limit and size tests run against a loopback page server: the

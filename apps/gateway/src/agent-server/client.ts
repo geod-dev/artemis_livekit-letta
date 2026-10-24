@@ -1,7 +1,8 @@
-import type {
-  AgentServerError,
-  ManagedMcpServersRequest,
-  WarmRequest,
+import {
+  type AgentServerError,
+  type ManagedMcpServersRequest,
+  type WarmRequest,
+  conversationPath,
 } from '@artemis/contracts/agent-server';
 import type { ConversationSummary, McpServer, Modality } from '@artemis/contracts/chat-types';
 
@@ -166,10 +167,6 @@ export class AgentServerClient {
       clearTimeout(headersTimer);
     }
   }
-}
-
-function conversationPath(id: string): string {
-  return `/v1/conversations/${encodeURIComponent(id)}`;
 }
 
 async function requestBody(request: Request): Promise<string | undefined> {

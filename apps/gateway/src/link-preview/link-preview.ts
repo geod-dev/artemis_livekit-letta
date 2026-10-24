@@ -122,15 +122,28 @@ async function readPage(
   });
 }
 
-/** The title and description of a public page (5 s budget). */
+/** Previews fetched at once. A preview beyond this fails at once, before any connection is made. */
+export const MAX_CONCURRENT_PREVIEWS = 4;
+
+let previewsInFlight = 0;
+
+/** The title and description of a public page (5 s budget, at most MAX_CONCURRENT_PREVIEWS at once). */
 export async function linkPreview(
   href: string,
   network: PreviewNetwork = {}
 ): Promise<LinkMetadata> {
-  const resolved: Required<PreviewNetwork> = {
-    lookup: network.lookup ?? ((hostname) => lookup(hostname, { all: true })),
-    dial: network.dial ?? ((address) => address),
-    ports: network.ports ?? DEFAULT_PORTS,
-  };
-  return linkMetadata(await readPage(new URL(href), AbortSignal.timeout(5000), resolved));
+  // The check and the increment run before the first await, so concurrent callers cannot both pass.
+  if (previewsInFlight >= MAX_CONCURRENT_PREVIEWS)
+    throw new Error('Too many link previews in progress');
+  previewsInFlight += 1;
+  try {
+    const resolved: Required<PreviewNetwork> = {
+      lookup: network.lookup ?? ((hostname) => lookup(hostname, { all: true })),
+      dial: network.dial ?? ((address) => address),
+      ports: network.ports ?? DEFAULT_PORTS,
+    };
+    return linkMetadata(await readPage(new URL(href), AbortSignal.timeout(5000), resolved));
+  } finally {
+    previewsInFlight -= 1;
+  }
 }

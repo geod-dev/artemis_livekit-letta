@@ -3,7 +3,7 @@ import { type WorkspaceTransport, inspectedMimeType } from '@artemis/workspace';
 /** Leading bytes that decide how a workspace file is served. */
 const SERVING_SNIFF_BYTES = 8192;
 
-export interface WorkspaceFileInfo {
+interface WorkspaceFileInfo {
   /** Workspace-relative path after following symlinks: a link is served under its target's name. */
   path: string;
   size: number;

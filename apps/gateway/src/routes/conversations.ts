@@ -1,6 +1,11 @@
-import { type MessageDeleteResponse, conversationPath } from '@artemis/contracts/agent-server';
+import {
+  type MessageDeleteResponse,
+  conversationPath,
+  taskPath,
+} from '@artemis/contracts/agent-server';
 import {
   type ChatAttachment,
+  MAX_ATTACHMENT_BYTES,
   MAX_TURN_ATTACHMENTS,
   MAX_TURN_TEXT_LENGTH,
   TEXT_EFFORTS,
@@ -116,7 +121,7 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
             (typeof file.size !== 'number' ||
               !Number.isSafeInteger(file.size) ||
               file.size < 0 ||
-              file.size > 100_000_000))
+              file.size > MAX_ATTACHMENT_BYTES))
         );
       })
     )
@@ -180,22 +185,23 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
       `${conversationPath(id)}/messages/${encodeURIComponent(messageId)}`
     );
     if (!response.ok) return response;
-    const payload = await response.text();
+    // The body is read inside the protecting try: a failure here is bookkeeping, never a failed delete.
+    let payload = '';
     try {
+      payload = await response.text();
       const { attachments } = JSON.parse(payload) as MessageDeleteResponse;
       if (!Array.isArray(attachments)) throw new Error('agent-server sent no attachment list');
       await store.conversations.replace(id, attachments);
     } catch (error) {
       logBookkeeping(id)(error);
     }
-    return new Response(payload, { status: response.status, headers: response.headers });
+    // The body is re-encoded here (it may be empty after a failed read), so its length header is dropped.
+    const headers = new Headers(response.headers);
+    headers.delete('content-length');
+    return new Response(payload, { status: response.status, headers });
   });
 
   return conversations;
-}
-
-function taskPath(id: string, taskId: string): string {
-  return `${conversationPath(id)}/tasks/${encodeURIComponent(taskId)}`;
 }
 
 /** The message of a reference update that failed after the agent-server accepted its change. */
