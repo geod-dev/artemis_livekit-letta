@@ -30,7 +30,7 @@ def _groq_api_key() -> str:
     key = os.environ.get("GROQ_API_KEY", "")
     if not key.strip():
         raise RuntimeError(
-            "GROQ_API_KEY is empty; set it in the repo-root .env to transcribe voice calls."
+            "GROQ_API_KEY is empty; set it in the environment to transcribe voice calls."
         )
     return key
 

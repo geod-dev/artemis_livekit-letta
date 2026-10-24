@@ -15,6 +15,15 @@ MAX_IMAGE_BYTES = 10_000_000
 SCREENSHOT_TIMEOUT_SECONDS = 20
 
 
+def _run_capture_tool(command):
+    """Run a native capture command; a failure reports the tool's own stderr."""
+    try:
+        subprocess.run(command, capture_output=True, timeout=20, check=True)
+    except subprocess.CalledProcessError as error:
+        stderr = (error.stderr or b"").decode("utf-8", errors="replace").strip()
+        raise RuntimeError(stderr or "The screenshot tool could not capture the screen") from error
+
+
 def register(args: ScopeSettings):
     def capture(_arguments):
         fd, output = tempfile.mkstemp(suffix=".png")
@@ -41,9 +50,7 @@ def register(args: ScopeSettings):
                 executable = shutil.which("screencapture")
                 if not executable:
                     raise RuntimeError("screencapture was not found")
-                subprocess.run(
-                    [executable, "-x", str(path)], capture_output=True, timeout=20, check=True
-                )
+                _run_capture_tool([executable, "-x", str(path)])
             else:
                 executable = shutil.which("gnome-screenshot")
                 if executable:
@@ -55,7 +62,7 @@ def register(args: ScopeSettings):
                             "Install gnome-screenshot or scrot to enable desktop capture"
                         )
                     command = [executable, str(path)]
-                subprocess.run(command, capture_output=True, timeout=20, check=True)
+                _run_capture_tool(command)
             data = path.read_bytes()
             if not data or len(data) > MAX_IMAGE_BYTES:
                 raise RuntimeError("Screenshot is empty or exceeds the 10 MB limit")

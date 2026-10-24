@@ -1,5 +1,5 @@
-# Metadata only: the device client has no third-party dependencies and no build backend.
-# Run it from a checkout with `python apps/device-client/artemis-device.py` (or `python -m artemis_device`).
+# Metadata only: the device client has no runtime dependencies and no build backend, so it is
+# run from a checkout with `python apps/device-client/artemis-device.py <device-name>`.
 [project]
 name = "artemis-device"
 version = "0.1.0"
@@ -7,5 +7,25 @@ description = "Outbound Artemis device bridge that exposes selected local scopes
 requires-python = ">=3.13"
 dependencies = []
 
-[project.scripts]
-artemis-device = "artemis_device.cli:main"
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+# Tests import the package from this directory; no sys.path edits are needed in test modules.
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Embedded PowerShell, AppleScript and shell scripts, and long tool descriptions, stay as written.
+"artemis_device/scopes/*.py" = ["E501"]
+"tests/*.py" = ["E501"]
+# Typographic glyphs in user-facing text (the menu cursor, an en dash in a tool description).
+"artemis_device/menu.py" = ["RUF001"]
+"artemis_device/scopes/media.py" = ["RUF001"]

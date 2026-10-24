@@ -16,15 +16,31 @@ from urllib.parse import quote, urlsplit
 from dotenv import load_dotenv
 
 ENV_FILE_VARIABLE = "VOICE_ENV_FILE"
-# apps/voice-agent/src/voice_agent/config.py -> the repository root (checkout only).
-DEFAULT_ENV_FILE = Path(__file__).resolve().parents[4] / ".env"
 
 DEFAULT_AGENT_NAME = "assistant"
 DEFAULT_GATEWAY_PORT = 3000
 DEFAULT_GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+PLACEHOLDER_TOKEN_PREFIX = "change-me"
 
 
-def env_file() -> Path:
+def default_env_file(config_path: Path) -> Path | None:
+    """The repo-root `.env` for a source checkout, or None for an installed package.
+
+    `config_path` is this module's file, `apps/voice-agent/src/voice_agent/config.py`. A
+    checkout has the app's `pyproject.toml` two levels above the package; an installed
+    wheel in a virtualenv does not, so no `.env` is guessed from inside the environment.
+    """
+    resolved = config_path.resolve()
+    app_dir = resolved.parents[2]
+    if not (app_dir / "pyproject.toml").is_file():
+        return None
+    return resolved.parents[4] / ".env"
+
+
+DEFAULT_ENV_FILE = default_env_file(Path(__file__))
+
+
+def env_file() -> Path | None:
     """The env file this process reads: `VOICE_ENV_FILE` when set, else the checkout's `.env`."""
     configured = os.getenv(ENV_FILE_VARIABLE, "").strip()
     return Path(configured) if configured else DEFAULT_ENV_FILE
@@ -33,14 +49,35 @@ def env_file() -> Path:
 def load_env_file() -> Path | None:
     """Load `env_file()` into the environment if it exists; return the path that was loaded."""
     path = env_file()
-    if not path.is_file():
+    if path is None or not path.is_file():
         return None
     load_dotenv(path)
     return path
 
 
 def agent_name() -> str:
-    return os.getenv("LIVEKIT_AGENT_NAME", DEFAULT_AGENT_NAME)
+    """The LiveKit dispatch name. An empty LIVEKIT_AGENT_NAME means the default."""
+    return os.getenv("LIVEKIT_AGENT_NAME", "").strip() or DEFAULT_AGENT_NAME
+
+
+def require_provider_keys(settings: Settings) -> None:
+    """Fail at boot when a configured speech provider has no API key.
+
+    The check names the variables only, so it reads the same in a container (where the
+    settings come from the environment) and in a checkout.
+    """
+    missing: list[str] = []
+    stt_provider = settings.stt.partition("/")[0].strip().lower()
+    tts_provider = settings.tts.partition("/")[0].strip().lower()
+    if stt_provider == "groq" and not os.getenv("GROQ_API_KEY", "").strip():
+        missing.append("GROQ_API_KEY")
+    if tts_provider == "deepgram" and not os.getenv("DEEPGRAM_API_KEY", "").strip():
+        missing.append("DEEPGRAM_API_KEY")
+    if missing:
+        raise RuntimeError(
+            f"{' and '.join(missing)} must be set for the configured speech providers "
+            f"(VOICE_STT={settings.stt!r}, VOICE_TTS={settings.tts!r})."
+        )
 
 
 def _is_loopback_host(host: str) -> bool:
@@ -83,7 +120,6 @@ def require_secure_gateway_url(url: str) -> str:
 class Settings:
     gateway_url: str
     gateway_token: str
-    agent_name: str
     stt: str
     tts: str
     language: str
@@ -96,8 +132,13 @@ class Settings:
         gateway_token = os.getenv("VOICE_GATEWAY_TOKEN", "")
         if not gateway_token.strip():
             raise RuntimeError(
-                f"VOICE_GATEWAY_TOKEN is empty; set it in {env_file()} "
-                "to the gateway's voice token."
+                "VOICE_GATEWAY_TOKEN is empty; set it to the gateway's voice token "
+                "in the environment or the env file."
+            )
+        if gateway_token.strip().startswith(PLACEHOLDER_TOKEN_PREFIX):
+            raise RuntimeError(
+                "VOICE_GATEWAY_TOKEN is still a placeholder (it starts with "
+                f"{PLACEHOLDER_TOKEN_PREFIX!r}); set it to the gateway's voice token."
             )
         default_gateway = f"http://{os.getenv('IP_ADDRESS', '127.0.0.1')}:{DEFAULT_GATEWAY_PORT}"
         gateway_url = require_secure_gateway_url(
@@ -106,7 +147,6 @@ class Settings:
         return cls(
             gateway_url=gateway_url,
             gateway_token=gateway_token,
-            agent_name=agent_name(),
             stt=os.getenv("VOICE_STT", "groq/whisper-large-v3-turbo"),
             tts=os.getenv("VOICE_TTS", "deepgram/flux-hannah-en"),
             language=os.getenv("VOICE_LANGUAGE", "en"),

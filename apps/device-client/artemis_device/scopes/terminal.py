@@ -1,5 +1,6 @@
 """Run shell command lines or explicit executable/argument lists on the device."""
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -11,6 +12,13 @@ from .settings import ScopeSettings
 
 MAX_OUTPUT_BYTES = 64_000
 COMMAND_TIMEOUT_SECONDS = 30
+
+
+def _close_pipes_when_read(process, readers):
+    for reader in readers:
+        reader.join()
+    process.stdout.close()
+    process.stderr.close()
 
 
 def command_line(command, argv):
@@ -66,7 +74,8 @@ def register(args: ScopeSettings):
 
         def drain(stream, destination):
             while True:
-                chunk = stream.read(8192)
+                # read1 returns what has arrived; read(8192) would hold output until the pipe closes.
+                chunk = stream.read1(8192)
                 if not chunk:
                     return
                 remaining = MAX_OUTPUT_BYTES - len(destination)
@@ -85,7 +94,7 @@ def register(args: ScopeSettings):
             return_code = process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired as error:
             if os.name == "nt":
-                try:
+                with contextlib.suppress(OSError, subprocess.TimeoutExpired):
                     subprocess.run(
                         ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                         stdout=subprocess.DEVNULL,
@@ -93,15 +102,11 @@ def register(args: ScopeSettings):
                         timeout=5,
                         check=False,
                     )
-                except (OSError, subprocess.TimeoutExpired):
-                    pass
                 if process.poll() is None:
                     process.kill()
             else:
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
             process.wait()
             raise TimeoutError(
                 f"Command exceeded the {COMMAND_TIMEOUT_SECONDS} second limit"
@@ -109,17 +114,36 @@ def register(args: ScopeSettings):
         finally:
             for reader in readers:
                 reader.join(timeout=1)
-            process.stdout.close()
-            process.stderr.close()
+            # A background child can keep a pipe open after the command exits. The pipes are
+            # closed only once their readers have finished, by a daemon thread if needed.
+            incomplete = any(reader.is_alive() for reader in readers)
+            if incomplete:
+                threading.Thread(
+                    target=_close_pipes_when_read,
+                    args=(process, readers),
+                    daemon=True,
+                ).start()
+            else:
+                process.stdout.close()
+                process.stderr.close()
         stdout = bytes(captured["stdout"]).decode("utf-8", errors="replace")
         stderr = bytes(captured["stderr"]).decode("utf-8", errors="replace")
         stdout_note = "\n[stdout truncated at 64 KB]" if truncated["stdout"] else ""
         stderr_note = "\n[stderr truncated at 64 KB]" if truncated["stderr"] else ""
+        incomplete_note = (
+            "\n[output incomplete: a child process kept stdout or stderr open after the command "
+            "exited]"
+            if incomplete
+            else ""
+        )
         return {
             "content": [
                 {
                     "type": "text",
-                    "text": f"exit_code: {return_code}\nstdout:\n{stdout}{stdout_note}\nstderr:\n{stderr}{stderr_note}",
+                    "text": (
+                        f"exit_code: {return_code}\nstdout:\n{stdout}{stdout_note}\n"
+                        f"stderr:\n{stderr}{stderr_note}{incomplete_note}"
+                    ),
                 }
             ]
         }

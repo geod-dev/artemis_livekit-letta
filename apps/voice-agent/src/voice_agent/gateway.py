@@ -1,4 +1,4 @@
-"""HTTP client for the backend's per-call control endpoints."""
+"""HTTP client for the gateway's per-call control endpoints."""
 
 from __future__ import annotations
 

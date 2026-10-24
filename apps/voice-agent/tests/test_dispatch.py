@@ -19,6 +19,14 @@ def test_missing_conversation_or_unknown_mode_fall_back(raw):
     assert dispatch.mode == "short"
 
 
+@pytest.mark.parametrize("raw", ["{not json", "[1]", '"c1"', "42", "null"])
+def test_malformed_or_non_object_metadata_yields_no_conversation(raw, caplog):
+    dispatch = parse_dispatch(raw)
+    assert dispatch.conversation_id is None
+    assert dispatch.mode == "short"
+    assert any("job metadata" in record.getMessage() for record in caplog.records)
+
+
 def test_dispatch_keys_match_the_contract_names():
     # The gateway writes these keys (VOICE_DISPATCH_KEYS in packages/contracts/src/agent-server.ts).
     assert CONVERSATION_ID_KEY == "conversation_id"

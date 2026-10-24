@@ -1,5 +1,6 @@
 """Local MCP stdio transport and SSE event helpers."""
 
+import contextlib
 import json
 import queue
 import subprocess
@@ -36,6 +37,7 @@ class StdioMcp:
         self._reader_done = threading.Event()
         self._reader_started = False
         self._reader_error = None
+        self._warned_non_object = False
         self._reader_thread = threading.Thread(
             target=self.read, daemon=True, name="artemis-mcp-reader"
         )
@@ -67,6 +69,17 @@ class StdioMcp:
                 try:
                     message = json.loads(line)
                 except ValueError:
+                    continue
+                # A JSON-RPC message is an object. A bare number, null, string or array would
+                # fail later in rpc(), so it is discarded here (logged once per process).
+                if not isinstance(message, dict):
+                    if not self._warned_non_object:
+                        self._warned_non_object = True
+                        print(
+                            "Ignoring non-object JSON from the local MCP server.",
+                            file=sys.stderr,
+                            flush=True,
+                        )
                     continue
                 while not self._reader_stop.is_set():
                     try:
@@ -101,10 +114,8 @@ class StdioMcp:
         writer.join(max(0.0, deadline - time.monotonic()))
         if writer.is_alive():
             # Ending the child breaks the pipe, which fails the blocked write and frees the lock.
-            try:
+            with contextlib.suppress(OSError):
                 self.process.kill()
-            except OSError:
-                pass
             writer.join(JOIN_TIMEOUT_SECONDS)
             self._close_after_failure()
             raise TimeoutError(f"Local MCP stdin write timed out after {self.timeout}s")
@@ -142,7 +153,7 @@ class StdioMcp:
                             self._close_after_failure()
                             raise TimeoutError(
                                 f"Local MCP {method} request timed out after {self.timeout}s"
-                            )
+                            ) from None
                         continue
                 if "method" in message and "id" in message:
                     self.send(
@@ -211,22 +222,16 @@ class StdioMcp:
         self._closed = True
         self._reader_stop.set()
         if first_close and self.process.stdin and not self.process.stdin.closed:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 self.process.stdin.close()
-            except (OSError, ValueError):
-                pass
         if self.process.poll() is None:
-            try:
+            with contextlib.suppress(OSError):
                 self.process.terminate()
-            except OSError:
-                pass
             try:
                 self.process.wait(timeout=2)
             except subprocess.TimeoutExpired:
-                try:
+                with contextlib.suppress(OSError):
                     self.process.kill()
-                except OSError:
-                    pass
                 self.process.wait(timeout=2)
         if self._reader_started:
             self._reader_thread.join(timeout=JOIN_TIMEOUT_SECONDS)
@@ -235,18 +240,14 @@ class StdioMcp:
             and self.process.stdout
             and not self.process.stdout.closed
         ):
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 self.process.stdout.close()
-            except (OSError, ValueError):
-                pass
             self._reader_thread.join(timeout=JOIN_TIMEOUT_SECONDS)
         if self._reader_thread.is_alive():
             raise RuntimeError("Local MCP stdout reader did not stop after process shutdown")
         if self.process.stdout and not self.process.stdout.closed:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 self.process.stdout.close()
-            except (OSError, ValueError):
-                pass
 
     def __enter__(self):
         return self
@@ -262,7 +263,13 @@ def stream_events(response):
         line = raw.decode("utf-8").rstrip("\r\n")
         if not line:
             if data:
-                yield event, json.loads("\n".join(data))
+                try:
+                    message = json.loads("\n".join(data))
+                except ValueError:
+                    # Skip one malformed event rather than dropping the whole connection.
+                    print(f"Skipping a malformed {event!r} event (not JSON).", flush=True)
+                else:
+                    yield event, message
             event, data = "message", []
         elif line.startswith("event:"):
             event = line[6:].lstrip()
@@ -310,10 +317,8 @@ def interruptible_stream_events(response):
             yield item
     finally:
         stop.set()
-        try:
+        with contextlib.suppress(Exception):
             response.close()
-        except Exception:
-            pass
         reader.join(timeout=3)
         if reader.is_alive():
             raise RuntimeError("SSE reader did not stop after the response was closed")

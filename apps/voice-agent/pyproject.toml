@@ -23,7 +23,9 @@ build-backend = "hatchling.build"
 packages = ["src/voice_agent"]
 
 [tool.uv]
-# yarl 1.24.1 shipped only a cp310 wheel (see livekit agent-starter-python).
+# Keep yarl below 1.24. Reason: yarl 1.24.1 shipped only a cp310 wheel (see livekit
+# agent-starter-python). Remove this pin when a yarl release ships a cp313 wheel: drop the
+# constraint, run `uv lock`, and confirm `uv sync` on Python 3.13 still installs.
 constraint-dependencies = ["yarl<1.24"]
 
 [tool.pytest.ini_options]

@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 
 from voice_agent import config
-from voice_agent.config import Settings, load_env_file, require_secure_gateway_url
+from voice_agent.config import (
+    Settings,
+    load_env_file,
+    require_provider_keys,
+    require_secure_gateway_url,
+)
 
 # tests/test_config.py -> apps/voice-agent/tests -> apps/voice-agent -> apps -> repository root.
 REPO = Path(__file__).resolve().parents[3]
@@ -52,8 +57,60 @@ def test_defaults_come_from_settings(monkeypatch):
     settings = Settings.from_env()
     assert settings.gateway_url == f"http://127.0.0.1:{config.DEFAULT_GATEWAY_PORT}"
     assert settings.gateway_token == "test-token"
-    assert settings.agent_name == config.DEFAULT_AGENT_NAME
     assert settings.groq_base_url == config.DEFAULT_GROQ_BASE_URL
+
+
+@pytest.mark.parametrize("token", ["change-me-voice-token", "change-me"])
+def test_placeholder_gateway_token_is_rejected(monkeypatch, token):
+    monkeypatch.setenv("VOICE_GATEWAY_TOKEN", token)
+    with pytest.raises(RuntimeError, match="placeholder"):
+        Settings.from_env()
+
+
+def test_empty_agent_name_means_the_default(monkeypatch):
+    monkeypatch.setenv("LIVEKIT_AGENT_NAME", "")
+    assert config.agent_name() == config.DEFAULT_AGENT_NAME
+    monkeypatch.setenv("LIVEKIT_AGENT_NAME", "  ")
+    assert config.agent_name() == config.DEFAULT_AGENT_NAME
+    monkeypatch.setenv("LIVEKIT_AGENT_NAME", "night-desk")
+    assert config.agent_name() == "night-desk"
+
+
+def test_default_env_file_is_absent_outside_a_source_checkout(tmp_path):
+    # An installed package sits in a virtualenv with no app pyproject two levels up.
+    installed = tmp_path / "site-packages" / "voice_agent" / "config.py"
+    installed.parent.mkdir(parents=True)
+    installed.write_text("", encoding="utf-8")
+    assert config.default_env_file(installed) is None
+
+
+def test_default_env_file_is_the_root_dotenv_of_a_checkout(tmp_path):
+    app = tmp_path / "apps" / "voice-agent"
+    module = app / "src" / "voice_agent" / "config.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("", encoding="utf-8")
+    (app / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    assert config.default_env_file(module) == tmp_path / ".env"
+
+
+def test_provider_keys_are_required_for_the_configured_providers(monkeypatch):
+    settings = Settings(
+        gateway_url="http://127.0.0.1:3000",
+        gateway_token="t",
+        stt="groq/whisper-large-v3-turbo",
+        tts="deepgram/flux-hannah-en",
+        language="en",
+        greeting="",
+        groq_base_url=config.DEFAULT_GROQ_BASE_URL,
+    )
+    monkeypatch.setenv("DEEPGRAM_API_KEY", "dg")
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY must be set"):
+        require_provider_keys(settings)
+    monkeypatch.setenv("GROQ_API_KEY", "groq")
+    require_provider_keys(settings)
+    monkeypatch.delenv("DEEPGRAM_API_KEY")
+    with pytest.raises(RuntimeError, match="DEEPGRAM_API_KEY"):
+        require_provider_keys(settings)
 
 
 def test_remote_plain_http_gateway_is_rejected(monkeypatch):
@@ -91,7 +148,6 @@ def test_conversation_id_is_quoted_in_the_base_url():
     settings = Settings(
         gateway_url="https://gateway.example.com",
         gateway_token="t",
-        agent_name="assistant",
         stt="groq/whisper-large-v3-turbo",
         tts="deepgram/flux-hannah-en",
         language="en",

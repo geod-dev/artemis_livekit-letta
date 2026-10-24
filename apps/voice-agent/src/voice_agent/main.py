@@ -2,7 +2,7 @@
 
 This process only handles audio: speech-to-text, turn taking and text-to-speech.
 The "brain" is the same assistant and conversation used by the text chat; it
-is reached through the backend's OpenAI-compatible endpoint, scoped to the
+is reached through the gateway's OpenAI-compatible endpoint, scoped to the
 call's conversation. The gateway forwards each finished user turn into the
 conversation and streams the reply back, so voice turns land in the chat
 history like any other message.
@@ -28,26 +28,24 @@ from livekit.agents import (
 from livekit.plugins import openai
 
 from .call import CallController
-from .config import Settings, agent_name, load_env_file
+from .config import Settings, agent_name, load_env_file, require_provider_keys
 from .dispatch import parse_dispatch
 from .gateway import Gateway
 from .speech import build_speech
 
 logger = logging.getLogger("voice_agent")
-# The agent name is needed when the entrypoint is registered, so the env file is read
-# here. Everything else is built in the entrypoint, so importing this module never fails.
-load_env_file()
+# Importing this module has no side effects: the env file is read and the entrypoint is
+# registered under its agent name in run().
 server = AgentServer()
 
 
 class VoiceFrontEnd(Agent):
     def __init__(self) -> None:
-        # Instructions are not used by the gateway (the backend owns the prompt and
+        # Instructions are not used by the gateway (the agent server owns the prompt and
         # memory); they only document intent for LiveKit tooling.
-        super().__init__(instructions="Relay the user's speech to the assistant backend.")
+        super().__init__(instructions="Relay the user's speech to the assistant gateway.")
 
 
-@server.rtc_session(agent_name=agent_name())
 async def entrypoint(ctx: JobContext) -> None:
     dispatch = parse_dispatch(ctx.job.metadata)
     conversation_id = dispatch.conversation_id
@@ -71,7 +69,7 @@ async def entrypoint(ctx: JobContext) -> None:
         ),
         turn_handling={
             "turn_detection": speech.turn_detection,
-            # The backend is stateful: a speculative request would be committed to
+            # The gateway is stateful: a speculative request would be committed to
             # the conversation, so only send finished user turns.
             "preemptive_generation": {"enabled": False},
             "interruption": {"mode": "vad"},
@@ -117,8 +115,12 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 def run() -> None:
-    # Fail at boot, not on the first call, when the settings are invalid.
-    Settings.from_env()
+    # The env file is read first, so LIVEKIT_AGENT_NAME and the other settings in it apply.
+    load_env_file()
+    # Fail at boot, not on the first call, when the settings or the provider keys are invalid.
+    settings = Settings.from_env()
+    require_provider_keys(settings)
+    server.rtc_session(agent_name=agent_name())(entrypoint)
     cli.run_app(server)
 
 

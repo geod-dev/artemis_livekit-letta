@@ -3,7 +3,7 @@
 import os
 import sys
 
-AVAILABLE_SCOPES = ("browser", "media", "filesystem", "terminal", "screenshot")
+from .scopes import AVAILABLE_SCOPES
 
 
 def select_scopes():
@@ -32,7 +32,7 @@ def select_scopes():
         ]
         current.extend(
             f"{'❯' if index == cursor else ' '} [{'x' if scope in selected else ' '}] {label}"
-            for index, (scope, label) in enumerate(zip(AVAILABLE_SCOPES, labels))
+            for index, (scope, label) in enumerate(zip(AVAILABLE_SCOPES, labels, strict=True))
         )
         current.extend(
             ["", "Browser is selected by default. Terminal can run any installed command."]

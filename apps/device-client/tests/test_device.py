@@ -10,9 +10,9 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from artemis_device import cli as device
 
 
@@ -64,7 +64,9 @@ class DeviceTest(unittest.TestCase):
                 if os.name == "nt"
                 else "cat 'file with spaces.txt'",
             ]
-            for command, expected in zip(commands, ["été with spaces", "quoted-path-content"]):
+            for command, expected in zip(
+                commands, ["été with spaces", "quoted-path-content"], strict=False
+            ):
                 result = handlers["terminal_run"]({"command": command, "arguments": []})
                 self.assertIn("exit_code: 0", result["content"][0]["text"])
                 self.assertIn(expected, result["content"][0]["text"])
@@ -258,7 +260,7 @@ class DeviceTest(unittest.TestCase):
 
         from artemis_device.scopes.browser import open_url, register
 
-        tools, handlers = register(SimpleNamespace(firefox="firefox"))
+        _tools, handlers = register(SimpleNamespace(firefox="firefox"))
         self.assertIn("open_url", handlers)
         with patch("artemis_device.scopes.browser.subprocess.Popen") as popen:
             self.assertIn(
@@ -332,13 +334,17 @@ class DeviceTest(unittest.TestCase):
                 server.tools()
             self.assertTrue(server._closed)
         oversized = "import sys,json\nfor line in sys.stdin:\n m=json.loads(line)\n if 'id' not in m: continue\n r={} if m['method']=='initialize' else {'tools':[{} for _ in range(101)]}\n print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':r}),flush=True)"
-        with device.StdioMcp([sys.executable, "-u", "-c", oversized]) as server:
-            with self.assertRaisesRegex(RuntimeError, "more than 100 tools"):
-                server.tools()
+        with (
+            device.StdioMcp([sys.executable, "-u", "-c", oversized]) as server,
+            self.assertRaisesRegex(RuntimeError, "more than 100 tools"),
+        ):
+            server.tools()
         endless = "import sys,json\npages=0\nfor line in sys.stdin:\n m=json.loads(line)\n if 'id' not in m: continue\n if m['method']=='initialize': r={}\n else:\n  pages+=1; r={'tools':[],'nextCursor':str(pages)}\n print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':r}),flush=True)"
-        with device.StdioMcp([sys.executable, "-u", "-c", endless]) as server:
-            with self.assertRaisesRegex(RuntimeError, "exceeded 100 pages"):
-                server.tools()
+        with (
+            device.StdioMcp([sys.executable, "-u", "-c", endless]) as server,
+            self.assertRaisesRegex(RuntimeError, "exceeded 100 pages"),
+        ):
+            server.tools()
 
     def test_sse_reader_closes_and_joins_when_event_queue_is_full(self):
         from artemis_device.transport import interruptible_stream_events
@@ -387,6 +393,173 @@ class DeviceTest(unittest.TestCase):
                 "content"
             ][0]["text"]
             self.assertIn("[stdout truncated at 64 KB]", result)
+
+
+class ReviewFixTests(unittest.TestCase):
+    """Boundary fixes: env resolution, plain-HTTP rule, MCP and SSE input, relay audit, restarts,
+    atomic writes, incomplete terminal output, and the scope list."""
+
+    def _session(self, mcp_command=None):
+        return device.DeviceSession(
+            name="laptop",
+            server="http://127.0.0.1:1",
+            token="t",
+            token_source="test",
+            token_hint=None,
+            scope_tools=[],
+            scope_handlers={},
+            mcp_command=mcp_command,
+        )
+
+    def test_default_server_reads_artemis_url_from_the_root_dotenv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / ".env").write_text(
+                "ARTEMIS_URL=https://from-dotenv.example.test\n", encoding="utf-8"
+            )
+            with (
+                patch.object(device, "REPO_ROOT", Path(directory)),
+                patch.dict(os.environ, {}),
+            ):
+                os.environ.pop("ARTEMIS_URL", None)
+                self.assertEqual(device.default_server(), "https://from-dotenv.example.test")
+                os.environ["ARTEMIS_URL"] = "https://from-env.example.test"
+                self.assertEqual(device.default_server(), "https://from-env.example.test")
+
+    def test_plain_http_is_accepted_only_for_the_exact_loopback_names(self):
+        for url in ("http://localhost:3000", "http://127.0.0.1:3000"):
+            args = device.parse_args(["laptop", "--server", url, "--scopes", "browser"])
+            self.assertEqual(args.server, url)
+        for url in ("http://[::1]:3000", "http://gateway:3000", "http://192.168.1.20:3000"):
+            with (
+                self.subTest(url=url),
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                device.parse_args(["laptop", "--server", url, "--scopes", "browser"])
+            self.assertEqual(caught.exception.code, 2)
+
+    def test_non_object_json_from_the_local_server_is_discarded(self):
+        child = (
+            "import sys,json\n"
+            "for line in sys.stdin:\n"
+            " m=json.loads(line)\n"
+            " if 'id' not in m: continue\n"
+            " for junk in ('42','null','[1]','\"x\"'): print(junk, flush=True)\n"
+            " r={} if m['method']=='initialize' else {'tools':[{'name':'t'}]}\n"
+            " print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':r}),flush=True)\n"
+        )
+        with (
+            redirect_stderr(io.StringIO()) as stderr,
+            device.StdioMcp([sys.executable, "-u", "-c", child]) as server,
+        ):
+            tools = server.tools()
+        self.assertEqual(tools, [{"name": "t"}])
+        self.assertEqual(stderr.getvalue().count("non-object JSON"), 1)
+
+    def test_relayed_tool_calls_are_audited_before_they_run(self):
+        session = self._session(mcp_command=["unused"])
+        calls = []
+        session.local = SimpleNamespace(
+            is_closed=False,
+            process=SimpleNamespace(poll=lambda: None),
+            rpc=lambda method, params: calls.append(params) or {"content": []},
+        )
+        message = {
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "terminal_run", "arguments": {"command": "echo hi"}},
+        }
+        with redirect_stderr(io.StringIO()) as stderr:
+            session.execute(message, "session")
+        self.assertIn("[audit] terminal_run command='echo hi'", stderr.getvalue())
+        self.assertEqual(len(calls), 1)
+
+    def test_restarting_the_local_server_closes_the_previous_one(self):
+        created = []
+
+        class FakeMcp:
+            def __init__(self, command):
+                self.is_closed = False
+                self.process = SimpleNamespace(poll=lambda: None)
+                self.closed_count = 0
+                created.append(self)
+
+            def close(self):
+                self.is_closed = True
+                self.closed_count += 1
+
+        session = self._session(mcp_command=["fake"])
+        with patch.object(device, "StdioMcp", FakeMcp), redirect_stdout(io.StringIO()):
+            for _ in range(5):
+                session.local_client().is_closed = True  # the server crashed
+            session.close()
+        self.assertEqual(len(created), 5)
+        self.assertEqual([server.closed_count for server in created], [1, 1, 1, 1, 1])
+        self.assertFalse(hasattr(session, "local_stack"))
+
+    def test_malformed_sse_event_is_skipped_without_ending_the_stream(self):
+        from artemis_device.transport import stream_events
+
+        response = io.BytesIO(b"event: request\ndata: {bad json\n\nevent: ping\ndata: {}\n\n")
+        with redirect_stdout(io.StringIO()) as out:
+            events = list(stream_events(response))
+        self.assertEqual(events, [("ping", {})])
+        self.assertIn("malformed 'request' event", out.getvalue())
+
+    def test_failed_filesystem_write_leaves_the_old_file_and_no_temp_file(self):
+        from artemis_device.scopes import filesystem
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "notes.txt"
+            target.write_text("old", encoding="utf-8")
+            _, handlers = filesystem.register(SimpleNamespace(active_folder=directory))
+            with (
+                patch.object(filesystem.os, "replace", side_effect=OSError("disk full")),
+                self.assertRaises(OSError),
+            ):
+                handlers["filesystem_write"]({"path": str(target), "content": "new"})
+            self.assertEqual(target.read_text(encoding="utf-8"), "old")
+            self.assertEqual(sorted(p.name for p in Path(directory).iterdir()), ["notes.txt"])
+
+    def test_terminal_reports_incomplete_output_when_a_child_keeps_the_pipe_open(self):
+        from artemis_device.scopes.terminal import register
+
+        # The grandchild inherits stdout (close_fds=False) and outlives the command.
+        code = (
+            "import subprocess,sys\n"
+            "subprocess.Popen([sys.executable,'-c','import time; time.sleep(4)'],"
+            "close_fds=False)\n"
+            "print('started')\n"
+        )
+        # The surviving grandchild keeps the working directory open on Windows, so cleanup may
+        # have to skip it.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            _, handlers = register(SimpleNamespace(active_folder=directory))
+            result = handlers["terminal_run"](
+                {"command": sys.executable, "arguments": ["-c", code]}
+            )
+        text = result["content"][0]["text"]
+        self.assertIn("started", text)
+        self.assertIn("output incomplete", text)
+
+    def test_screenshot_failure_reports_the_tool_stderr(self):
+        from artemis_device.scopes import screenshot
+
+        with self.assertRaisesRegex(RuntimeError, "no display here"):
+            screenshot._run_capture_tool(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.stderr.write('no display here\\n'); sys.exit(1)",
+                ]
+            )
+
+    def test_menu_and_cli_share_one_scope_list(self):
+        from artemis_device.menu import AVAILABLE_SCOPES as MENU_SCOPES
+        from artemis_device.scopes import SCOPE_MODULES
+
+        self.assertEqual(MENU_SCOPES, tuple(SCOPE_MODULES))
+        self.assertEqual(device.AVAILABLE_SCOPES, tuple(SCOPE_MODULES))
 
 
 class MainLoopTests(unittest.TestCase):
@@ -476,6 +649,23 @@ class MainLoopTests(unittest.TestCase):
         self.assertIn("reconnecting in 1s", output)
         self.assertIn("Disconnected.", output)
 
+    def test_name_in_use_is_reported_and_retried_with_backoff(self):
+        server, seen = self._fake_artemis([409])
+        output, error = self._run_main(server)
+        self.assertIsNone(error)
+        self.assertEqual(len(seen), 1)
+        self.sleep.assert_called_once_with(1)
+        self.assertIn('"laptop" is already connected', output)
+        self.assertIn("retrying in 1s", output)
+
+    def test_expired_registration_registers_again(self):
+        server, seen = self._fake_artemis([410, 500])
+        output, error = self._run_main(server, sleep_side_effect=[None, KeyboardInterrupt])
+        self.assertIsNone(error)
+        self.assertEqual(len(seen), 2)
+        self.assertIn("Session expired (HTTP 410 at register)", output)
+        self.assertEqual(self.sleep.call_args_list[0].args, (1,))
+
     def test_token_tail_is_only_printed_with_verbose_auth(self):
         server, _ = self._fake_artemis([500])
         routine, _ = self._run_main(server)
@@ -504,7 +694,9 @@ class ScopeAndEntryPointTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "1 MB read limit"):
                 handlers["filesystem_read"]({"path": str(large)})
             with self.assertRaisesRegex(ValueError, "1 MB write limit"):
-                handlers["filesystem_write"]({"path": str(large), "content": "a" * (MAX_FILE_BYTES + 1)})
+                handlers["filesystem_write"](
+                    {"path": str(large), "content": "a" * (MAX_FILE_BYTES + 1)}
+                )
 
     def test_filesystem_read_reports_non_utf8_files_clearly(self):
         from types import SimpleNamespace
@@ -531,7 +723,9 @@ class ScopeAndEntryPointTests(unittest.TestCase):
             listing = json.loads(
                 handlers["filesystem_list"]({"path": directory})["content"][0]["text"]
             )
-            self.assertEqual([entry["name"] for entry in listing["entries"]], ["sub", "A.txt", "b.txt"])
+            self.assertEqual(
+                [entry["name"] for entry in listing["entries"]], ["sub", "A.txt", "b.txt"]
+            )
             self.assertEqual(listing["entries"][1]["size"], 1)
             self.assertFalse(listing["truncated"])
             with patch.object(filesystem, "MAX_LIST_ENTRIES", 2):
@@ -567,31 +761,53 @@ class ScopeAndEntryPointTests(unittest.TestCase):
     def test_scope_menu_requires_an_interactive_terminal(self):
         from artemis_device.menu import select_scopes
 
-        with patch("artemis_device.menu.sys.stdin", io.StringIO("")):
-            with self.assertRaisesRegex(RuntimeError, "--scopes"):
-                select_scopes()
+        with (
+            patch("artemis_device.menu.sys.stdin", io.StringIO("")),
+            self.assertRaisesRegex(RuntimeError, "--scopes"),
+        ):
+            select_scopes()
 
     def test_entry_point_rejects_conflicting_options_before_connecting(self):
         with tempfile.TemporaryDirectory() as directory:
             argv = ["artemis-device", "laptop", "--scopes", "browser", "--mcp-command", "python"]
-            with patch.object(sys, "argv", argv), redirect_stderr(io.StringIO()):
-                with self.assertRaises(SystemExit) as caught:
-                    device.run()
+            with (
+                patch.object(sys, "argv", argv),
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                device.run()
             self.assertEqual(caught.exception.code, 2)
-            argv = ["artemis-device", "laptop", "--scopes", "browser", "--active-folder", directory + "-missing"]
-            with patch.object(sys, "argv", argv), redirect_stderr(io.StringIO()):
-                with self.assertRaises(SystemExit) as caught:
-                    device.parse_args()
+            argv = [
+                "artemis-device",
+                "laptop",
+                "--scopes",
+                "browser",
+                "--active-folder",
+                directory + "-missing",
+            ]
+            with (
+                patch.object(sys, "argv", argv),
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                device.parse_args()
             self.assertEqual(caught.exception.code, 2)
 
     def test_parse_args_accepts_an_explicit_argv(self):
-        args = device.parse_args(["laptop", "--scopes", "browser", "--server", "https://example.test"])
+        args = device.parse_args(
+            ["laptop", "--scopes", "browser", "--server", "https://example.test"]
+        )
         self.assertEqual(args.name, "laptop")
         self.assertEqual(args.scopes, ["browser"])
         self.assertEqual(args.server, "https://example.test")
 
     def test_default_server_follows_ip_address_like_voice_agent(self):
-        with patch.dict(os.environ, {"IP_ADDRESS": "10.1.2.3"}):
+        # No root .env here: the developer's real one must not decide this test.
+        no_env = Path(tempfile.gettempdir()) / "artemis-no-such-root"
+        with (
+            patch.object(device, "REPO_ROOT", no_env),
+            patch.dict(os.environ, {"IP_ADDRESS": "10.1.2.3"}),
+        ):
             os.environ.pop("ARTEMIS_URL", None)
             self.assertEqual(device.default_server(), "http://10.1.2.3:3000")
             os.environ["ARTEMIS_URL"] = "https://artemis.example.test"
@@ -644,7 +860,11 @@ class ScopeAndEntryPointTests(unittest.TestCase):
             errors = io.StringIO()
             with redirect_stderr(errors):
                 result = session.execute(
-                    {"id": 7, "method": "tools/call", "params": {"name": "filesystem_read", "arguments": {"path": str(target)}}},
+                    {
+                        "id": 7,
+                        "method": "tools/call",
+                        "params": {"name": "filesystem_read", "arguments": {"path": str(target)}},
+                    },
                     "session",
                 )
             self.assertNotIn("isError", result)

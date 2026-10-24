@@ -10,6 +10,8 @@ SCOPE_MODULES = {
     "terminal": terminal,
     "screenshot": screenshot,
 }
+# The one list of scope names: the CLI choices and the interactive menu both read it.
+AVAILABLE_SCOPES = tuple(SCOPE_MODULES)
 
 
 def build_scopes(scopes: list[str], settings: ScopeSettings):

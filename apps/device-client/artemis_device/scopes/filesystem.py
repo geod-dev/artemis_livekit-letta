@@ -1,6 +1,9 @@
 """Filesystem access using absolute paths across the device's filesystem."""
 
 import json
+import os
+import shutil
+import tempfile
 from itertools import islice
 from pathlib import Path
 
@@ -9,6 +12,24 @@ from .settings import ScopeSettings
 MAX_FILE_BYTES = 1_000_000
 MAX_EXPORT_BYTES = 25 * 1024 * 1024
 MAX_LIST_ENTRIES = 500
+
+
+def _replace_file_atomically(path, data):
+    """Write data to a temp file beside path, then swap it in; an interrupted write leaves the
+    previous file untouched and no temp file behind."""
+    fd, temp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        if path.exists():
+            shutil.copymode(path, temp_name)
+        else:
+            # mkstemp creates 0600 files; a new file gets the usual default instead.
+            os.chmod(temp_name, 0o644)
+        os.replace(temp_name, path)
+    except BaseException:
+        Path(temp_name).unlink(missing_ok=True)
+        raise
 
 
 def _sort_key(entry):
@@ -90,7 +111,7 @@ def register(args: ScopeSettings):
             raise ValueError("Path is not a regular file")
         if not path.parent.is_dir():
             raise ValueError("Parent directory must already exist")
-        path.write_bytes(encoded)
+        _replace_file_atomically(path, encoded)
         return {
             "content": [{"type": "text", "text": f"Wrote {len(encoded)} bytes to {path.name}."}]
         }

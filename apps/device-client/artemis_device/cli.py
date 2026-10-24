@@ -2,6 +2,7 @@
 """Outbound Artemis device bridge. Python 3.13, no third-party dependencies."""
 
 import argparse
+import contextlib
 import getpass
 import json
 import os
@@ -13,11 +14,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from contextlib import ExitStack
 from pathlib import Path
 
-from .menu import AVAILABLE_SCOPES, select_scopes
-from .scopes import ScopeSettings, build_scopes
+from .menu import select_scopes
+from .scopes import AVAILABLE_SCOPES, ScopeSettings, build_scopes
 from .scopes.filesystem import MAX_EXPORT_BYTES
 from .transport import StdioMcp, interruptible_stream_events
 
@@ -83,8 +83,9 @@ def dotenv_value(path, name):
 
 
 def default_server():
-    """Gateway URL when --server is omitted, resolved the way voice-agent resolves IP_ADDRESS."""
-    configured = os.environ.get("ARTEMIS_URL")
+    """Gateway URL when --server is omitted: ARTEMIS_URL, then IP_ADDRESS, from the environment
+    or the repository-root .env (the environment wins for both)."""
+    configured = os.environ.get("ARTEMIS_URL") or dotenv_value(REPO_ROOT / ".env", "ARTEMIS_URL")
     if configured:
         return configured
     host = (
@@ -204,7 +205,6 @@ class DeviceSession:
         self.mcp_command = mcp_command
         self.device_path = urllib.parse.quote(name, safe="")
         self.local = None
-        self.local_stack = ExitStack()
         self.local_lock = threading.Lock()
         self.stop_workers = threading.Event()
         self.requests_to_run = queue.Queue(maxsize=REQUEST_QUEUE_SIZE)
@@ -213,7 +213,9 @@ class DeviceSession:
 
     def close(self):
         self.stop_workers.set()
-        self.local_stack.close()
+        with self.local_lock:
+            if self.local is not None:
+                self.local.close()
 
     def local_client(self):
         if not self.mcp_command:
@@ -221,9 +223,11 @@ class DeviceSession:
         with self.local_lock:
             if self.local is None or self.local.is_closed or self.local.process.poll() is not None:
                 if self.local is not None:
+                    # Each restart closes the previous server through its own handle, so the
+                    # number of open handles does not grow with restarts.
                     self.local.close()
                 print("Starting the local MCP server and loading its tools...", flush=True)
-                self.local = self.local_stack.enter_context(StdioMcp(self.mcp_command))
+                self.local = StdioMcp(self.mcp_command)
             return self.local
 
     def open_request(self, path, body=None, session=None, timeout=HTTP_TIMEOUT_SECONDS):
@@ -256,6 +260,9 @@ class DeviceSession:
             params = message["params"]
             active_local = self.local_client()
             if active_local:
+                # Relayed calls are audited before they run, the same as built-in scopes.
+                if params.get("name") in AUDITED_TOOLS:
+                    audit(params["name"], params.get("arguments", {}))
                 return active_local.rpc("tools/call", params)
             tool = params["name"]
             handler = self.scope_handlers.get(tool)
@@ -360,10 +367,8 @@ class DeviceSession:
                             )
                             delay = 1
                         elif event == "ping":
-                            try:
+                            with contextlib.suppress(queue.Full):
                                 self.heartbeats.put_nowait(session)
-                            except queue.Full:
-                                pass
                         elif event == "request":
                             if not is_request(message):
                                 print(
@@ -393,37 +398,49 @@ class DeviceSession:
                 except (ValueError, OSError):
                     detail = error.reason
                 if error.code == 401:
-                    tail_note = (
-                        f'; token ends with "{self.token_hint}"' if self.token_hint else ""
-                    )
+                    tail_note = f'; token ends with "{self.token_hint}"' if self.token_hint else ""
                     raise SystemExit(
                         f"HTTP 401 at {endpoint}: {detail}. Token source: "
                         f"{self.token_source}{tail_note}. Check that this is the VPS "
                         f"ARTEMIS_DEVICE_TOKEN."
-                    )
+                    ) from error
                 if error.code == 403:
                     raise SystemExit(
                         f"HTTP 403 at {endpoint}: access blocked ({detail}). This response does "
                         f"not establish that the device token is wrong."
+                    ) from error
+                if error.code == 410:
+                    # The gateway ended this registration (its lease expired): register again.
+                    delay = 1
+                    print(
+                        f"Session expired (HTTP 410 at {endpoint}); registering again in {delay}s.",
+                        flush=True,
                     )
-                print(
-                    f"Artemis returned HTTP {error.code} at {endpoint} ({detail}); reconnecting in "
-                    f"{delay}s.",
-                    flush=True,
-                )
+                elif error.code == 409:
+                    # Another live connection holds this name. Reported, then retried with backoff.
+                    print(
+                        f'Device name "{self.name}" is already connected to Artemis (HTTP 409 at '
+                        f"{endpoint}). Stop the other client or choose another name; retrying in "
+                        f"{delay}s.",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"Artemis returned HTTP {error.code} at {endpoint} ({detail}); "
+                        f"reconnecting in {delay}s.",
+                        flush=True,
+                    )
             except (OSError, ValueError, KeyError, RuntimeError) as error:
                 print(f"Connection failed ({error}); retrying in {delay}s.", flush=True)
             finally:
                 if session:
-                    try:
+                    with contextlib.suppress(OSError, ValueError):
                         self.request(
                             self.device_path + "/disconnect",
                             {},
                             session,
                             timeout=DISCONNECT_TIMEOUT_SECONDS,
                         )
-                    except (OSError, ValueError):
-                        pass
                     session = None
             time.sleep(delay)
             delay = min(delay * 2, MAX_RECONNECT_DELAY_SECONDS)
@@ -477,7 +494,11 @@ def parse_args(argv=None, parser=None):
         parser.error("--active-folder must be an existing directory")
     server = urllib.parse.urlsplit(args.server)
     if server.scheme != "https" and server.hostname not in ("localhost", "127.0.0.1"):
-        parser.error("Use HTTPS for remote servers")
+        # The default comes from ARTEMIS_URL or IP_ADDRESS; a remote one must be named explicitly.
+        parser.error(
+            "Plain HTTP is accepted only for localhost and 127.0.0.1. Pass --server "
+            f"https://<gateway> for a remote gateway (got {args.server!r})."
+        )
     if args.mcp_command and args.scopes:
         parser.error("--mcp-command cannot be combined with built-in --scopes")
     if args.scopes is None:
