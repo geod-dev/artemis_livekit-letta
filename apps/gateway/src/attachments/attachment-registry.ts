@@ -1,7 +1,12 @@
 import type { WorkspaceTransport } from '@artemis/workspace';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { ATTACHMENT_PATH, ATTACHMENT_RETENTION_FILE } from './attachment-policy.ts';
+import {
+  ATTACHMENT_PATH,
+  ATTACHMENT_RETENTION_FILE,
+  AttachmentUnavailableError,
+} from './attachment-policy.ts';
 
 /**
  * Owners (conversations) of the uploads in `data/attachments`. An upload stays
@@ -15,13 +20,15 @@ import { ATTACHMENT_PATH, ATTACHMENT_RETENTION_FILE } from './attachment-policy.
 const ABANDONED_AFTER_MS = 24 * 60 * 60 * 1000;
 const CLEANUP_EVERY_MS = 6 * 60 * 60 * 1000;
 
-type RetentionRecord = { createdAt: number; owners: string[]; mimeType?: string };
+/** The type and kind of an upload, decided once from its leading bytes. */
+export type UploadRecord = { kind: 'image' | 'file'; mimeType: string };
+type RetentionRecord = UploadRecord & { createdAt: number; owners: string[] };
 type RetentionState = { files: Record<string, RetentionRecord> };
 
 /** The retention state of one workspace, loaded once and persisted after every change. */
 export class AttachmentRegistry {
   private state: RetentionState | null = null;
-  /** Every change runs after the previous one, so checks and changes cannot interleave. */
+  /** Every read and change runs after the previous one, so the state file is never read mid-rename. */
   private queue: Promise<unknown> = Promise.resolve();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private cleanupWork: Promise<number> | null = null;
@@ -34,17 +41,19 @@ export class AttachmentRegistry {
     this.retentionFile = join(stateDirectory, ATTACHMENT_RETENTION_FILE);
   }
 
-  /** Records a new upload, with the type sniffed from its leading bytes. */
-  async register(path: string, mimeType: string): Promise<void> {
+  /** Records a new upload with the type and kind sniffed from its leading bytes. */
+  async register(path: string, upload: UploadRecord): Promise<void> {
     await this.update((state) => {
-      state.files[path] ??= { createdAt: Date.now(), owners: [], mimeType };
+      state.files[path] ??= { createdAt: Date.now(), owners: [], ...upload };
     });
   }
 
-  /** The type recorded at upload time, if the upload is known. */
-  async mimeTypeOf(path: string): Promise<string | undefined> {
-    const state = await this.load();
-    return state.files[path]?.mimeType;
+  /** The type and kind recorded at upload time, or undefined when the upload is unknown. */
+  uploadOf(path: string): Promise<UploadRecord | undefined> {
+    return this.read((state) => {
+      const record = ATTACHMENT_PATH.test(path) ? state.files[path] : undefined;
+      return record ? { kind: record.kind, mimeType: record.mimeType } : undefined;
+    });
   }
 
   /**
@@ -57,6 +66,21 @@ export class AttachmentRegistry {
     paths: readonly string[]
   ): Promise<{ missing: string[]; added: string[] }> {
     return this.update((state) => addOwner(state, owner, paths));
+  }
+
+  /**
+   * Reserves the uploads of a turn before the agent-server sees the turn. Fails with
+   * AttachmentUnavailableError when one of them is unknown or already removed, and
+   * keeps nothing from a refused reservation. The returned function gives back the
+   * references this turn added; the route calls it when the turn is not accepted.
+   */
+  async reserveReferences(owner: string, paths: readonly string[]): Promise<() => Promise<void>> {
+    const added = await this.update((state) => {
+      const unavailable = paths.some((path) => !ATTACHMENT_PATH.test(path) || !state.files[path]);
+      if (unavailable) throw new AttachmentUnavailableError();
+      return addOwner(state, owner, paths).added;
+    });
+    return () => this.removeReferences(owner, added);
   }
 
   /** Undo references added by `addReferences`. */
@@ -142,26 +166,35 @@ export class AttachmentRegistry {
     this.cleanupWork = work;
   }
 
+  /** Runs one task after every earlier read and change. */
+  private serialize<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.queue.catch(() => {}).then(task);
+    this.queue = run;
+    return run;
+  }
+
+  /** Reads the retention state after every earlier change. */
+  private read<T>(pick: (state: RetentionState) => T): Promise<T> {
+    return this.serialize(async () => pick(await this.load()));
+  }
+
   /**
    * Runs one change to the retention state after every earlier change, then
    * persists it. A failed change is not persisted.
    */
   private update<T>(change: (state: RetentionState) => T | Promise<T>): Promise<T> {
-    const run = this.queue
-      .catch(() => {})
-      .then(async () => {
-        const state = await this.load();
-        const result = await change(state);
-        await this.save(state);
-        return result;
-      });
-    this.queue = run;
-    return run;
+    return this.serialize(async () => {
+      const state = await this.load();
+      const result = await change(state);
+      await this.save(state);
+      return result;
+    });
   }
 
   /**
    * Missing state is empty. Any other read or parse error throws, and the state is
    * never replaced by an empty one, so the next save cannot erase the references.
+   * Callers reach this only through `serialize`.
    */
   private async load(): Promise<RetentionState> {
     if (this.state) return this.state;
@@ -177,9 +210,21 @@ export class AttachmentRegistry {
 
   private async save(state: RetentionState): Promise<void> {
     await mkdir(dirname(this.retentionFile), { recursive: true });
-    const temporary = `${this.retentionFile}.tmp`;
-    await writeFile(temporary, JSON.stringify(state));
-    await rename(temporary, this.retentionFile);
+    // A unique temporary name per write, flushed to disk before the rename replaces the state.
+    const temporary = `${this.retentionFile}.${randomUUID()}.tmp`;
+    try {
+      const handle = await open(temporary, 'w');
+      try {
+        await handle.writeFile(JSON.stringify(state));
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await rename(temporary, this.retentionFile);
+    } catch (error) {
+      await unlink(temporary).catch(() => {});
+      throw error;
+    }
   }
 
   /** Deletes the upload and its directory when that is empty; a file already gone is not an error. */
@@ -192,22 +237,26 @@ export class AttachmentRegistry {
 function parseState(text: string): RetentionState {
   const parsed: unknown = JSON.parse(text);
   if (!isRecord(parsed)) throw new Error('attachment retention state must be an object');
+  if (!isRecord(parsed.files)) throw new Error('attachment retention files must be an object');
   const files: RetentionState['files'] = {};
-  if (isRecord(parsed.files)) {
-    for (const [file, value] of Object.entries(parsed.files)) {
-      if (
-        isRecord(value) &&
-        typeof value.createdAt === 'number' &&
-        Array.isArray(value.owners) &&
-        value.owners.every((owner) => typeof owner === 'string')
-      ) {
-        const record: RetentionRecord = { createdAt: value.createdAt, owners: value.owners };
-        if (typeof value.mimeType === 'string') record.mimeType = value.mimeType;
-        files[file] = record;
-      }
-    }
+  for (const [file, value] of Object.entries(parsed.files)) {
+    // An invalid record is a load error, like a corrupt file: it is never dropped on save.
+    if (!isRetentionRecord(value))
+      throw new Error(`attachment retention record ${file} is invalid`);
+    files[file] = value;
   }
   return { files };
+}
+
+function isRetentionRecord(value: unknown): value is RetentionRecord {
+  return (
+    isRecord(value) &&
+    typeof value.createdAt === 'number' &&
+    Array.isArray(value.owners) &&
+    value.owners.every((owner) => typeof owner === 'string') &&
+    typeof value.mimeType === 'string' &&
+    (value.kind === 'image' || value.kind === 'file')
+  );
 }
 
 function addOwner(

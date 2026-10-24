@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { composeWorkspace } from '../compose.ts';
-import { PayloadTooLargeError } from './attachment-policy.ts';
+import { InvalidAttachmentError, PayloadTooLargeError } from './attachment-policy.ts';
 import { AttachmentStore } from './attachment-store.ts';
 import { MAX_UPLOAD_BYTES } from './limits.ts';
 
@@ -28,6 +28,26 @@ test('attachment store derives uploaded attachment metadata from inspected bytes
     await assert.rejects(
       store.resolve([{ ...image, path: 'data/attachments/none/missing.png' }]),
       /Unknown attachment/
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  }
+});
+
+test('a file under data/attachments that was never registered is refused as invalid', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-stray-'));
+  const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-stray-state-'));
+  try {
+    const store = new AttachmentStore(composeWorkspace(root), state);
+    const stray = 'data/attachments/0b8f2d3e-1111-4222-8333-444455556666/stray.png';
+    await mkdir(dirname(join(root, stray)), { recursive: true });
+    await writeFile(join(root, stray), PNG);
+    await assert.rejects(
+      store.resolve([
+        { path: stray, name: 'stray.png', kind: 'image', mimeType: 'image/png', size: PNG.length },
+      ]),
+      InvalidAttachmentError
     );
   } finally {
     await rm(root, { recursive: true, force: true });

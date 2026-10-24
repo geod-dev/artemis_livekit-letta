@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { composeWorkspace } from '../compose.ts';
+import { AttachmentUnavailableError, attachmentPath } from './attachment-policy.ts';
 import { AttachmentStore } from './attachment-store.ts';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+const IMAGE = { kind: 'image', mimeType: 'image/png' } as const;
 
 test('referenced uploads survive restarts and are collected once released and abandoned', async () => {
   const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-registry-'));
@@ -56,6 +59,69 @@ test('unreadable retention state is an error, never an empty state', async () =>
     const store = new AttachmentStore(composeWorkspace(root), state);
     await assert.rejects(store.registry.cleanupAbandoned());
     assert.equal(await readFile(join(state, 'attachment-retention.json'), 'utf8'), '{not json');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  }
+});
+
+test('a first read beside the first save never races the state file', async () => {
+  // Round-3 flake: an unserialized first read raced the first rename (EPERM on Windows).
+  for (let round = 0; round < 50; round++) {
+    const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-race-'));
+    const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-race-state-'));
+    try {
+      const registry = new AttachmentStore(composeWorkspace(root), state).registry;
+      const path = attachmentPath(randomUUID(), 'race.png');
+      const [before] = await Promise.all([registry.uploadOf(path), registry.register(path, IMAGE)]);
+      assert.equal(before, undefined);
+      assert.deepEqual(await registry.uploadOf(path), IMAGE);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(state, { recursive: true, force: true });
+    }
+  }
+});
+
+test('reserving an unknown or removed upload keeps nothing and answers unavailable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-reserve-'));
+  const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-reserve-state-'));
+  try {
+    const registry = new AttachmentStore(composeWorkspace(root), state).registry;
+    const known = attachmentPath(randomUUID(), 'known.png');
+    const unknown = attachmentPath(randomUUID(), 'unknown.png');
+    await registry.register(known, IMAGE);
+
+    await assert.rejects(
+      registry.reserveReferences('conversation-a', [known, unknown]),
+      AttachmentUnavailableError
+    );
+    assert.equal(await registry.removeUnused(known), true);
+
+    await registry.register(known, IMAGE);
+    const release = await registry.reserveReferences('conversation-b', [known]);
+    assert.equal(await registry.removeUnused(known), false);
+    await release();
+    assert.equal(await registry.removeUnused(known), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  }
+});
+
+test('an invalid retention record is a load error and is never dropped on save', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-invalid-'));
+  const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-invalid-state-'));
+  try {
+    const text = JSON.stringify({
+      files: {
+        [attachmentPath(randomUUID(), 'a.png')]: { createdAt: 1, owners: ['conversation-x'] },
+      },
+    });
+    await writeFile(join(state, 'attachment-retention.json'), text);
+    const registry = new AttachmentStore(composeWorkspace(root), state).registry;
+    await assert.rejects(registry.cleanupAbandoned(), /is invalid/);
+    assert.equal(await readFile(join(state, 'attachment-retention.json'), 'utf8'), text);
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(state, { recursive: true, force: true });
