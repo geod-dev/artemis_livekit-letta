@@ -19,22 +19,40 @@ final class ArtemisSite {
         return home;
     }
 
-    /** The HTTPS origin, for example https://artemis.example.com, used as the bridge's origin rule. */
+    /**
+     * The HTTPS origin, for example https://artemis.example.com, used as the bridge's origin rule.
+     * The default port is left out, the same way a page reports its own origin.
+     */
     String origin() {
-        return "https://" + home.getAuthority();
+        return originOf(home.getHost(), effectivePort(home.getScheme(), home.getPort()));
     }
 
     /** True for the HTTPS origin the app was built for (same host and effective port). */
     boolean contains(Uri uri) {
-        return uri != null
-            && "https".equalsIgnoreCase(uri.getScheme())
-            && home.getHost() != null && home.getHost().equalsIgnoreCase(uri.getHost())
-            && effectivePort(home) == effectivePort(uri);
+        return uri != null && isSameSite(home.getHost(),
+            effectivePort(home.getScheme(), home.getPort()),
+            uri.getScheme(), uri.getHost(), uri.getPort());
     }
 
-    private static int effectivePort(Uri uri) {
-        int port = uri.getPort();
-        return port == -1 ? ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80) : port;
+    /** The port an origin really uses: the explicit port, else the scheme's default (443 or 80). */
+    static int effectivePort(String scheme, int port) {
+        if (port != -1) return port;
+        return "https".equalsIgnoreCase(scheme) ? 443 : 80;
+    }
+
+    /** An HTTPS origin text with the default port dropped: https://host or https://host:port. */
+    static String originOf(String host, int port) {
+        return port == 443 ? "https://" + host : "https://" + host + ":" + port;
+    }
+
+    /**
+     * True when a URL with this scheme, host and port is on the HTTPS origin whose host and
+     * effective port are given. Host comparison ignores case.
+     */
+    static boolean isSameSite(String homeHost, int homePort, String scheme, String host, int port) {
+        return "https".equalsIgnoreCase(scheme)
+            && homeHost != null && homeHost.equalsIgnoreCase(host)
+            && homePort == effectivePort(scheme, port);
     }
 
     /** Opens web, mail and phone links in another app. Other schemes are ignored. */

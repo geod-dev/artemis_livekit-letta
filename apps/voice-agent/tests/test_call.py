@@ -242,3 +242,28 @@ async def test_failed_update_retries_after_an_early_rollback_announcement(
     await asyncio.sleep(0.03)
     assert attempts == 2  # completed generation and read state are independent
     await controller.aclose()
+
+
+async def test_failed_acknowledgement_is_retried_until_it_lands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(call_module, "UPDATE_RETRY_BASE_SECONDS", 0.01)
+    controller, _, _, gateway = setup(CallState(mode="long", next="listen"))
+    gateway.update_texts["u4"] = ["Done."]
+    attempts: list[tuple[str, bool]] = []
+
+    async def flaky_ack(update_id: str, *, heard: bool) -> None:
+        attempts.append((update_id, heard))
+        if len(attempts) == 1:
+            raise RuntimeError("gateway unavailable")
+        gateway.acks.append((update_id, heard))
+
+    gateway.acknowledge_update = flaky_ack  # type: ignore[method-assign]
+    await gateway.notices.put({"type": "update", "id": "u4"})
+    for _ in range(200):
+        if gateway.acks:
+            break
+        await asyncio.sleep(0.01)
+    assert gateway.acks == [("u4", True)]
+    assert attempts == [("u4", True), ("u4", True)]
+    await controller.aclose()

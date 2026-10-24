@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
 import android.widget.Toast;
@@ -18,10 +19,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Downloads from the Artemis origin, off the UI thread, into the Downloads folder. Other URLs
- * open in the browser. Shut down with the activity.
+ * Downloads from the Artemis origin, off the UI thread. On Android 10 and later the file goes
+ * to the public Downloads folder; on Android 8 and 9 it goes to the app's own downloads folder.
+ * Other URLs open in the browser. Shut down with the activity.
  */
 final class Downloads {
+    private static final String TAG = "ArtemisDownloads";
     private static final int THREADS = 2;
 
     private final MainActivity activity;
@@ -83,6 +86,9 @@ final class Downloads {
                     continue;
                 }
                 if (status < 200 || status >= 300) throw new IllegalStateException("Download failed");
+                // Open the source before the destination: a failed read then never leaves a
+                // destination behind, and the connection is closed in finally either way.
+                InputStream input = connection.getInputStream();
                 String mime = type != null ? type : connection.getContentType();
                 OutputStream output;
                 if (Build.VERSION.SDK_INT >= 29) {
@@ -103,11 +109,10 @@ final class Downloads {
                     legacyFile = new File(directory, filename);
                     output = new FileOutputStream(legacyFile);
                 }
-                try (InputStream input = connection.getInputStream();
-                        OutputStream destination = output) {
+                try (InputStream source = input; OutputStream destination = output) {
                     byte[] buffer = new byte[16384];
                     int count;
-                    while ((count = input.read(buffer)) != -1) destination.write(buffer, 0, count);
+                    while ((count = source.read(buffer)) != -1) destination.write(buffer, 0, count);
                 }
                 if (mediaItem != null) {
                     ContentValues ready = new ContentValues();
@@ -121,6 +126,7 @@ final class Downloads {
                 return;
             }
         } catch (Exception error) {
+            Log.w(TAG, "Download failed", error);
             if (mediaItem != null) activity.getContentResolver().delete(mediaItem, null, null);
             if (legacyFile != null) legacyFile.delete();
             activity.runOnUiThread(() ->

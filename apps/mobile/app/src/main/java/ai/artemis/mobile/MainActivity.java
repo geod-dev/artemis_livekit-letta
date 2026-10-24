@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setAllowFileAccess(false);
-        webView.getSettings().setAllowContentAccess(true);
+        webView.getSettings().setAllowContentAccess(false);
         webView.getSettings().setSupportMultipleWindows(true);
         CookieManager.getInstance().setAcceptCookie(true);
         downloads = new Downloads(this);
@@ -118,6 +118,7 @@ public final class MainActivity extends Activity {
         if (webView.canGoBack()) webView.goBack(); else finish();
     }
 
+    /** Back on API 26-32. From API 33 the registered callback handles back (the manifest enables it). */
     @Override public void onBackPressed() {
         navigateBack();
     }

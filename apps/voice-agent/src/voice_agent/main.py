@@ -28,13 +28,15 @@ from livekit.agents import (
 from livekit.plugins import openai
 
 from .call import CallController
-from .config import Settings
+from .config import Settings, agent_name, load_env_file
 from .dispatch import parse_dispatch
 from .gateway import Gateway
 from .speech import build_speech
 
 logger = logging.getLogger("voice_agent")
-settings = Settings.from_env()
+# The agent name is needed when the entrypoint is registered, so the env file is read
+# here. Everything else is built in the entrypoint, so importing this module never fails.
+load_env_file()
 server = AgentServer()
 
 
@@ -45,7 +47,7 @@ class VoiceFrontEnd(Agent):
         super().__init__(instructions="Relay the user's speech to the assistant backend.")
 
 
-@server.rtc_session(agent_name=settings.agent_name)
+@server.rtc_session(agent_name=agent_name())
 async def entrypoint(ctx: JobContext) -> None:
     dispatch = parse_dispatch(ctx.job.metadata)
     conversation_id = dispatch.conversation_id
@@ -54,6 +56,7 @@ async def entrypoint(ctx: JobContext) -> None:
         return
     ctx.log_context_fields = {"room": ctx.room.name, "conversation": conversation_id}
 
+    settings = Settings.from_env()
     speech = build_speech(
         settings.stt, settings.tts, settings.language, groq_base_url=settings.groq_base_url
     )
@@ -94,13 +97,15 @@ async def entrypoint(ctx: JobContext) -> None:
     async def on_shutdown() -> None:
         # Close the call on the gateway: undelivered updates go to the chat, and
         # the transcript goes to background memory consolidation.
-        await call.aclose()
         try:
-            await gateway.call_ended()
-        except Exception:
-            logger.exception("failed to notify the gateway that the call ended")
+            await call.aclose()
         finally:
-            await gateway.aclose()
+            try:
+                await gateway.call_ended()
+            except Exception:
+                logger.exception("failed to notify the gateway that the call ended")
+            finally:
+                await gateway.aclose()
 
     ctx.add_shutdown_callback(on_shutdown)
 
@@ -112,6 +117,8 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 def run() -> None:
+    # Fail at boot, not on the first call, when the settings are invalid.
+    Settings.from_env()
     cli.run_app(server)
 
 

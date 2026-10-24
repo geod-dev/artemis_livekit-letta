@@ -2,6 +2,7 @@ package ai.artemis.mobile;
 
 import android.app.AlertDialog;
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -26,8 +27,12 @@ final class SiteWebViewClient extends WebViewClient {
     }
 
     @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        if (!request.isForMainFrame() || activity.site.contains(request.getUrl())) return false;
-        ArtemisSite.openExternal(activity, request.getUrl());
+        Uri url = request.getUrl();
+        if (activity.site.contains(url)) return false;
+        // Anything off the site leaves the app, in the main frame and in subframes. A blank
+        // subframe (about:) stays in the WebView.
+        if (!request.isForMainFrame() && "about".equalsIgnoreCase(url.getScheme())) return false;
+        ArtemisSite.openExternal(activity, url);
         return true;
     }
 

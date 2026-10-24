@@ -36,10 +36,24 @@ builds as updates without uninstalling. No rebuild is needed for website updates
 On a fresh checkout without that key, Android uses its standard debug key instead;
 that build requires uninstalling the existing app first, clearing its local session.
 
+Debug signing values are explicit: the store password, key alias and key password come from
+`local.properties` (`artemis.debugStorePassword`, `artemis.debugKeyAlias`, `artemis.debugKeyPassword`)
+or from the environment (`ARTEMIS_DEBUG_STORE_PASSWORD`, `ARTEMIS_DEBUG_KEY_ALIAS`,
+`ARTEMIS_DEBUG_KEY_PASSWORD`). Without either, they default to the standard Android debug values
+(`android`, `androiddebugkey`, `android`). Only debug APKs are built: there is no release build type
+and no release signing, by design.
+
+Unit tests for the origin rules and the theme colour parser run on the JVM:
+`./gradlew testDebugUnitTest` (Java 17). They need no device.
+
 ## Behavior and limits
 
 - Microphone permission is only granted to the configured HTTPS origin.
-- Android's back gesture navigates page history, then closes the app.
+- Android's back gesture navigates page history, then closes the app. The app registers its back
+  callback on API 33 and later (`enableOnBackInvokedCallback`) and keeps `onBackPressed` for API 26-32.
+- Content URLs are not readable from the WebView. Navigations off the configured origin, in the
+  main frame or in an iframe, open in the browser; `about:` frames stay in the app.
+- A popup that only shows `about:` is closed after 10 seconds if its script never navigates it.
 - File uploads use Android's file picker. Same-site previews and downloads retain
   the WebView session; external links open in the browser without sharing app
   cookies.

@@ -38,6 +38,11 @@ RECONNECT_SECONDS = 2.0
 UPDATE_RETRY_BASE_SECONDS = 1.0
 UPDATE_RETRY_MAX_SECONDS = 30.0
 
+
+def _retry_delay(attempt: int) -> float:
+    """Capped exponential delay before retry number `attempt` (1 is the first retry)."""
+    return min(UPDATE_RETRY_BASE_SECONDS * (2 ** (attempt - 1)), UPDATE_RETRY_MAX_SECONDS)
+
 type EventHandlerRegistration = (
     tuple[Literal["speech_created"], Callable[[SpeechCreatedEvent], None]]
     | tuple[
@@ -80,9 +85,7 @@ class CallController:
     async def aclose(self) -> None:
         self._ending = True
         for event, handler in self._handlers:
-            off = getattr(self._session, "off", None)
-            if off is not None:
-                off(event, handler)
+            self._session.off(event, handler)
         self._handlers.clear()
         tasks = tuple(self._tasks)
         for task in tasks:
@@ -232,7 +235,9 @@ class CallController:
         try:
             await self._gateway.acknowledge_update(update_id, heard=heard)
         except Exception:
-            logger.warning("could not acknowledge update %s", update_id, exc_info=True)
+            # An unacknowledged update is replayed by the backend, so keep trying in the background.
+            logger.warning("could not acknowledge update %s; retrying", update_id, exc_info=True)
+            self._spawn(self._retry_acknowledge(update_id, heard=heard))
         if heard:
             await self._after_response()
         return streamed
@@ -254,9 +259,21 @@ class CallController:
             return
         attempt = self._retry_attempts.get(update_id, 0) + 1
         self._retry_attempts[update_id] = attempt
-        delay = min(UPDATE_RETRY_BASE_SECONDS * (2 ** (attempt - 1)), UPDATE_RETRY_MAX_SECONDS)
         self._retry_scheduled.add(update_id)
-        self._spawn(self._retry_update_after(update_id, delay))
+        self._spawn(self._retry_update_after(update_id, _retry_delay(attempt)))
+
+    async def _retry_acknowledge(self, update_id: str, *, heard: bool) -> None:
+        attempt = 1
+        while not self._ending:
+            await asyncio.sleep(_retry_delay(attempt))
+            if self._ending:
+                return
+            try:
+                await self._gateway.acknowledge_update(update_id, heard=heard)
+                return
+            except Exception:
+                logger.warning("could not acknowledge update %s", update_id, exc_info=True)
+                attempt += 1
 
     async def _retry_update_after(self, update_id: str, delay: float) -> None:
         try:

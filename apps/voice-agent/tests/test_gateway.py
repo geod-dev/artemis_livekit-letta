@@ -114,3 +114,43 @@ async def test_state_rejects_unexpected_values(monkeypatch: pytest.MonkeyPatch) 
     gateway, _ = make_gateway(monkeypatch, response)
     with pytest.raises(ValueError, match="Unexpected call state"):
         await gateway.state()
+
+
+async def test_malformed_event_lines_are_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+    gateway, _ = make_gateway(
+        monkeypatch,
+        FakeResponse(
+            [
+                b'data: {"type":"update","id":"u1"}\n',
+                b"data: {not json\n",
+                b"data: [1, 2]\n",
+                b'data: {"type":"update","id":"u2"}\r\n',
+                b'data: {"type":"update","id":"u3"}',
+            ]
+        ),
+    )
+    events = [event async for event in gateway.events()]
+    assert events == [
+        {"type": "update", "id": "u1"},
+        {"type": "update", "id": "u2"},
+        {"type": "update", "id": "u3"},
+    ]
+
+
+async def test_conversation_id_is_quoted_in_gateway_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    http = FakeHTTP(FakeResponse())
+    monkeypatch.setattr(gateway_module.aiohttp, "ClientSession", lambda **_: http)
+    gateway = Gateway("https://gateway", "token", "a/b c")
+    await gateway.call_ended()
+    assert http.calls[-1][1] == "https://gateway/api/voice/conversations/a%2Fb%20c/ended"
+
+
+async def test_state_rejects_a_non_object_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def bad_json() -> list[str]:
+        return ["short", "listen"]
+
+    response = FakeResponse()
+    response.json = bad_json  # type: ignore[method-assign]
+    gateway, _ = make_gateway(monkeypatch, response)
+    with pytest.raises(ValueError, match="Unexpected call state"):
+        await gateway.state()

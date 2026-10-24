@@ -1,5 +1,15 @@
 plugins { id 'com.android.application' }
 
+// Debug signing values are set explicitly, so the local key keeps working without relying on
+// AGP defaults. Each value comes from local.properties, then the environment, then the AGP
+// debug-key default. Set them to use a different key (see README).
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) localPropertiesFile.withInputStream { localProperties.load(it) }
+def debugSigning = { String property, String variable, String fallback ->
+    localProperties.getProperty(property) ?: System.getenv(variable) ?: fallback
+}
+
 android {
     namespace 'ai.artemis.mobile'
     compileSdk 35
@@ -7,6 +17,9 @@ android {
         debug {
             def personalKey = rootProject.file('.signing/debug.keystore')
             if (personalKey.exists()) storeFile personalKey
+            storePassword debugSigning('artemis.debugStorePassword', 'ARTEMIS_DEBUG_STORE_PASSWORD', 'android')
+            keyAlias debugSigning('artemis.debugKeyAlias', 'ARTEMIS_DEBUG_KEY_ALIAS', 'androiddebugkey')
+            keyPassword debugSigning('artemis.debugKeyPassword', 'ARTEMIS_DEBUG_KEY_PASSWORD', 'android')
         }
     }
     defaultConfig {
@@ -47,4 +60,8 @@ android {
 dependencies {
     // WebViewCompat.addWebMessageListener: the theme bridge is origin-bound.
     implementation 'androidx.webkit:webkit:1.12.1'
+
+    // JVM unit tests run on the host JVM, where android.net.Uri and org.json are stubs.
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }

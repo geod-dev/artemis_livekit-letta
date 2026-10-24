@@ -17,6 +17,9 @@ import java.util.Arrays;
 
 /** Page permissions (microphone only), file uploads and popup windows. */
 final class SiteWebChromeClient extends WebChromeClient {
+    /** How long a popup that has only shown about: stays open for its script to navigate it. */
+    private static final long BLANK_POPUP_MILLIS = 10_000L;
+
     private final MainActivity activity;
 
     SiteWebChromeClient(MainActivity activity) {
@@ -75,7 +78,12 @@ final class SiteWebChromeClient extends WebChromeClient {
             private boolean handled;
 
             private void open(Uri target) {
-                if (handled || "about".equalsIgnoreCase(target.getScheme())) return;
+                if (handled) return;
+                if ("about".equalsIgnoreCase(target.getScheme())) {
+                    // A script may still navigate a blank popup, so give it a moment, then give up.
+                    popup.postDelayed(this::abandon, BLANK_POPUP_MILLIS);
+                    return;
+                }
                 handled = true;
                 if (activity.site.contains(target)) {
                     activity.webView.loadUrl(target.toString());
@@ -83,6 +91,12 @@ final class SiteWebChromeClient extends WebChromeClient {
                     ArtemisSite.openExternal(activity, target);
                 }
                 popup.post(popup::destroy);
+            }
+
+            private void abandon() {
+                if (handled) return;
+                handled = true;
+                popup.destroy();
             }
 
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
