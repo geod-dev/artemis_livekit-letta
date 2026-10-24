@@ -16,16 +16,17 @@ export default tseslint.config(
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
       ],
-      // The frontend may only import the type-only API contracts as types. The
-      // present-validation module and generated JSON are real runtime imports.
-      '@typescript-eslint/no-restricted-imports': [
+      // The frontend imports the agent-server contract as types only. chat-types also
+      // carries runtime limits and option lists (TEXT_EFFORTS, MAX_*), which the web uses;
+      // the present-validation module and generated JSON are runtime imports too.
+      'no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['@artemis/contracts/chat-types', '@artemis/contracts/agent-server'],
+              group: ['@artemis/contracts/agent-server'],
               allowTypeImports: true,
-              message: 'Import API contracts with `import type`.',
+              message: 'Import the agent-server contract with `import type`.',
             },
           ],
         },

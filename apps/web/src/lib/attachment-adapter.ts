@@ -12,7 +12,8 @@ import { toThreadAttachment } from './thread-messages';
 export const attachmentAdapter: AttachmentAdapter = {
   accept: '*',
   async add({ file }) {
-    if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`${file.name} is larger than 25 MB`);
+    if (file.size > MAX_ATTACHMENT_BYTES)
+      throw new Error(`${file.name} is larger than ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB`);
     return {
       id: crypto.randomUUID(),
       type: file.type.startsWith('image/') ? 'image' : 'file',

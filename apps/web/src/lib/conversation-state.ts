@@ -31,7 +31,7 @@ export type ConversationStatePatch = {
     | ((previous: ConversationStoreState[K]) => ConversationStoreState[K]);
 };
 
-type ConversationStateAction =
+export type ConversationStateAction =
   | { type: 'activate'; conversationId: string | null; history: ChatMessage[] }
   | { type: 'history-requested'; conversationId: string; revision: number }
   | { type: 'history-loaded'; conversationId: string; revision: number; history: ChatMessage[] }

@@ -4,7 +4,7 @@ import '@fontsource-variable/bricolage-grotesque';
 import '@fontsource-variable/figtree';
 import { AuthGate } from '@/components/auth-gate';
 import { ChatApp } from '@/components/chat/chat-app';
-import { applyTheme, getStoredTheme } from '@/providers/theme';
+import { applyTheme, getStoredTheme } from '@/lib/theme';
 import '@/styles/globals.css';
 
 applyTheme(getStoredTheme());

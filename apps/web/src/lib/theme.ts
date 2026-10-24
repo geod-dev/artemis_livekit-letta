@@ -1,4 +1,4 @@
-import { postNativeMessage } from '@/lib/native-bridge';
+import { postNativeMessage } from './native-bridge.ts';
 
 export type Theme = 'light' | 'dark';
 

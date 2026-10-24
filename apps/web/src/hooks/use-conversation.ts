@@ -11,7 +11,6 @@ import {
 import type {
   ChatAttachment,
   ChatMessage,
-  ConversationEvent,
   ConversationSummary,
   TextEffort,
 } from '@artemis/contracts/chat-types';
@@ -22,7 +21,7 @@ import {
   openConversationStream,
   sendMessage,
 } from '@/lib/conversation-client';
-import { historyCoversMessage, mergeConversationMessages } from '@/lib/conversation-messages';
+import { mergeConversationMessages } from '@/lib/conversation-messages';
 import {
   type ConversationStatePatch,
   type LiveConversationItem,
@@ -30,6 +29,11 @@ import {
   conversationStateReducer,
   initialConversationState,
 } from '@/lib/conversation-state';
+import {
+  type StreamConnection,
+  awaitStreamReady,
+  subscribeToConversation,
+} from '@/lib/conversation-subscription';
 
 type LiveItem = LiveConversationItem;
 
@@ -42,7 +46,9 @@ type UserMessage = Extract<ChatMessage, { role: 'user' }>;
  *
  * Switching conversations keeps the previous one on screen until the next
  * one's history has loaded, then swaps everything at once. A message being
- * sent shows right away, before the server echoes it.
+ * sent shows right away, before the server echoes it. The stream lifecycle
+ * and event handling live in lib/conversation-subscription.ts; this hook
+ * wires them to React state.
  */
 export function useConversation(
   conversationId: string | null,
@@ -103,7 +109,7 @@ export function useConversation(
   shownIdRef.current = shownId;
   // Resolves once the event stream of a given conversation is open, so a message
   // sent right after creating a conversation cannot outrun its subscription.
-  const connected = useRef<{ id: string | null; ready: Promise<void> }>({
+  const connected = useRef<StreamConnection & { id: string | null }>({
     id: null,
     ready: Promise.resolve(),
   });
@@ -120,8 +126,6 @@ export function useConversation(
   pendingRef.current = pending;
   const historyRef = useRef(history);
   historyRef.current = history;
-  const activeTurnsRef = useRef(activeTurns);
-  activeTurnsRef.current = activeTurns;
   const onUpdated = useRef(onConversationUpdated);
   onUpdated.current = onConversationUpdated;
 
@@ -143,303 +147,34 @@ export function useConversation(
     // other switch drops it.
     if (!isFresh && !isCarried) setPending(null);
 
-    const show = (rows: ChatMessage[]) => {
+    const activate = (rows: ChatMessage[]) => {
       ownerId.current = conversationId;
       dispatch({ type: 'activate', conversationId, history: rows });
     };
     if (!conversationId) {
       connected.current = { id: null, ready: Promise.resolve() };
-      show([]);
+      activate([]);
       return;
     }
-
-    let cancelled = false;
-    let historyRevision = 0;
-    let hasShown = false;
-    const settledTurnIds = new Set<string>();
-    const reconcileHistory = async (turnId?: string, stoppedByUser = false, started = false) => {
-      const revision = ++historyRevision;
-      dispatch({ type: 'history-requested', conversationId, revision });
-      const rows = await fetchHistory(conversationId);
-      if (cancelled || revision !== historyRevision) return false;
-      if (!rows) {
-        dispatch({
-          type: 'history-failed',
-          conversationId,
-          revision,
-          message: 'Could not refresh this conversation',
-        });
-        return false;
-      }
-      if (!hasShown) ready(rows);
-      dispatch({ type: 'history-loaded', conversationId, revision, history: rows });
-      if (turnId) {
-        const persisted = new Map(rows.map((row) => [row.id, row]));
-        setLive((items) =>
-          items.filter((item) => {
-            if (historyCoversMessage(persisted.get(item.message.id), item.message)) return false;
-            if (item.turnId !== turnId) return true;
-            // The provider may acknowledge completion before history exposes its
-            // final rows. Keep the streamed answer until it is actually persisted.
-            return item.message.role === 'assistant' || item.message.role === 'reasoning';
-          })
-        );
-        if (stoppedByUser && started) {
-          const last = rows.at(-1);
-          if (last) setStopped((ids) => new Set(ids).add(last.id));
-        }
-      }
-      return true;
-    };
-    /** Turns that sent their message here (read before the state catches up). */
-    const startedTurns = new Set<string>();
-    // Events wait until the history is on screen, then replay in order.
-    let backlog: ConversationEvent[] | null = [];
-    const ready = (rows: ChatMessage[]) => {
-      if (cancelled) return;
-      hasShown = true;
-      show(rows);
-      const held = backlog ?? [];
-      backlog = null;
-      held.forEach(processEvent);
-    };
-    if (isFresh) {
-      ready([]);
-    } else {
-      const revision = ++historyRevision;
-      void fetchHistory(conversationId).then((rows) => {
-        if (revision !== historyRevision) return;
-        ready(rows ?? []);
-        if (!rows && !cancelled) {
-          dispatch({
-            type: 'history-failed',
-            conversationId,
-            revision,
-            message: 'Could not load this conversation',
-          });
-        }
-      });
-    }
-
-    const makeGate = () => {
-      let resolve!: () => void;
-      let settled = false;
-      const promise = new Promise<void>((done) => {
-        resolve = () => {
-          settled = true;
-          done();
-        };
-      });
-      return {
-        promise,
-        resolve,
-        get settled() {
-          return settled;
-        },
-      };
-    };
-    let gate = makeGate();
-    const closeStream = openConversationStream(conversationId, {
-      // A subscription is only ready after each successful open, including retries.
-      onOpen: () => {
-        setContextUsageRevision((revision) => revision + 1);
-        gate.resolve();
-        connected.current = { id: conversationId, ready: Promise.resolve() };
-        setLive([]);
-        setActiveTurns([]);
-        setTasks([]);
-        void reconcileHistory();
-      },
-      onError: () => {
-        // EventSource retries automatically. Keep sends waiting for the next open.
-        if (connected.current.id === conversationId && gate.settled) {
-          gate = makeGate();
-          connected.current = { id: conversationId, ready: gate.promise };
-        }
-      },
-      onEvent: (event) => {
-        if (backlog) backlog.push(event);
-        else processEvent(event);
-      },
-      onRejected: (reason) => {
-        setError(
-          reason === 'oversized'
-            ? 'Received an oversized conversation update; refreshing…'
-            : reason === 'invalid'
-              ? 'Received an invalid conversation update; refreshing…'
-              : 'Received an unsupported conversation update; refreshing…'
-        );
-        void reconcileHistory();
-      },
+    return subscribeToConversation(conversationId, isFresh, {
+      connected,
+      pending: pendingRef,
+      pendingClientId,
+      stopRequested,
+      setError,
+      setPending,
+      setLive,
+      setActiveTurns,
+      setTasks,
+      setSettledTurns,
+      setStopped,
+      bumpContextUsage: () => setContextUsageRevision((revision) => revision + 1),
+      conversationUpdated: (conversation) => onUpdated.current?.(conversation),
+      activate,
+      dispatch,
+      fetchHistory,
+      openStream: openConversationStream,
     });
-    connected.current = { id: conversationId, ready: gate.promise };
-
-    function processEvent(event: ConversationEvent) {
-      try {
-        handleEvent(event);
-      } catch {
-        setError('Could not apply a conversation update; refreshing…');
-        void reconcileHistory();
-      }
-    }
-
-    function handleEvent(event: ConversationEvent) {
-      switch (event.type) {
-        case 'context_usage':
-          setContextUsageRevision((revision) => revision + 1);
-          break;
-        case 'snapshot':
-          event.turns.forEach((turn) => startedTurns.add(turn.turnId));
-          setActiveTurns([...new Set(event.turns.map((turn) => turn.turnId))]);
-          setTasks(
-            event.tasks
-              .filter((task) => task.status === 'running')
-              .map((task) => ({ id: task.taskId, title: task.title, status: 'running' as const }))
-          );
-          event.activeEvents.forEach(processEvent);
-          break;
-        case 'turn_start':
-          startedTurns.add(event.turnId);
-          setError(null);
-          setActiveTurns((turns) =>
-            turns.includes(event.turnId) ? turns : [...turns, event.turnId]
-          );
-          break;
-        case 'message': {
-          // Match the optimistic row by the server echoed client identity, then
-          // keep the server's canonical message ID for history reconciliation.
-          const shown = pendingRef.current;
-          const isEcho = Boolean(
-            shown &&
-            event.message.role === 'user' &&
-            event.message.clientMessageId &&
-            event.message.clientMessageId === pendingClientId.current
-          );
-          const message = event.message;
-          if (isEcho) {
-            pendingClientId.current = null;
-            setPending(null);
-          }
-          // A reconnect can replay a message the live list already holds; keep one copy.
-          setLive((items) =>
-            items.some(
-              (item) => item.message.id === message.id && item.message.role === message.role
-            )
-              ? items
-              : [...items, { turnId: event.turnId, message }]
-          );
-          break;
-        }
-        case 'assistant_delta':
-        case 'reasoning_delta': {
-          const role = event.type === 'reasoning_delta' ? 'reasoning' : 'assistant';
-          // Reasoning history rows use the same canonical prefix as the
-          // assistant-ui adapter, while assistant rows use the message ID.
-          const id = role === 'reasoning' ? `reasoning:${event.messageId}` : event.messageId;
-          setLive((items) => {
-            const index = items.findIndex((i) => i.message.id === id && i.message.role === role);
-            const item = items[index];
-            if (!item) {
-              return [...items, { turnId: event.turnId, message: { id, role, text: event.text } }];
-            }
-            const next = [...items];
-            next[index] = {
-              ...item,
-              message: {
-                ...item.message,
-                text: (item.message as { text: string }).text + event.text,
-              } as ChatMessage,
-            };
-            return next;
-          });
-          break;
-        }
-        case 'tool_call':
-          setLive((items) => [
-            ...items,
-            {
-              turnId: event.turnId,
-              message: {
-                id: event.toolCallId,
-                role: 'tool',
-                toolCallId: event.toolCallId,
-                name: event.name,
-              },
-            },
-          ]);
-          break;
-        case 'tool_result':
-          setLive((items) =>
-            items.map((i) =>
-              i.message.role === 'tool' && i.message.toolCallId === event.toolCallId
-                ? {
-                    ...i,
-                    message: {
-                      ...i.message,
-                      args: event.args ?? i.message.args,
-                      result: event.result,
-                      isError: event.isError,
-                      display: event.display,
-                      task: event.task,
-                    },
-                  }
-                : i
-            )
-          );
-          break;
-        case 'turn_end': {
-          if (!event.success && event.error && event.error !== 'aborted') setError(event.error);
-          const started = startedTurns.delete(event.turnId);
-          if (!settledTurnIds.has(event.turnId)) {
-            settledTurnIds.add(event.turnId);
-            setActiveTurns((turns) => turns.filter((id) => id !== event.turnId));
-            setSettledTurns((n) => n + 1);
-          }
-          // Failed or stopped before it started: its message was never sent.
-          if (!started && pendingClientId.current) {
-            pendingClientId.current = null;
-            setPending(null);
-          }
-          const stoppedByUser = event.error === 'aborted' && stopRequested.current;
-          if (stoppedByUser) stopRequested.current = false;
-          // Swap this turn's live items for the canonical persisted rows.
-          void reconcileHistory(event.turnId, stoppedByUser, started);
-          break;
-        }
-        case 'task':
-          setTasks((ts) => {
-            const rest = ts.filter((t) => t.id !== event.taskId);
-            return event.status === 'running'
-              ? [
-                  ...rest,
-                  {
-                    id: event.taskId,
-                    title: event.title,
-                    status: event.status,
-                    ...(event.kind ? { kind: event.kind } : {}),
-                  },
-                ]
-              : rest;
-          });
-          break;
-        case 'updates_changed':
-          // Completion notices can arrive during an autonomous turn.
-          // Refresh history without discarding its streamed response.
-          void reconcileHistory();
-          break;
-        case 'conversation_updated':
-          onUpdated.current?.(event.conversation);
-          break;
-      }
-    }
-
-    return () => {
-      cancelled = true;
-      gate.resolve();
-      if (connected.current.id === conversationId)
-        connected.current = { id: null, ready: Promise.resolve() };
-      closeStream();
-    };
   }, [
     conversationId,
     dispatch,
@@ -513,32 +248,12 @@ export function useConversation(
       effort: TextEffort,
       attachments: ChatAttachment[] = []
     ): Promise<boolean> => {
-      const deadline = Date.now() + 15_000;
       try {
-        while (connected.current.id !== id) {
-          if (requestedId.current !== id) return false;
-          if (Date.now() >= deadline)
-            throw new Error('Could not connect to the conversation stream. Try sending again.');
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        const remaining = Math.max(0, deadline - Date.now());
-        await new Promise<void>((resolve, reject) => {
-          const timer = window.setTimeout(
-            () =>
-              reject(new Error('Could not connect to the conversation stream. Try sending again.')),
-            remaining
-          );
-          connected.current.ready.then(
-            () => {
-              window.clearTimeout(timer);
-              resolve();
-            },
-            (error) => {
-              window.clearTimeout(timer);
-              reject(error);
-            }
-          );
+        const ready = await awaitStreamReady(id, {
+          connection: () => connected.current,
+          requested: () => requestedId.current,
         });
+        if (!ready) return false;
       } catch (error) {
         if (shownIdRef.current === id) {
           setPending(null);

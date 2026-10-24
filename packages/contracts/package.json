@@ -11,6 +11,7 @@
     "./tool-schemas": "./src/tool-schemas.ts",
     "./agent-server": "./src/agent-server.ts",
     "./present-validation": "./src/present-validation.ts",
+    "./present-components": "./src/present-components.ts",
     "./present-tool.json": "./generated/present-tool.json",
     "./present-components.json": "./generated/present-components.json"
   },

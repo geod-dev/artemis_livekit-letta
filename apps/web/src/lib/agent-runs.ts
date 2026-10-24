@@ -1,4 +1,4 @@
-import type { ChatMessage, ConversationTask } from '@artemis/contracts/chat-types';
+import type { ChatMessage, ConversationTask, TaskKind } from '@artemis/contracts/chat-types';
 
 export type AgentRun = ConversationTask & {
   agentKey?: string;
@@ -126,7 +126,7 @@ export function commandOutput(
   };
 }
 
-export type TaskKind = 'agent' | 'command';
+export type { TaskKind };
 
 /** Selected types are combined; an empty selection shows every task. */
 export function filterTaskKinds<T extends Pick<ConversationTask, 'kind'>>(

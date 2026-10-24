@@ -1,9 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // The tests import browser modules (fetch, window), so the DOM library is needed here too.
-    "lib": ["DOM", "DOM.Iterable", "ES2023"],
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "src/**/*.test.ts"]
+  "include": ["vite.config.ts"]
 }

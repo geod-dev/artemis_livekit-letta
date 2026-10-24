@@ -50,7 +50,7 @@ const commands = {
     ['sh syntax postgres', 'sh', ['-n', 'deploy/postgres/init-databases.sh'], '.'],
   ],
   schema: [
-    ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'apps/web/scripts/generate-present-tool.ts', '--check'], '.'],
+    ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'scripts/generate-present-tool.ts', '--check'], '.'],
   ],
   boundaries: [
     ['dependency rules', process.execPath, ['scripts/check-boundaries.mjs'], '.'],

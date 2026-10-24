@@ -2,31 +2,23 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import presentComponentsJson from '@artemis/contracts/present-components.json' with { type: 'json' };
 import presentToolJson from '@artemis/contracts/present-tool.json' with { type: 'json' };
-import { presentLibrary, presentToolSchema } from './present-library.ts';
-import { presentTree, replyMessage, validatePresent } from './generative-ui.ts';
-
-/** The schema builder warns about props several components share, outside production; these tests do not need the warnings. */
-function presentToolSchemaQuietly() {
-  const previous = process.env.NODE_ENV;
-  process.env.NODE_ENV = 'production';
-  try {
-    return presentToolSchema(presentLibrary(() => null));
-  } finally {
-    if (previous === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previous;
-  }
-}
+import { replyMessage, validatePresent } from './generative-ui.ts';
+import { presentComponentSchemas, presentLibrary, presentToolSchema } from './present-library.ts';
 
 test('the shared present tool schema is generated from the library', () => {
   const registered: unknown = presentToolJson;
-  const generated: unknown = JSON.parse(JSON.stringify(presentToolSchemaQuietly()));
+  const generated: unknown = JSON.parse(
+    JSON.stringify(
+      presentToolSchema(
+        presentLibrary(() => null),
+        { warnings: false }
+      )
+    )
+  );
   assert.deepEqual(registered, generated, 'run `pnpm generate:present-tool` at the repo root');
   const registeredComponents: unknown = presentComponentsJson;
-  const generatedComponents = Object.fromEntries(
-    Object.entries(presentLibrary(() => null)).map(([name, component]) => [
-      name,
-      JSON.parse(JSON.stringify(component.properties.toJSONSchema())),
-    ])
+  const generatedComponents: unknown = JSON.parse(
+    JSON.stringify(presentComponentSchemas(presentLibrary(() => null)))
   );
   assert.deepEqual(
     registeredComponents,
@@ -43,32 +35,50 @@ test('children sent as a JSON string are read as components', () => {
     title: 'Plan',
     children: JSON.stringify([chart, { $type: 'Row', children: JSON.stringify(button) }]),
   };
-  assert.deepEqual(presentTree(tree), {
-    $type: 'Card',
-    title: 'Plan',
-    children: [chart, { $type: 'Row', children: button }],
+  assert.deepEqual(validatePresent(tree), {
+    ok: true,
+    tree: {
+      $type: 'Card',
+      title: 'Plan',
+      children: [chart, { $type: 'Row', children: button }],
+    },
   });
 });
 
 test('provider-safe tool arguments render as native library components', () => {
-  assert.deepEqual(presentTree({
-    componentType: 'Card', componentKey: 'choice',
-    confirm: { label: 'Keep', action: { type: 'reply', text: 'Keep' } },
-    children: JSON.stringify([{ componentType: 'Button', label: 'Continue', action: { type: 'reply', text: 'Continue' } }]),
-  }), {
-    $type: 'Card', $key: 'choice',
-    confirm: { label: 'Keep', $action: { type: 'reply', text: 'Keep' } },
-    children: [{ $type: 'Button', label: 'Continue', $action: { type: 'reply', text: 'Continue' } }],
-  });
-  assert.equal(validatePresent({ componentType: 'Button', label: 'Run', action: { type: 'run-code' } }).ok, false);
+  assert.deepEqual(
+    validatePresent({
+      componentType: 'Card',
+      componentKey: 'choice',
+      confirm: { label: 'Keep', action: { type: 'reply', text: 'Keep' } },
+      children: JSON.stringify([
+        { componentType: 'Button', label: 'Continue', action: { type: 'reply', text: 'Continue' } },
+      ]),
+    }),
+    {
+      ok: true,
+      tree: {
+        $type: 'Card',
+        $key: 'choice',
+        confirm: { label: 'Keep', $action: { type: 'reply', text: 'Keep' } },
+        children: [
+          { $type: 'Button', label: 'Continue', $action: { type: 'reply', text: 'Continue' } },
+        ],
+      },
+    }
+  );
+  assert.equal(
+    validatePresent({ componentType: 'Button', label: 'Run', action: { type: 'run-code' } }).ok,
+    false
+  );
   assert.equal(validatePresent({ componentType: 'Card', children: '{"componentType":' }).ok, false);
 });
 
 test('text children stay text', () => {
   for (const text of ['Hello', '[1] a note', '{not json', '[1, 2]', '{"a": 1}']) {
-    assert.deepEqual(presentTree({ $type: 'Card', children: text }), {
-      $type: 'Card',
-      children: text,
+    assert.deepEqual(validatePresent({ $type: 'Card', children: text }), {
+      ok: true,
+      tree: { $type: 'Card', children: text },
     });
   }
 });
@@ -131,8 +141,5 @@ test('present rejects deep trees, malformed serialized nodes, and dangerous imag
     validatePresent({ $type: 'Image', src: 'javascript:alert(1)', alt: 'unsafe' }).ok,
     false
   );
-  assert.equal(
-    validatePresent({ $type: 'Box', background: 'url(javascript:alert(1))' }).ok,
-    false
-  );
+  assert.equal(validatePresent({ $type: 'Box', background: 'url(javascript:alert(1))' }).ok, false);
 });

@@ -12,7 +12,7 @@ import { McpServers } from '@/components/settings/mcp-servers';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { apiFetch, isRecord, responseJson } from '@/lib/api';
 import { cn } from '@/lib/shadcn/utils';
-import { type Theme, applyTheme, getStoredTheme } from '@/providers/theme';
+import { type Theme, applyTheme, getStoredTheme } from '@/lib/theme';
 
 type SettingsSection = 'appearance' | 'mcp';
 

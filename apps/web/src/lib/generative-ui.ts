@@ -16,7 +16,11 @@ import {
 /** The action through which a rendered control sends the user's answer as a chat message. */
 export const REPLY_ACTION = 'reply';
 
-/** Validate and decode a completed `present` call before handing it to React. */
+/**
+ * Validate and decode a completed `present` call before handing it to React. Models
+ * sometimes send `children` as a JSON string, since the schema also accepts a string
+ * (for text): a string that encodes components is read as those components.
+ */
 export function validatePresent(node: unknown): PresentValidation {
   return validatePresentTree(node, (type, props) => {
     const component = defaultGenerativeUILibrary[type];
@@ -28,16 +32,6 @@ export function validatePresent(node: unknown): PresentValidation {
       Object.keys(props).every((key) => Object.hasOwn(parsed.data, key))
     );
   });
-}
-
-/**
- * The tree as the chat renders it. Models sometimes send `children` as a JSON
- * string, since the schema also accepts a string (for text): a string that
- * encodes components is read as those components.
- */
-export function presentTree(node: unknown): unknown {
-  const result = validatePresent(node);
-  return result.ok ? result.tree : undefined;
 }
 
 /**

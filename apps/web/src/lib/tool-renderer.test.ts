@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ToolDisplay } from '@artemis/contracts/chat-types';
-import { toolCall } from '../components/assistant-ui/tools/tool-display.ts';
+import { toolCall } from './tool-display.ts';
 import { selectToolRenderer, toolResultFormat } from './tool-renderer.ts';
 
 const search = toolCall(
