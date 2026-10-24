@@ -151,8 +151,10 @@ class StorageConversationService implements ConversationService {
     const toolCalls = await storage.toolCalls.listForMessages(messages.map((message) => message.id));
     const updates = await storage.updates.listByConversation(id);
     const stored = projectHistory({ messages, toolCalls, updates });
+    // A pending row is never repeated: an update already projected from a stored turn keeps its first row.
+    const shown = new Set(stored.map((row) => row.id));
     const pending = options.before || !this.deps.pendingRows ? [] : await this.deps.pendingRows(id);
-    return { rows: [...stored, ...pending], nextCursor: page.nextCursor };
+    return { rows: [...stored, ...pending.filter((row) => !shown.has(row.id))], nextCursor: page.nextCursor };
   }
 
   async contextUsage(id: string): Promise<ConversationContextUsage | null> {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { loadConfig } from './config.ts';
+import { assertAnthropicKeyForModels, loadConfig } from './config.ts';
 
 /** The task model defaults to an OpenAI-compatible provider; the base uses Anthropic so tests need no second key. */
 const base = {
@@ -97,5 +97,24 @@ describe('loadConfig', () => {
     assert.throws(() => loadConfig({ ...base, AGENT_SERVER_PORT: '0' }), /AGENT_SERVER_PORT/);
     assert.throws(() => loadConfig({ ...base, WORKER_IDLE_TIMEOUT_MS: 'soon' }), /WORKER_IDLE_TIMEOUT_MS/);
     assert.throws(() => loadConfig({ ...base, ASSISTANT_MODEL: 'claude-haiku-5-5' }), /provider\/model/);
+  });
+});
+
+describe('assertAnthropicKeyForModels', () => {
+  it('refuses a model route on the anthropic provider when no key is set, and names the route', () => {
+    const config = loadConfig({ ...base, ...openAi });
+    assert.throws(() => assertAnthropicKeyForModels(config), /ANTHROPIC_API_KEY is required: .*assistant/);
+  });
+
+  it('accepts the same routes once the key is set, and any configuration with no anthropic route', () => {
+    const keyed = loadConfig({ ...base, ...openAi, ANTHROPIC_API_KEY: 'key' });
+    assert.doesNotThrow(() => assertAnthropicKeyForModels(keyed));
+    const noAnthropic = loadConfig({
+      DATABASE_URL: base.DATABASE_URL,
+      ...openAi,
+      ASSISTANT_MODEL: 'openai-compatible/model-a',
+      ASSISTANT_TASK_MODEL: 'openai-compatible/model-b',
+    });
+    assert.doesNotThrow(() => assertAnthropicKeyForModels(noAnthropic));
   });
 });

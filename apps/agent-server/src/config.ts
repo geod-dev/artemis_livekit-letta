@@ -30,7 +30,7 @@ export interface AgentServerConfig {
   workspace: {
     /** Host/container path of the workspace root (`WORKSPACE_PATH`, `/workspace` in Docker). */
     root: string;
-    /** Path shown to the model (`/workspace`). */
+    /** Path shown to the model: always `/workspace`, also when the server runs on the host. */
     displayRoot: string;
     /** Prefixes agents may not write (`data/`). */
     readOnlyPrefixes: string[];
@@ -70,17 +70,24 @@ const DEFAULT_ASSISTANT_MODEL = 'anthropic/claude-haiku-5-5';
 const DEFAULT_TASK_MODEL = 'openai-compatible/zai-org/GLM-5.3-Flash';
 
 /** Fixed limits and workspace settings: not read from the environment. */
-const MAX_PENDING_TURNS = 32;
+export const MAX_PENDING_TURNS = 32;
 const MAX_SUBAGENTS = 4;
-const READ_ONLY_PREFIXES = ['data/'];
+/** Workspace-relative data area: written by the server, read-only for agent tools. */
+export const DATA_DIR = 'data';
+/** Subpaths of `DATA_DIR` (workspace-relative). */
+export const DATA_SUBDIRS = { tasks: `${DATA_DIR}/tasks`, artifacts: `${DATA_DIR}/artifacts` } as const;
+/** The workspace root as the model sees it, wherever the server runs. */
+const DISPLAY_ROOT = '/workspace';
+const READ_ONLY_PREFIXES = [`${DATA_DIR}/`];
 const RECALL_TIMEOUT_MS = { voice: 1_500, text: 4_000 };
 const RECALL_MAX_TOKENS = { low: 800, mid: 1_500, high: 3_000 };
 /** Workspace file search: `rg` when it is on the PATH, otherwise a JavaScript walk. */
 export const WORKSPACE_RIPGREP = 'auto' as const;
 
 /**
- * `WORKSPACE_RUN_AS=uid:gid`: agent commands run as this unprivileged user (Docker:
- * the `workspace` user, which can read but not write `data/`). Ignored on Windows.
+ * `WORKSPACE_RUN_AS=uid:gid`: agent commands run as this unprivileged user. Target
+ * (Docker, Coolify): uid 1002 for agent commands; `data/` is owned by the server uid
+ * 1001 and is read-only to the agent. Ignored on Windows.
  */
 function parseRunAs(value: string | undefined): { uid: number; gid: number } | undefined {
   if (!value) return undefined;
@@ -132,6 +139,20 @@ function requireConfiguredProvider(name: string, handle: string, openAiCompatibl
     return;
   }
   throw new Error(`${name} uses unknown provider "${provider}" (expected anthropic or openai-compatible)`);
+}
+
+/**
+ * Boot check: a model route that uses the anthropic provider needs `ANTHROPIC_API_KEY`, or
+ * every turn on that route would fail at call time. Kept out of `loadConfig` so that
+ * configuration can be read without a key; the entry point calls it once before it starts.
+ */
+export function assertAnthropicKeyForModels(config: Pick<AgentServerConfig, 'models' | 'providers'>): void {
+  const names = Object.entries(config.models)
+    .filter(([, handle]) => parseModelHandle(handle).provider === 'anthropic')
+    .map(([role]) => role);
+  if (names.length > 0 && !config.providers.anthropicApiKey) {
+    throw new Error(`ANTHROPIC_API_KEY is required: these model roles use the anthropic provider: ${names.join(', ')}`);
+  }
 }
 
 /**
@@ -215,7 +236,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
     },
     workspace: {
       root: workspaceRoot,
-      displayRoot: workspaceRoot,
+      displayRoot: DISPLAY_ROOT,
       readOnlyPrefixes: [...READ_ONLY_PREFIXES],
       ...(runAs ? { runAs } : {}),
     },

@@ -7,6 +7,7 @@ import type { ConversationEventHub } from '../events/hub.ts';
 import type { SubagentDefinition } from '../subagents/definitions.ts';
 import type { AgentToolContext } from '../tools/index.ts';
 import type { SubagentSpec, TaskPort } from '../tools/task-port.ts';
+import { DATA_SUBDIRS } from '../config.ts';
 import { isoAt } from '../util/time.ts';
 import type { SubagentStartMode, TaskOutcome } from '../workers/types.ts';
 
@@ -66,7 +67,7 @@ class WorkerTaskService implements TaskService {
     const context = input.context;
     if (!isAgentContext(context)) throw new AppError('invalid_context', 'Background commands need a conversation context', 500);
     const taskId = prefixedId('task');
-    const outputPath = `data/tasks/${taskId}.log`;
+    const outputPath = `${DATA_SUBDIRS.tasks}/${taskId}.log`;
     await this.deps.storage.tasks.create({
       id: taskId,
       conversationId: context.conversationId,

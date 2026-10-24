@@ -4,7 +4,8 @@ import type { ChatMessage } from '@artemis/contracts/chat-types';
 import type { BackgroundUpdateRecord, Storage, TaskRecord } from '@artemis/storage';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { CallSessions } from '../calls/call-sessions.ts';
-import { updateLabel } from '../turns/render.ts';
+import { isoAt } from '../util/time.ts';
+import { taskUpdateLabel } from './labels.ts';
 import { wakesThread } from './policy.ts';
 
 /**
@@ -32,7 +33,7 @@ export interface BackgroundDeliveryService {
   markRead(conversationId: string, ids: string[]): Promise<number>;
   unreadCount(conversationId: string): Promise<number>;
   callEnded(conversationId: string, pendingUpdateIds: string[]): Promise<void>;
-  /** Event rows (`role:'event'`) for history projection, incl. not-yet-delivered updates. */
+  /** Event rows (`role:'event'`) of the updates not yet delivered (held, queued, inflight). */
   eventRows(conversationId: string): Promise<ChatMessage[]>;
 }
 
@@ -132,12 +133,14 @@ class StorageBackgroundDelivery implements BackgroundDeliveryService {
   }
 
   async eventRows(conversationId: string): Promise<ChatMessage[]> {
-    const updates = await this.deps.storage.updates.listByConversation(conversationId);
+    const updates = await this.deps.storage.updates.listByConversation(conversationId, {
+      delivery: ['held', 'queued', 'inflight'],
+    });
     return updates.map(updateEventRow);
   }
 
   private now(): string {
-    return new Date(this.deps.clock.now()).toISOString();
+    return isoAt(this.deps.clock.now());
   }
 
   /** False for archived (or unknown) conversations: no updates, no wake-ups. */
@@ -166,7 +169,7 @@ export function updateEventRow(update: BackgroundUpdateRecord): ChatMessage {
     id: update.id,
     role: 'event',
     kind: 'task_result',
-    text: updateLabel(update),
+    text: taskUpdateLabel(update),
     updateId: update.id,
     taskId: update.taskId,
     status: update.status,

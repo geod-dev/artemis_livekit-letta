@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { type LlmRequest, LlmProvider, type LlmStreamEvent, type ModelInfo, ProviderRegistry, type ToolDefinition } from '@artemis/llm';
 import { NotFoundError } from '@artemis/core';
@@ -101,7 +101,7 @@ describe('ConversationService', () => {
     assert.equal(snapshot?.templateId, 'system');
     assert.equal(
       snapshot?.systemPrompt,
-      `You are Artemis in ${resolve('/workspace')}, conversation ${created.id}, time zone Europe/Paris.`
+      `You are Artemis in /workspace, conversation ${created.id}, time zone Europe/Paris.`
     );
     assert.deepEqual(snapshot?.tools, TOOLS);
   });

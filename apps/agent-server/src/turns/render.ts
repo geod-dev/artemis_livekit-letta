@@ -87,12 +87,6 @@ export function formatCurrentDateTime(epochMs: number, timeZone: string): string
   return `${local}${offset}[${timeZone}]`;
 }
 
-/** Label of an update in the UI (`event` rows and the frontend's task result line). */
-export function updateLabel(update: { title: string; status: 'completed' | 'failed' | 'cancelled'; needsInput: boolean }): string {
-  if (update.needsInput) return `Background task needs input: ${update.title}`;
-  return `Background task ${update.status}: ${update.title}`;
-}
-
 function escapeAttr(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }

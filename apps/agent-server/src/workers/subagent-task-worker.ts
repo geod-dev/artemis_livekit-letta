@@ -75,7 +75,9 @@ export class SubagentTaskWorker extends TaskWorker {
     if (!controller.signal.aborted) this.history = await this.resumedHistory();
     this.currentState = 'busy';
     this.touch();
-    void this.run().then((outcome) => this.settle(outcome));
+    void this.run()
+      .catch((error: unknown) => this.lostTask(`Task ${taskId} could not be finished: ${errorMessage(error)}`))
+      .then((outcome) => this.settle(outcome));
   }
 
   async stop(reason: string): Promise<void> {
@@ -90,7 +92,7 @@ export class SubagentTaskWorker extends TaskWorker {
     if (this.currentState !== 'spawning') await this.outcome;
   }
 
-  /** Never rejects: failures are persisted as a failed task. An aborted signal never starts the loop. */
+  /** Loop failures are persisted as a failed task; a store failure while ending it is turned into a failed outcome by `start`. An aborted signal never starts the loop. */
   private async run(): Promise<TaskOutcome> {
     const { env, spec, taskId, controller } = this;
     const route = env.router.route('worker');
@@ -157,8 +159,29 @@ export class SubagentTaskWorker extends TaskWorker {
       endedAt: isoAt(env.clock.now()),
     });
     const task = finished ?? (await env.storage.tasks.get(taskId));
-    if (!task) throw new Error(`Task ${taskId} disappeared`);
+    if (!task) return this.lostTask(`Task ${taskId} disappeared before its outcome was stored.`);
     return { task };
+  }
+
+  private lostTask(report: string): TaskOutcome {
+    const { spec, taskId } = this;
+    return this.lostOutcome(
+      {
+        id: taskId,
+        conversationId: spec.conversationId,
+        kind: 'agent',
+        title: spec.title,
+        prompt: spec.prompt,
+        subagentType: spec.subagentType,
+        originMode: spec.originMode,
+        originTurnId: spec.originTurnId,
+        originToolCallId: spec.originToolCallId,
+        parentTaskId: spec.parentTaskId,
+        resumedFromTaskId: spec.resumedFromTaskId,
+        depth: spec.depth,
+      },
+      report
+    );
   }
 
   private reportOf(status: 'completed' | 'failed' | 'cancelled', failure: string | null, outcome: LoopOutcome | undefined): string {

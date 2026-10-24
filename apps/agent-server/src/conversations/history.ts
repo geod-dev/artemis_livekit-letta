@@ -1,9 +1,9 @@
 import type { ChatMessage, Modality } from '@artemis/contracts/chat-types';
-import type { BackgroundUpdateRecord, DeliveredUpdate, MessageRecord, ToolCallRecord } from '@artemis/storage';
+import type { BackgroundUpdateRecord, MessageRecord, ToolCallRecord } from '@artemis/storage';
+import { taskUpdateLabel } from '../tasks/labels.ts';
 
 /**
- * Pure projection of stored messages into UI rows (replaces the legacy
- * `normalizeHistory`). Row ids are shared with live SSE events:
+ * Pure projection of stored messages into UI rows. Row ids are shared with live SSE events:
  * - user message -> `{role:'user', id: message.id, text: envelope.text, attachments, modality, clientMessageId}`
  *   preceded by one `event` row per delivered update (`id: <updateId>`);
  * - assistant content block i -> `reasoning` / `assistant` row `id: <messageId>:<i>`;
@@ -32,18 +32,6 @@ export function projectHistory(input: {
   return rows;
 }
 
-/** Label of a background update row, shared with the live `task` events. */
-export function updateLabel(
-  title: string,
-  status: DeliveredUpdate['status'] | BackgroundUpdateRecord['status'],
-  needsInput: boolean
-): string {
-  if (needsInput) return `${title} needs your input`;
-  if (status === 'failed') return `${title} failed`;
-  if (status === 'cancelled') return `${title} cancelled`;
-  return `${title} completed`;
-}
-
 function projectUserMessage(
   message: MessageRecord,
   updatesById: ReadonlyMap<string, BackgroundUpdateRecord>
@@ -57,7 +45,7 @@ function projectUserMessage(
       id: update.id,
       role: 'event' as const,
       kind: 'task_result' as const,
-      text: updateLabel(update.title, update.status, update.needsInput),
+      text: taskUpdateLabel(update),
       updateId: update.id,
       taskId: update.taskId,
       status: update.status,

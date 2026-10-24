@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BackgroundUpdateRecord, MessageRecord, ToolCallRecord, UserTurnEnvelope } from '@artemis/storage';
-import { projectHistory, updateLabel } from './history.ts';
+import { taskUpdateLabel } from '../tasks/labels.ts';
+import { projectHistory } from './history.ts';
 
 const NOW = '2026-10-22T10:00:00.000Z';
 
@@ -107,7 +108,7 @@ describe('projectHistory', () => {
       id: 'upd_1',
       role: 'event',
       kind: 'task_result',
-      text: 'Research completed',
+      text: 'Background task completed: Research',
       updateId: 'upd_1',
       taskId: 'task_1',
       status: 'completed',
@@ -212,16 +213,16 @@ describe('projectHistory', () => {
     });
     assert.equal(rows[0]?.role, 'event');
     assert.equal(rows[0]?.role === 'event' && rows[0].unread, true);
-    assert.equal(rows[0]?.role === 'event' && rows[0].text, 'Build needs your input');
+    assert.equal(rows[0]?.role === 'event' && rows[0].text, 'Background task needs input: Build');
     assert.equal(rows[1]?.role === 'user' && rows[1].modality, 'voice');
   });
 });
 
-describe('updateLabel', () => {
-  it('labels each outcome', () => {
-    assert.equal(updateLabel('T', 'completed', false), 'T completed');
-    assert.equal(updateLabel('T', 'failed', false), 'T failed');
-    assert.equal(updateLabel('T', 'cancelled', false), 'T cancelled');
-    assert.equal(updateLabel('T', 'completed', true), 'T needs your input');
+describe('taskUpdateLabel', () => {
+  it('labels each outcome with the live wording', () => {
+    assert.equal(taskUpdateLabel({ title: 'T', status: 'completed', needsInput: false }), 'Background task completed: T');
+    assert.equal(taskUpdateLabel({ title: 'T', status: 'failed', needsInput: false }), 'Background task failed: T');
+    assert.equal(taskUpdateLabel({ title: 'T', status: 'cancelled', needsInput: false }), 'Background task cancelled: T');
+    assert.equal(taskUpdateLabel({ title: 'T', status: 'completed', needsInput: true }), 'Background task needs input: T');
   });
 });

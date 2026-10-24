@@ -1,4 +1,5 @@
 import { BusyError } from '@artemis/core';
+import { MAX_PENDING_TURNS } from '../config.ts';
 
 /**
  * FIFO promise-chain serializer with a pending limit. One per main agent worker:
@@ -8,7 +9,7 @@ export class SerialScheduler {
   private tail: Promise<void> = Promise.resolve();
   private queued = 0;
 
-  constructor(readonly maxPending = 32) {}
+  constructor(readonly maxPending = MAX_PENDING_TURNS) {}
 
   /** Number of queued + running jobs. */
   get pending(): number {

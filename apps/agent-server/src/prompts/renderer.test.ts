@@ -71,16 +71,16 @@ describe('PromptRenderer', () => {
 });
 
 describe('shipped prompt templates', () => {
-  it('use only known placeholders and no legacy-framework wording', async () => {
+  it('use only known placeholders and none of the forbidden strings', async () => {
     for (const file of ['system.md', 'worker-rules.md', 'title.md']) {
       const source = await readFile(join(REAL_PROMPTS, file), 'utf8');
       for (const match of source.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)) {
         assert.ok(KNOWN_PLACEHOLDERS.has(match[1] ?? ''), `${file} uses unknown placeholder ${match[0]}`);
       }
-      // Neutral markers of the retired framework's memory and tool API; the renderer never emits them.
+      // Strings the shipped templates must not contain (the renderer does not emit them).
       const lower = source.toLowerCase();
       for (const marker of ['memgpt', 'core_memory_', 'archival_memory']) {
-        assert.ok(!lower.includes(marker), `${file} still mentions legacy marker ${marker}`);
+        assert.ok(!lower.includes(marker), `${file} contains forbidden string ${marker}`);
       }
     }
   });
