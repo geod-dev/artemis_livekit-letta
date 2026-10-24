@@ -74,13 +74,20 @@ test('scheduler rejects with BusyError beyond maxPending and accepts again once 
 test('drain resolves only after every job queued before it has settled', async () => {
   const scheduler = new SerialScheduler();
   const finished: string[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   void scheduler.run(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await gate;
     finished.push('slow');
   });
   void scheduler.run(async () => {
     throw new Error('ignored');
   }).catch(() => undefined);
-  await scheduler.drain();
+  const drained = scheduler.drain();
+  assert.deepEqual(finished, [], 'the slow job is still running');
+  release();
+  await drained;
   assert.deepEqual(finished, ['slow']);
 });

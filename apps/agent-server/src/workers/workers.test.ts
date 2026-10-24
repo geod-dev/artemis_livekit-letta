@@ -49,7 +49,7 @@ test('cancel aborts the running turn and stores the partial answer as aborted', 
   await h.runtime.supervisor.shutdown();
 });
 
-test('a handoff becomes a task, the update wakes the conversation and the worker is reaped only when idle', async () => {
+test('a handoff becomes a task, the update wakes the conversation and a disposed worker is respawned by the next message', async () => {
   const h = await createHarness((request) => {
     const last = lastUserText(request);
     if (last.includes('<background-update')) return { content: [{ type: 'text', text: 'Background done' }] };
@@ -66,7 +66,6 @@ test('a handoff becomes a task, the update wakes the conversation and the worker
 
   // A running task keeps the main worker alive, however long it has been idle.
   h.clock.advance(10 * 60_000);
-  assert.deepEqual(await h.runtime.supervisor.reap(), []);
   assert.ok(h.runtime.supervisor.peekMainAgent('c1'));
 
   await until(async () => (await h.storage.tasks.listByConversation('c1'))[0]?.status === 'completed');
@@ -76,9 +75,9 @@ test('a handoff becomes a task, the update wakes the conversation and the worker
   assert.match(update?.report ?? '', /finished-out/);
   assert.ok(h.provider.requests.some((request) => lastUserText(request).includes('<background-update')));
 
-  // Idle past the timeout: the reaper disposes the worker; the next message respawns it.
-  h.clock.advance(121_000);
-  await until(async () => (await h.runtime.supervisor.reap()).includes('c1'));
+  // Disposed while idle (the reaper's own clock is covered by registry.test.ts); the next message respawns it.
+  await h.runtime.supervisor.stopConversation('c1', 'idle');
+  assert.equal(h.runtime.supervisor.peekMainAgent('c1'), undefined);
   assert.equal(h.runtime.supervisor.peekMainAgent('c1'), undefined);
   const respawned = await h.runtime.supervisor.mainAgent('c1');
   assert.notEqual(respawned, worker);
@@ -101,7 +100,7 @@ test('a task cancelled by archive creates no update and does not respawn the mai
   await h.runtime.supervisor.stopConversation('c1');
   await until(async () => (await h.storage.tasks.listByConversation('c1'))[0]?.status === 'cancelled');
   await until(() => h.hub.events.some(({ event }) => event.type === 'task' && event.status === 'finished'));
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await h.runtime.supervisor.settled();
 
   assert.deepEqual(await h.storage.updates.listByConversation('c1'), []);
   assert.equal(h.runtime.supervisor.peekMainAgent('c1'), undefined);
@@ -180,7 +179,7 @@ test('a successful voice-short task stays held and does not wake the conversatio
     endedAt: new Date().toISOString(),
   });
   const update = await h.runtime.delivery.taskFinished(finished!);
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await h.runtime.supervisor.settled();
   assert.ok(update);
   assert.equal(update.delivery, 'held');
   assert.equal(h.provider.requests.length, 0);
@@ -225,7 +224,7 @@ test('tasks at depth > 0 never wake the conversation, failures of depth 0 always
     return h.runtime.delivery.taskFinished(record!);
   };
   await make('task_nested', 'failed', 1);
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await h.runtime.supervisor.settled();
   assert.equal(h.provider.requests.length, 0);
 
   await make('task_root', 'failed', 0);

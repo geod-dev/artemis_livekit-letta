@@ -4,7 +4,7 @@ import type { CallControlEvent, CallStateResponse } from '@artemis/contracts/age
 import { type VoiceUtterance, VoiceInputLedger, trailingUserEntries } from './voice-input.ts';
 
 /**
- * Live voice calls, one per conversation .
+ * Live voice calls, one per conversation.
  * A call is active while the voice agent keeps its control channel open; a
  * dropped channel ends the call unless the agent reconnects within the grace
  * period. Holds the mode, `next` (end/listen), `endRequested` (end_call tool),

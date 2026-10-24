@@ -1,29 +1,36 @@
 import { AppError, NotFoundError } from '@artemis/core';
 import { eventStream } from '@artemis/http';
 import { Hono } from 'hono';
+import { MAX_TURN_TEXT_LENGTH } from '@artemis/contracts/chat-types';
+import type { ConversationService } from '../conversations/service.ts';
+import type { ConversationEventHub } from '../events/hub.ts';
+import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
+import type { TaskService } from '../tasks/task-service.ts';
+import { noContent, pageResponse } from './http.ts';
 import {
-  type ChatAttachment,
-  MAX_TURN_ATTACHMENTS,
-  MAX_TURN_TEXT_LENGTH,
-  TEXT_EFFORTS,
-  type TextEffort,
-} from '@artemis/contracts/chat-types';
-import type { ApiDependencies } from './deps.ts';
-import { isUuid, requireUuidParam } from './guards.ts';
-import {
-  noContent,
+  MAX_UPDATE_IDS,
+  invalidField,
+  isUuid,
   optionalBody,
-  pageResponse,
+  optionalList,
+  parseAttachments,
   parseLimit,
   requireBody,
+  requireEffort,
   requireString,
-} from './http.ts';
+  requireUuidParam,
+} from './validation.ts';
 
-const ATTACHMENT_KINDS: readonly ChatAttachment['kind'][] = ['image', 'file'];
-const MAX_UPDATE_IDS = 500;
+/** The ports the conversation routes use. */
+export interface ConversationRouteDeps {
+  conversations: ConversationService;
+  tasks: TaskService;
+  delivery: Pick<BackgroundDeliveryService, 'markRead'>;
+  events: ConversationEventHub;
+}
 
 /** Conversation, turn, task, message and read routes (docs/architecture.md, "How the services talk"). */
-export function conversationRoutes(deps: ApiDependencies): Hono {
+export function conversationRoutes(deps: ConversationRouteDeps): Hono {
   const api = new Hono();
 
   // `events` is the reserved list-stream route; every other conversation id must be a uuid.
@@ -150,53 +157,4 @@ export function conversationRoutes(deps: ApiDependencies): Hono {
   });
 
   return api;
-}
-
-function invalidField(message: string): AppError {
-  return new AppError('invalid_field', message, 400);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function optionalList(body: Record<string, unknown>, field: string, max: number): unknown[] {
-  const value = body[field];
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > max) {
-    throw invalidField(`${field} must be a list of at most ${max} entries`);
-  }
-  return value;
-}
-
-/** The uploads of a turn, each checked before the turn exists. Only the known fields are kept. */
-function parseAttachments(value: unknown): ChatAttachment[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > MAX_TURN_ATTACHMENTS) {
-    throw invalidField(`attachments must be a list of at most ${MAX_TURN_ATTACHMENTS} entries`);
-  }
-  return value.map((entry, index) => parseAttachment(entry, `attachments[${index}]`));
-}
-
-function parseAttachment(value: unknown, field: string): ChatAttachment {
-  if (!isRecord(value)) throw invalidField(`${field} must be an object`);
-  const kind = ATTACHMENT_KINDS.find((item) => item === value.kind);
-  if (!kind) throw invalidField(`${field}.kind must be one of ${ATTACHMENT_KINDS.join(', ')}`);
-  const { path, name, mimeType, size } = value;
-  if (typeof path !== 'string' || path === '') throw invalidField(`${field}.path must be a non-empty string`);
-  if (typeof name !== 'string') throw invalidField(`${field}.name must be a string`);
-  if (mimeType !== undefined && typeof mimeType !== 'string') throw invalidField(`${field}.mimeType must be a string`);
-  if (size !== undefined && typeof size !== 'number') throw invalidField(`${field}.size must be a number`);
-  return {
-    path,
-    name,
-    kind,
-    ...(typeof mimeType === 'string' ? { mimeType } : {}),
-    ...(typeof size === 'number' ? { size } : {}),
-  };
-}
-
-function requireEffort(value: unknown): TextEffort {
-  if (typeof value === 'string' && (TEXT_EFFORTS as readonly string[]).includes(value)) return value as TextEffort;
-  throw invalidField(`effort must be one of ${TEXT_EFFORTS.join(', ')}`);
 }

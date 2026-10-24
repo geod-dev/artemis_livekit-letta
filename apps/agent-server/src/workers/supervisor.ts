@@ -1,18 +1,22 @@
-import { errorMessage, uuid } from '@artemis/core';
+import { errorMessage } from '@artemis/core';
+import type { TaskRecord } from '@artemis/storage';
 import type { Toolset } from '@artemis/tools';
 import { createBackgroundDelivery, type BackgroundDeliveryService } from '../tasks/delivery.ts';
 import { createTaskService, type TaskService, type TaskWorkers } from '../tasks/task-service.ts';
 import type { AgentToolContext } from '../tools/index.ts';
 import type { SubagentSpec, TaskPort } from '../tools/task-port.ts';
 import { isoAt } from '../util/time.ts';
-import type { TaskRecord } from '@artemis/storage';
-import type { WorkerBase, WorkerEnv } from './env.ts';
-import { KeyedRegistry } from './registry.ts';
 import { CommandTaskWorker, type CommandTaskInput } from './command-task-worker.ts';
+import type { WorkerBase, WorkerEnv } from './env.ts';
 import { MainAgentWorker } from './main-agent-worker.ts';
+import { recoverAfterRestart } from './recovery.ts';
+import { KeyedRegistry } from './registry.ts';
 import { SubagentTaskWorker } from './subagent-task-worker.ts';
 import type { TaskWorker } from './task-worker.ts';
 import type { SubagentStartMode } from './types.ts';
+
+/** The reason a task is failed with when the server restarts under it. */
+const RESTART_FAILURE = 'Interrupted by a server restart';
 
 /** Reaper period of the main agent workers. */
 const REAPER_PERIOD_MS = 15_000;
@@ -41,6 +45,8 @@ export class WorkerSupervisor implements TaskWorkers {
   private readonly env: WorkerEnv;
   private readonly mains: KeyedRegistry<MainAgentWorker>;
   private readonly taskWorkers = new Map<string, TaskWorker>();
+  /** Background work in flight: task ends (with their delivery) and wakes of main workers. */
+  private readonly pending = new Set<Promise<void>>();
 
   constructor(base: WorkerBase, createToolset: (tasks: TaskPort) => Toolset<AgentToolContext>) {
     this.delivery = createBackgroundDelivery({
@@ -87,11 +93,14 @@ export class WorkerSupervisor implements TaskWorkers {
 
   /** Starts an update turn for a conversation (spawning its worker if it was reaped). */
   wake(conversationId: string): void {
-    void this.mainAgent(conversationId)
-      .then((worker) => worker.submit({ kind: 'update', modality: 'text', mode: 'text', effort: 'low', text: '' }).done)
-      .catch((error: unknown) => {
-        this.env.logger.error('wake failed', { conversationId, error: errorMessage(error) });
-      });
+    void this.track(
+      this.mainAgent(conversationId)
+        .then((worker) => worker.submit({ kind: 'update', modality: 'text', mode: 'text', effort: 'low', text: '' }).done)
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          this.env.logger.error('wake failed', { conversationId, error: errorMessage(error) });
+        })
+    );
   }
 
   /**
@@ -175,29 +184,25 @@ export class WorkerSupervisor implements TaskWorkers {
     return count;
   }
 
-  /** Boot recovery: must run before the server accepts requests. */
-  async recover(): Promise<void> {
-    const { storage, logger } = this.env;
-    const reason = 'interrupted by restart';
-    const turnIds = await storage.turns.failRunning(reason);
-    for (const turnId of turnIds) {
-      const turn = await storage.turns.get(turnId);
-      if (turn) await this.closeDanglingToolUses(turn.conversationId);
-    }
-    const cancelled = await storage.toolCalls.cancelRunning(reason);
-    const reverted = await storage.updates.revertInflight();
-    const running = await storage.tasks.listRunning();
-    for (const task of running) await this.failTask(task.id, 'Interrupted by a server restart', true);
-    logger.info('recovered after restart', { turns: turnIds.length, toolCalls: cancelled, updates: reverted, tasks: running.length });
+  /** Boot recovery: must run before the server accepts requests (see `workers/recovery.ts`). */
+  recover(): Promise<void> {
+    return recoverAfterRestart({
+      storage: this.env.storage,
+      logger: this.env.logger,
+      failTask: (taskId) => this.failTask(taskId, RESTART_FAILURE, true),
+    });
   }
 
   start(): void {
     this.mains.start();
   }
 
-  /** One reaper pass at `now` (the registry runs it every 15 s once started); returns reaped conversations. */
-  reap(now: number = this.env.clock.now()): Promise<string[]> {
-    return this.mains.sweep(now);
+  /**
+   * Resolves once every task end, delivery and wake started so far has finished (a wake
+   * settles with its turn). Tests wait on this instead of a fixed delay.
+   */
+  async settled(): Promise<void> {
+    while (this.pending.size > 0) await Promise.allSettled([...this.pending]);
   }
 
   /** Stops task workers, then the main workers (their turns are aborted). */
@@ -207,11 +212,23 @@ export class WorkerSupervisor implements TaskWorkers {
   }
 
   private watch(worker: TaskWorker, deliver: boolean): void {
-    void worker.outcome
-      .then(({ task }) => this.onTaskEnded(task, deliver))
-      .catch((error: unknown) => {
-        this.env.logger.error('task end handling failed', { taskId: worker.taskId, error: errorMessage(error) });
-      });
+    void this.track(
+      worker.outcome
+        .then(({ task }) => this.onTaskEnded(task, deliver))
+        .catch((error: unknown) => {
+          this.env.logger.error('task end handling failed', { taskId: worker.taskId, error: errorMessage(error) });
+        })
+    );
+  }
+
+  /** Registers background work (task ends, wakes) so that `settled()` can wait for it. */
+  private track(work: Promise<void>): Promise<void> {
+    this.pending.add(work);
+    const forget = () => {
+      this.pending.delete(work);
+    };
+    void work.then(forget, forget);
+    return work;
   }
 
   private async onTaskEnded(task: TaskRecord, deliver: boolean): Promise<void> {
@@ -247,38 +264,6 @@ export class WorkerSupervisor implements TaskWorkers {
     const task = finished ?? (await this.env.storage.tasks.get(taskId));
     this.taskWorkers.delete(taskId);
     if (task) await this.onTaskEnded(task, deliver);
-  }
-
-  /** A transcript that ends with tool uses no result was stored for (interrupted turn): answer them as errors. */
-  private async closeDanglingToolUses(conversationId: string): Promise<void> {
-    const { storage } = this.env;
-    const transcript = await storage.messages.transcript(conversationId, null);
-    const last = transcript.at(-1);
-    if (!last || last.role !== 'assistant') return;
-    const toolUseIds = (last.content as Array<{ type?: string; id?: string }>).flatMap((block) =>
-      block.type === 'tool_use' && block.id ? [block.id] : []
-    );
-    if (toolUseIds.length === 0) return;
-    await storage.messages.append({
-      id: uuid(),
-      conversationId,
-      taskId: null,
-      turnId: last.turnId,
-      role: 'user',
-      content: toolUseIds.map((toolUseId) => ({
-        type: 'tool_result',
-        toolUseId,
-        content: [{ type: 'text', text: 'Interrupted by a server restart' }],
-        isError: true,
-      })),
-      envelope: null,
-      provider: null,
-      model: null,
-      providerMessageId: null,
-      stopReason: null,
-      usage: null,
-      timings: null,
-    });
   }
 
   private touchMainAgent(conversationId: string): void {

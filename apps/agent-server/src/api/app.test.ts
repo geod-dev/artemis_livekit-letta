@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BusyError, NotFoundError } from '@artemis/core';
+import { BusyError, NotFoundError, consoleLogger } from '@artemis/core';
 import { FakeClock } from '@artemis/core/testing';
 import type { McpServerRegistry } from '@artemis/mcp';
 import type { TextTurnRequest } from '@artemis/contracts/agent-server';
 import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
+import { createVoiceService } from '../calls/voice-service.ts';
 import type { AgentServerConfig } from '../config.ts';
 import type { ConversationService, TurnOutcome } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
@@ -50,15 +51,19 @@ function harness(options: { memory?: boolean } = {}) {
     },
   });
   const mcp = fake<McpServerRegistry>({ setManaged: async () => undefined });
+  const calls = createCallSessions(clock);
+  const delivery = fake<BackgroundDeliveryService>({});
   const deps: ApiDependencies = {
     config: fake<AgentServerConfig>({ token: TOKEN }),
     conversations,
     tasks: fake<TaskService>({}),
-    delivery: fake<BackgroundDeliveryService>({}),
-    calls: createCallSessions(clock),
+    delivery,
+    calls,
+    voice: createVoiceService({ conversations, calls, delivery }),
     events: fake<ConversationEventHub>({}),
     mcp,
     clock,
+    logger: consoleLogger('test', { level: 'error' }),
     ready: async () => ({ storage: true, mcp: true, memory: options.memory ?? false }),
   };
   return { app: createApp(deps), turns, state, deps };

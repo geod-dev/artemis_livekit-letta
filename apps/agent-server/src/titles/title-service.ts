@@ -9,14 +9,16 @@ import type { PromptRenderer } from '../prompts/renderer.ts';
 /**
  * Asynchronous conversation naming, never fed back to the LLM: after the first
  * user turn of an untitled conversation, `oneShot` on the `title` route with
- * `prompts/title.md` and the first 1 000 chars, 20 s timeout -> `cleanTitle`
+ * `templates/title.md` and the first 1 000 chars, 20 s timeout -> `cleanTitle`
  * (fallback: first 60 chars) -> `setTitleIfUntitled` (a user rename wins) ->
  * publish `conversation_updated`. At most one request in flight per conversation.
  */
 export interface TitleService {
-  request(conversationId: string, firstUserText: string): void;
-  /** Resolves once every request in flight has settled. */
-  idle(): Promise<void>;
+  /**
+   * Starts naming the conversation (or joins the request already in flight). The promise
+   * resolves once that request has settled and never rejects; callers may ignore it.
+   */
+  request(conversationId: string, firstUserText: string): Promise<void>;
   /** Aborts requests in flight and refuses new ones. */
   stop(): Promise<void>;
 }
@@ -26,7 +28,7 @@ const TITLE_INPUT_LENGTH = 1_000;
 const TITLE_TIMEOUT_MS = 20_000;
 
 /** Null when the reply holds no usable title. */
-export function cleanTitle(raw: string): string | null {
+function cleanTitle(raw: string): string | null {
   const line =
     raw
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
@@ -45,7 +47,7 @@ export function cleanTitle(raw: string): string | null {
 }
 
 /** The first message itself, shortened: used when the title model fails. */
-export function fallbackTitle(text: string): string {
+function fallbackTitle(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_LENGTH) || DEFAULT_CONVERSATION_TITLE;
 }
 
@@ -67,8 +69,10 @@ class StorageTitleService implements TitleService {
     this.logger = deps.logger ?? consoleLogger('titles');
   }
 
-  request(conversationId: string, firstUserText: string): void {
-    if (this.stopped || this.inflight.has(conversationId)) return;
+  request(conversationId: string, firstUserText: string): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    const existing = this.inflight.get(conversationId);
+    if (existing) return existing;
     const job = this.generate(conversationId, firstUserText)
       .catch((error: unknown) => {
         this.logger.warn('title update failed', { conversationId, message: errorMessage(error) });
@@ -77,16 +81,13 @@ class StorageTitleService implements TitleService {
         this.inflight.delete(conversationId);
       });
     this.inflight.set(conversationId, job);
-  }
-
-  async idle(): Promise<void> {
-    await Promise.allSettled([...this.inflight.values()]);
+    return job;
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
     this.abort.abort();
-    await this.idle();
+    await Promise.allSettled([...this.inflight.values()]);
   }
 
   private async generate(conversationId: string, firstUserText: string): Promise<void> {

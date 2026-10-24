@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { NotFoundError } from '@artemis/core';
+import { NotFoundError, consoleLogger } from '@artemis/core';
 import { FakeClock } from '@artemis/core/testing';
 import type { BackgroundUpdateRecord } from '@artemis/storage';
 import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
+import { createVoiceService } from '../calls/voice-service.ts';
 import type { ConversationService, TurnOutcome, UpdateTurn, VoiceTurn } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { TaskService } from '../tasks/task-service.ts';
@@ -79,9 +80,11 @@ function harness() {
     tasks: fake<TaskService>({}),
     delivery,
     calls,
+    voice: createVoiceService({ conversations, calls, delivery }),
     events: fake<ConversationEventHub>({}),
     mcp: fake<ApiDependencies['mcp']>({}),
     clock,
+    logger: consoleLogger('test', { level: 'error' }),
     ready: async () => ({ storage: true, mcp: true, memory: false }),
   };
   return { app: createApp(deps), calls, spoken, updates, completed };

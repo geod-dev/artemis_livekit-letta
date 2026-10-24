@@ -1,12 +1,17 @@
 import { AppError } from '@artemis/core';
-import { InvalidMcpServersError } from '@artemis/mcp';
-import { Hono } from 'hono';
 import type { McpServer } from '@artemis/contracts/chat-types';
-import type { ApiDependencies } from './deps.ts';
-import { ifMatchRevision, noContent, requireBody } from './http.ts';
+import { type McpServerRegistry, InvalidMcpServersError } from '@artemis/mcp';
+import { Hono } from 'hono';
+import { ifMatchRevision, noContent } from './http.ts';
+import { requireBody } from './validation.ts';
+
+/** The port the MCP routes use. */
+export interface McpRouteDeps {
+  mcp: McpServerRegistry;
+}
 
 /** MCP settings (`/v1/mcp`) and the gateway's connection-managed servers (`/v1/mcp/managed`). */
-export function mcpRoutes(deps: ApiDependencies): Hono {
+export function mcpRoutes(deps: McpRouteDeps): Hono {
   const mcp = new Hono();
 
   mcp.get('/mcp', async () => {

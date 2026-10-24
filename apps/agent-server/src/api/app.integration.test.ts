@@ -3,39 +3,29 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import type { Hono } from 'hono';
-import { consoleLogger, systemClock } from '@artemis/core';
-import { createTestDatabase, dropTestDatabase } from '@artemis/storage/postgres/testing';
+import { consoleLogger } from '@artemis/core';
+import { dropTestDatabase, createTestDatabase } from '@artemis/storage/postgres/testing';
 import type { CallSessions } from '../calls/call-sessions.ts';
-import { createCallSessions } from '../calls/call-sessions.ts';
-import { compose } from '../compose.ts';
+import { buildApp } from '../compose.ts';
 import { loadConfig } from '../config.ts';
-import { createConversationService } from '../conversations/service.ts';
-import { ConversationEventHub } from '../events/hub.ts';
+import type { ConversationEventHub } from '../events/hub.ts';
 import { migrate } from '../migrate.ts';
-import { createMemoryCoordinator } from '../memory/coordinator.ts';
-import { createMemoryTools } from '../tools/memory-tools.ts';
-import { PromptRenderer } from '../prompts/renderer.ts';
-import { loadSubagentDefinitions } from '../subagents/definitions.ts';
-import { createTitleService } from '../titles/title-service.ts';
-import { createAgentRuntime } from '../workers/wiring.ts';
-import { createApp } from './app.ts';
+import { integrationDatabaseUrl } from '../../test/integration-env.ts';
 
 /**
- * Integration tests: the real app wiring of `main.ts` (PostgresStorage, workers,
- * events, MCP registry) behind the Hono app, driven in-process with `app.request`.
+ * Integration tests: the real boot path of `main.ts` (`migrate`, then `buildApp`: PostgresStorage,
+ * workers, events, MCP registry) behind the Hono app, driven in-process with `app.request`.
  * Runs only when TEST_DATABASE_URL is set. It is the Postgres server admin URL: each run
  * creates and drops its own database on that server. The Anthropic client points at a closed
- * local port (ANTHROPIC_BASE_URL, read by the SDK), so turns fail fast and offline.
+ * local port (`buildApp`'s `anthropicBaseUrl`), so turns fail fast and offline.
  */
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+const TEST_DATABASE_URL = integrationDatabaseUrl('the agent-server integration tests');
 const skip = TEST_DATABASE_URL ? false : 'set TEST_DATABASE_URL to run the agent-server integration tests';
 
 const TOKEN = `integration-${randomUUID()}`;
 const UNREACHABLE_URL = 'http://127.0.0.1:9';
-const PROMPTS_DIR = fileURLToPath(new URL('../../templates', import.meta.url));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Harness {
@@ -112,7 +102,7 @@ class SseReader {
   }
 }
 
-/** Same wiring as `main.ts`, minus the HTTP server and the signal handlers. */
+/** The boot path of `main.ts` (`migrate`, then `buildApp`), minus the HTTP server and the signal handlers. */
 async function buildHarness(): Promise<Harness> {
   const root = await mkdtemp(join(tmpdir(), 'agent-server-it-'));
   const database = await createTestDatabase(TEST_DATABASE_URL!);
@@ -124,93 +114,18 @@ async function buildHarness(): Promise<Harness> {
     WORKSPACE_PATH: root,
   });
   const logger = consoleLogger('agent-server-it');
-  const clock = systemClock;
-  const previousBaseUrl = process.env.ANTHROPIC_BASE_URL;
-  process.env.ANTHROPIC_BASE_URL = UNREACHABLE_URL;
 
   await migrate(config);
-  const { storage, router, memoryStore, workspace, mcpClient, catalog, registry } = compose(config);
-
-  const prompts = new PromptRenderer(PROMPTS_DIR);
-  const subagents = await loadSubagentDefinitions(join(PROMPTS_DIR, 'agents'));
-
-  const memory = createMemoryCoordinator({ store: memoryStore, storage, config, clock, logger: logger.child('memory') });
-  memory.start();
-  await memoryStore.ensureReady();
-
-  await registry.load();
-  await catalog.refresh();
-
-  const events = new ConversationEventHub(clock);
-  const titles = createTitleService({ storage, router, prompts, events, logger: logger.child('titles') });
-  const calls = createCallSessions(clock);
-  const runtime = createAgentRuntime({
-    config,
-    storage,
-    router,
-    prompts,
-    subagents,
-    hub: events,
-    memory,
-    calls,
-    titles,
-    workspace,
-    catalog,
-    mcp: mcpClient,
-    memoryTools: createMemoryTools({ store: memoryStore, config, clock, logger: logger.child('memory-tools') }),
-    present: false,
-    clock,
-    logger: logger.child('agent'),
-  });
-  const { supervisor, delivery, tools } = runtime;
-  calls.onEnded((conversationId, pending) => {
-    void delivery.callEnded(conversationId, pending);
-  });
-
-  const conversations = createConversationService({
-    storage,
-    prompts,
-    router,
-    events,
-    config,
-    supervisor,
-    toolDefinitions: () => tools.definitions(),
-    pendingRows: (conversationId) => delivery.eventRows(conversationId),
-    onArchived: (conversationId) => supervisor.stopConversation(conversationId),
-  });
-
-  await supervisor.recover();
-  supervisor.start();
-
-  const app = createApp({
-    config,
-    conversations,
-    tasks: runtime.tasks,
-    delivery,
-    calls,
-    events,
-    mcp: registry,
-    clock,
-    ready: async () => ({
-      storage: await storage.healthy(),
-      mcp: catalog.status().refreshedAt !== null,
-      memory: await memoryStore.healthy(),
-    }),
-  });
+  const booted = await buildApp(config, { logger, anthropicBaseUrl: UNREACHABLE_URL });
+  await booted.refreshCatalog();
 
   return {
-    app,
-    events,
-    calls,
+    app: booted.app,
+    events: booted.services.events,
+    calls: booted.services.calls,
     close: async () => {
-      await supervisor.shutdown();
-      await memory.stop();
-      await titles.stop();
-      events.close();
-      await storage.close();
+      await booted.close();
       await dropTestDatabase(TEST_DATABASE_URL!, database.name);
-      if (previousBaseUrl === undefined) delete process.env.ANTHROPIC_BASE_URL;
-      else process.env.ANTHROPIC_BASE_URL = previousBaseUrl;
       await rm(root, { recursive: true, force: true });
     },
   };

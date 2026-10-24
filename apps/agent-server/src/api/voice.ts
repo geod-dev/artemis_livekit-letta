@@ -1,27 +1,40 @@
-import { AppError, type Clock, consoleLogger, errorMessage, uuid } from '@artemis/core';
+import { AppError, type Clock, type Logger, errorMessage, uuid } from '@artemis/core';
 import { eventStream } from '@artemis/http';
 import { Hono } from 'hono';
-import type { TurnMode } from '@artemis/contracts/chat-types';
 import type { CallSessions } from '../calls/call-sessions.ts';
-import type { TurnHandle } from '../conversations/service.ts';
-import type { ApiDependencies } from './deps.ts';
-import { isCallId, requireUuidParam } from './guards.ts';
-import { noContent, requireBody } from './http.ts';
+import type { VoiceCompletion, VoiceService } from '../calls/voice-service.ts';
+import type { ConversationService } from '../conversations/service.ts';
+import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
+import { noContent } from './http.ts';
+import {
+  MAX_VOICE_MESSAGES,
+  requireBody,
+  requireUuidParam,
+  validCallId,
+  validMessages,
+} from './validation.ts';
 
 /**
  * Voice endpoints used by the LiveKit voice agent (docs/architecture.md, "How the services talk"):
- * OpenAI-compatible completions, the control channel of a call, spoken
- * updates. Every voice response is bracketed on the call (`beginResponse` when
- * it starts, `finishResponse` when it ends).
+ * OpenAI-compatible completions, the control channel of a call, spoken updates. The sequencing
+ * of a voice turn is in `calls/voice-service.ts`; these routes parse, call and encode the stream.
  */
 const MODEL = 'artemis';
-const MAX_MESSAGES = 100;
-const MAX_CONTENT = 100_000;
 const SORRY = "Sorry, I couldn't process that.";
-const log = consoleLogger('voice');
 
-export function voiceRoutes(deps: ApiDependencies): Hono {
+/** The ports the voice routes use (narrow: the routes never reach the workers). */
+export interface VoiceRouteDeps {
+  clock: Clock;
+  logger: Logger;
+  conversations: Pick<ConversationService, 'require'>;
+  calls: CallSessions;
+  delivery: Pick<BackgroundDeliveryService, 'markRead'>;
+  voice: VoiceService;
+}
+
+export function voiceRoutes(deps: VoiceRouteDeps): Hono {
   const voice = new Hono();
+  const log = deps.logger;
 
   const requireConversationId = requireUuidParam('id', 'Conversation');
   const requireUpdateId = requireUuidParam('updateId', 'Update');
@@ -35,54 +48,39 @@ export function voiceRoutes(deps: ApiDependencies): Hono {
     await deps.conversations.require(id);
     const body = await requireBody(req);
     if (!validMessages(body.messages)) {
-      throw new AppError('invalid_messages', `messages must be a valid list with at most ${MAX_MESSAGES} entries`, 400);
+      throw new AppError('invalid_messages', `messages must be a valid list with at most ${MAX_VOICE_MESSAGES} entries`, 400);
     }
-    // A call id the client sends is trusted only when it has the call id format; otherwise the open call's id is used.
-    const callId = validCallId(req.headers.get('x-voice-call-id')) ?? deps.calls.callId(id);
-    const utterance = deps.calls.newVoiceInput(id, callId, body.messages);
-    const identities = utterance?.identities ?? [];
 
     const { stream, write, chunk, controller } = completionStream(deps.clock);
-    let handle: TurnHandle | null = null;
-    if (utterance) {
-      try {
-        handle = await deps.conversations.submitVoiceTurn(id, {
-          text: utterance.text,
-          ...(utterance.clientMessageId ? { clientMessageId: utterance.clientMessageId } : {}),
-          mode: () => voiceTurnMode(deps.calls, id),
-          signal: req.signal,
-          onText: (delta) => write(chunk({ content: delta })),
-        });
-      } catch (error) {
-        await stream.cancel().catch(() => undefined);
-        throw error;
-      }
-      deps.calls.acceptVoiceInput(id, callId, identities);
+    let completion: VoiceCompletion;
+    try {
+      completion = await deps.voice.complete(id, {
+        messages: body.messages,
+        callId: validCallId(req.headers.get('x-voice-call-id')),
+        signal: req.signal,
+        onText: (delta) => write(chunk({ content: delta })),
+      });
+    } catch (error) {
+      await stream.cancel().catch(() => undefined);
+      throw error;
     }
 
     write(chunk({ role: 'assistant', content: '' }));
-    void (async () => {
-      if (handle) {
-        const outcome = await handle.done;
-        if (outcome.status === 'completed') {
-          deps.calls.finishResponse(id, outcome.callState ?? null);
-        } else {
-          deps.calls.rejectVoiceInput(id, callId, identities);
-          deps.calls.finishResponse(id, null);
-          if (outcome.status === 'failed' && !outcome.text) write(chunk({ content: SORRY }));
+    void completion.finished
+      .then(({ apology }) => {
+        if (apology) write(chunk({ content: SORRY }));
+        write(chunk({}, 'stop'));
+        write('data: [DONE]\n\n');
+        controller.close();
+      })
+      .catch((error: unknown) => {
+        log.error('completion stream failed', { error: errorMessage(error) });
+        try {
+          controller.error(error);
+        } catch {
+          // already closed by the client
         }
-      }
-      write(chunk({}, 'stop'));
-      write('data: [DONE]\n\n');
-      controller.close();
-    })().catch((error: unknown) => {
-      log.error('completion stream failed', { error: errorMessage(error) });
-      try {
-        controller.error(error);
-      } catch {
-        // already closed by the client
-      }
-    });
+      });
 
     return new Response(stream, {
       headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' },
@@ -108,45 +106,26 @@ export function voiceRoutes(deps: ApiDependencies): Hono {
     const { id, updateId } = c.req.param();
     const req = c.req.raw;
     await deps.conversations.require(id);
-    const claimed = await deps.delivery.claimQueued(id, updateId);
-    if (!claimed) throw new AppError('not_found', 'No such pending update', 404);
-    const { token, update } = claimed;
 
     const { stream, write, controller } = completionStream(deps.clock);
-    let handle: TurnHandle;
-    try {
-      handle = await deps.conversations.submitUpdateTurn(id, {
-        update,
-        deliveryToken: token,
-        mode: () => voiceTurnMode(deps.calls, id),
-        signal: req.signal,
-        onText: (delta) => write(delta),
-      });
-    } catch (error) {
-      await deps.delivery.rollback(id, token);
-      throw error;
-    }
-
-    void (async () => {
-      const outcome = await handle.done;
-      if (outcome.status === 'completed') {
-        await deps.delivery.complete(id, token, outcome.turnId);
-        deps.calls.takeUpdate(id, updateId);
-      } else {
-        await deps.delivery.rollback(id, token);
-      }
-      deps.calls.finishResponse(id, null);
-      if (outcome.status === 'failed') controller.error(new Error(outcome.error ?? 'update failed'));
-      else controller.close();
-    })().catch(async (error: unknown) => {
-      log.error('update stream failed', { updateId, error: errorMessage(error) });
-      await deps.delivery.rollback(id, token).catch(() => undefined);
-      try {
-        controller.error(error);
-      } catch {
-        // already closed by the client
-      }
+    const speech = await deps.voice.speakUpdate(id, updateId, {
+      signal: req.signal,
+      onText: (delta) => write(delta),
     });
+
+    void speech.finished
+      .then((outcome) => {
+        if (outcome.status === 'failed') controller.error(new Error(outcome.error ?? 'update failed'));
+        else controller.close();
+      })
+      .catch((error: unknown) => {
+        log.error('update stream failed', { updateId, error: errorMessage(error) });
+        try {
+          controller.error(error);
+        } catch {
+          // already closed by the client
+        }
+      });
 
     return new Response(stream, {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' },
@@ -172,18 +151,6 @@ export function voiceRoutes(deps: ApiDependencies): Hono {
   });
 
   return voice;
-}
-
-function validCallId(header: string | null): string | null {
-  return header !== null && isCallId(header) ? header : null;
-}
-
-/**
- * Mode of a voice response: the call's mode (no call counts as short), and a fresh end request.
- * Called once the main agent is ready, so a failed start does not begin a response.
- */
-function voiceTurnMode(calls: CallSessions, conversationId: string): TurnMode {
-  return calls.beginResponse(conversationId) === 'long' ? 'voice-long' : 'voice-short';
 }
 
 /**
@@ -222,26 +189,4 @@ function completionStream(clock: Clock): {
       choices: [{ index: 0, delta, finish_reason: finishReason }],
     })}\n\n`;
   return { stream, controller, write, chunk };
-}
-
-function validMessages(value: unknown): value is Array<Record<string, unknown>> {
-  if (!Array.isArray(value) || value.length > MAX_MESSAGES) return false;
-  return value.every((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-    const row = item as Record<string, unknown>;
-    if (typeof row.role !== 'string' || row.role.length > 32) return false;
-    const content = row.content;
-    if (content === undefined || content === null) return true;
-    if (typeof content === 'string') return content.length <= MAX_CONTENT;
-    if (Array.isArray(content)) {
-      return (
-        content.length <= MAX_MESSAGES &&
-        content.every((part) => {
-          if (!part || typeof part !== 'object' || Array.isArray(part)) return false;
-          return !('text' in part) || typeof (part as { text?: unknown }).text === 'string';
-        })
-      );
-    }
-    return false;
-  });
 }

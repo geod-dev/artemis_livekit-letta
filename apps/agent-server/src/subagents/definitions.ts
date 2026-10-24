@@ -18,7 +18,7 @@ const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 /** Parses one definition file; throws when the name or description is missing. */
-export function parseSubagentDefinition(source: string, origin = 'definition'): SubagentDefinition {
+function parseSubagentDefinition(source: string, origin = 'definition'): SubagentDefinition {
   const match = FRONTMATTER.exec(source);
   if (!match) throw new Error(`Subagent ${origin} has no frontmatter`);
   const fields = new Map<string, string>();

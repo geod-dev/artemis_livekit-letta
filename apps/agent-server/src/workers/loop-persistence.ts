@@ -6,7 +6,7 @@ import type { Storage, ToolCallStatus } from '@artemis/storage';
 import type { CallStateFilter } from '../calls/call-state-filter.ts';
 
 /** Drives an `AgentLoop` run: `handle` is awaited for every event before the loop continues. */
-export async function drainLoop(events: AsyncIterable<LoopEvent>, handle: (event: LoopEvent) => Promise<void>): Promise<LoopOutcome> {
+async function drainLoop(events: AsyncIterable<LoopEvent>, handle: (event: LoopEvent) => Promise<void>): Promise<LoopOutcome> {
   for await (const event of events) {
     if (event.type === 'loop_end') return event.outcome;
     await handle(event);

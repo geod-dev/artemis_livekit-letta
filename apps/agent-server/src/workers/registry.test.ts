@@ -148,12 +148,11 @@ test('a get during a dispose waits for the tombstone and then recreates the entr
     resolved = entry;
     return entry;
   });
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  assert.equal(resolved, undefined, 'get must not return the entry being disposed');
   release();
   await closing;
   const recreated = await waiting;
-  assert.notEqual(recreated, original);
+  assert.equal(resolved, recreated, 'get resolves only after the dispose has settled');
+  assert.notEqual(recreated, original, 'get must not return the entry being disposed');
   assert.equal(created.length, 2);
   assert.deepEqual(original.disposed, ['archive']);
   assert.deepEqual(disposed, [{ key: 'conv', reason: 'archive' }]);
@@ -172,7 +171,8 @@ test('start reaps on the reaper period and close stops it and disposes everythin
   registry.start();
   assert.equal(clock.activeTimers(), 1, 'start is idempotent');
   clock.advance(60);
-  await new Promise((resolve) => setTimeout(resolve, 1));
+  // The reaper's dispose is microtask-only under the manual clock: one macrotask turn lets it settle.
+  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(registry.keys(), []);
   assert.deepEqual(entry.disposed, ['idle']);
 

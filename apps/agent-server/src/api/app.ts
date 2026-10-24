@@ -31,9 +31,19 @@ export function createApp(deps: ApiDependencies): Hono {
 
   const v1 = new Hono();
   v1.use('*', requireBearer(deps.config.token));
-  v1.route('/', conversationRoutes(deps));
-  v1.route('/', mcpRoutes(deps));
-  v1.route('/voice', voiceRoutes(deps));
+  v1.route('/', conversationRoutes({ conversations: deps.conversations, tasks: deps.tasks, delivery: deps.delivery, events: deps.events }));
+  v1.route('/', mcpRoutes({ mcp: deps.mcp }));
+  v1.route(
+    '/voice',
+    voiceRoutes({
+      clock: deps.clock,
+      logger: deps.logger.child('voice'),
+      conversations: deps.conversations,
+      calls: deps.calls,
+      delivery: deps.delivery,
+      voice: deps.voice,
+    })
+  );
   app.route('/v1', v1);
 
   return app;

@@ -158,8 +158,9 @@ export class NoMemory implements MemoryCoordinator {
 }
 
 export class NoTitles implements TitleService {
-  request(): void {}
-  async idle(): Promise<void> {}
+  request(): Promise<void> {
+    return Promise.resolve();
+  }
   async stop(): Promise<void> {}
 }
 

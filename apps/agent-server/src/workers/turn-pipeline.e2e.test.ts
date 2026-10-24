@@ -17,6 +17,7 @@ import { PromptRenderer } from '../prompts/renderer.ts';
 import { FixedRouter, ManualClock, NoMcp, NoMemory, NoTitles, RecordingHub, ScriptedProvider, silentLogger, type Step, testConfig, until } from '../../test/workers-support.ts';
 import { type AgentRuntime, createAgentRuntime } from './wiring.ts';
 import type { TurnSubmission } from './types.ts';
+import { integrationDatabaseUrl } from '../../test/integration-env.ts';
 
 /**
  * End-to-end turn pipeline over real Postgres: the main agent worker, the events hub,
@@ -24,7 +25,7 @@ import type { TurnSubmission } from './types.ts';
  * Runs when TEST_DATABASE_URL is set (the server URL; each suite creates and drops
  * its own database on that server).
  */
-const serverUrl = process.env.TEST_DATABASE_URL;
+const serverUrl = integrationDatabaseUrl('the turn pipeline e2e tests');
 const skip = serverUrl === undefined ? 'set TEST_DATABASE_URL to run the turn pipeline e2e tests' : false;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

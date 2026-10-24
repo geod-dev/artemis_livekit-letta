@@ -4,30 +4,39 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
-import {
-  loadSubagentDefinitions,
-  needsUserInput,
-  parseSubagentDefinition,
-} from './definitions.ts';
+import { loadSubagentDefinitions, needsUserInput } from './definitions.ts';
 
 const REAL_AGENTS = fileURLToPath(new URL('../../templates/agents', import.meta.url));
 
-describe('parseSubagentDefinition', () => {
-  it('reads name, description and the body', () => {
-    const definition = parseSubagentDefinition(
+/** Loads one definition file written with `source`; definitions are read through the public loader. */
+async function loadOne(source: string) {
+  const dir = await mkdtemp(join(tmpdir(), 'agent-def-'));
+  try {
+    await writeFile(join(dir, 'definition.md'), source);
+    return await loadSubagentDefinitions(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+describe('subagent definition files', () => {
+  it('reads name, description and the body', async () => {
+    const definitions = await loadOne(
       '---\nname: research\ndescription: Looks things up.\ntools: Bash, Read\n---\nDo the research.\n'
     );
-    assert.deepEqual(definition, {
-      name: 'research',
-      description: 'Looks things up.',
-      instructions: 'Do the research.',
-    });
+    assert.deepEqual(definitions, [
+      {
+        name: 'research',
+        description: 'Looks things up.',
+        instructions: 'Do the research.',
+      },
+    ]);
   });
 
-  it('rejects a missing frontmatter, name or description', () => {
-    assert.throws(() => parseSubagentDefinition('no frontmatter'), /frontmatter/);
-    assert.throws(() => parseSubagentDefinition('---\ndescription: x\n---\nbody'), /name/);
-    assert.throws(() => parseSubagentDefinition('---\nname: research\n---\nbody'), /description/);
+  it('rejects a missing frontmatter, name or description', async () => {
+    await assert.rejects(loadOne('no frontmatter'), /frontmatter/);
+    await assert.rejects(loadOne('---\ndescription: x\n---\nbody'), /name/);
+    await assert.rejects(loadOne('---\nname: research\n---\nbody'), /description/);
   });
 });
 
