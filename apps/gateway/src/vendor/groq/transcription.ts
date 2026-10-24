@@ -1,12 +1,8 @@
-/** Speech-to-text for the composer's voice input, through Groq's OpenAI-compatible Whisper endpoint. */
-export interface Transcriber {
-  /** False when no Groq key is configured; `transcribe` must not be called then. */
-  readonly enabled: boolean;
-  /** The transcript, trimmed. Provider failures throw; the caller maps them to a 502. */
-  transcribe(audio: File, signal?: AbortSignal): Promise<string>;
-}
-
-export interface GroqTranscriberOptions {
+/**
+ * Speech-to-text for the composer's voice input, through Groq's OpenAI-compatible
+ * Whisper endpoint. The result matches the route's TranscriptionPort.
+ */
+interface GroqTranscriberOptions {
   apiKey?: string;
   model: string;
   fetch?: typeof globalThis.fetch;
@@ -17,12 +13,13 @@ const PROVIDER_TIMEOUT_MS = 60_000;
 const PROVIDER_ERROR_DETAIL_BYTES = 1024;
 const PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 
-export function createGroqTranscriber(options: GroqTranscriberOptions): Transcriber {
+export function createGroqTranscriber(options: GroqTranscriberOptions) {
   const apiKey = options.apiKey;
   const send = options.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
   return {
     enabled: Boolean(apiKey),
-    async transcribe(audio, signal) {
+    /** The transcript, trimmed. Provider failures throw; the route maps them to a 502. */
+    async transcribe(audio: File, signal?: AbortSignal): Promise<string> {
       if (!apiKey) throw new Error('Voice input needs GROQ_API_KEY (see .env.example)');
       const body = new FormData();
       body.set('file', audio, audio.name || 'recording.webm');

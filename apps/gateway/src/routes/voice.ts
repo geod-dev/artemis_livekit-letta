@@ -9,18 +9,18 @@ import {
   jsonObject,
   requestLimit,
   routeError,
-  sameSecret,
   withQuery,
 } from '../http';
+import { sameSecret } from '../security';
 
 /** The LiveKit token port of the voice routes; the vendor is chosen in compose. */
 export interface VoiceTokenPort {
-  forCall(conversationId: string, callMode: 'short' | 'long'): Promise<LiveKitConnection>;
-  warmup(): Promise<LiveKitConnection>;
+  forCall(conversationId: string, callMode: 'short' | 'long'): Promise<VoiceToken>;
+  warmup(): Promise<VoiceToken>;
 }
 
 /** The browser's connection details for a LiveKit room. */
-export interface LiveKitConnection {
+interface VoiceToken {
   serverUrl: string;
   roomName: string;
   participantName: string;

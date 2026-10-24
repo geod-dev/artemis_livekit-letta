@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { errorResponse } from '../http';
 import type { LinkMetadata } from '../link-preview/link-description';
 
 /**
@@ -14,14 +15,12 @@ export function createLinkPreviewRoutes({
 
   routes.get('/link-preview', async (c) => {
     const href = c.req.query('url');
-    if (!href || href.length > 4096) return Response.json({}, { status: 400 });
+    if (!href || href.length > 4096) return errorResponse('url is required', 400);
     try {
-      return Response.json(await linkPreview(href), {
-        headers: { 'Cache-Control': 'public, max-age=3600' },
-      });
+      return Response.json(await linkPreview(href));
     } catch {
       // Preview failures do not prevent the original link from being displayed.
-      return Response.json({}, { headers: { 'Cache-Control': 'public, max-age=60' } });
+      return Response.json({});
     }
   });
 

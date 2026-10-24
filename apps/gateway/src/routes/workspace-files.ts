@@ -14,11 +14,9 @@ export function createWorkspaceFileRoutes(workspace: WorkspaceTransport): Hono {
    * (`?download` forces a download); every response is sandboxed, so no file
    * runs as a page of the app. PDFs and other types are always downloads.
    */
-  routes.get('/workspace/*', async (c) => {
-    const path = c.req.path;
-    const marker = path.indexOf('/workspace/');
-    const encoded = marker >= 0 ? path.slice(marker + '/workspace/'.length) : '';
-    const file = await describeWorkspaceFile(workspace, safeDecode(encoded));
+  // The router matches the rest of the URL as one named parameter and decodes it once.
+  routes.get('/workspace/:path{.+}', async (c) => {
+    const file = await describeWorkspaceFile(workspace, c.req.param('path'));
     if (!file) return errorResponse('File not found', 404);
     const plan = planWorkspaceResponse(
       file,
@@ -95,12 +93,4 @@ function parseByteRange(
     end = Math.min(end, size - 1);
   }
   return { start, end };
-}
-
-function safeDecode(path: string): string {
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return '';
-  }
 }

@@ -3,26 +3,24 @@ import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-serve
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../../config';
 
-/** The browser's connection details for a LiveKit room. */
-export interface VoiceToken {
+/** The browser's connection details for a LiveKit room (the route's VoiceToken). */
+interface VoiceToken {
   serverUrl: string;
   roomName: string;
   participantName: string;
   participantToken: string;
 }
 
-/** Mints the LiveKit tokens the voice routes hand to the browser. */
-export interface VoiceTokenIssuer {
-  /** A call on a conversation: a fresh room, with the voice agent dispatched into it. */
-  forCall(conversationId: string, callMode: 'short' | 'long'): Promise<VoiceToken>;
-  /** Warms the connection before any conversation exists: a room with no agent. */
-  warmup(): Promise<VoiceToken>;
-}
-
 const PARTICIPANT_NAME = 'user';
 type Grant = Parameters<AccessToken['addGrant']>[0];
 
-export function createVoiceTokenIssuer(livekit: AppConfig['livekit']): VoiceTokenIssuer {
+/**
+ * Mints the LiveKit tokens the voice routes hand to the browser, matching the
+ * route's VoiceTokenPort: a call on a conversation (a fresh room with the voice
+ * agent dispatched into it) and a warm-up before any conversation exists (a room
+ * with no agent).
+ */
+export function createVoiceTokenIssuer(livekit: AppConfig['livekit']) {
   const issue = async (
     roomName: string,
     ttl: string,
@@ -56,7 +54,7 @@ export function createVoiceTokenIssuer(livekit: AppConfig['livekit']): VoiceToke
     };
   };
   return {
-    forCall: (conversationId, callMode) =>
+    forCall: (conversationId: string, callMode: 'short' | 'long'): Promise<VoiceToken> =>
       issue(
         `call-${conversationId}-${randomUUID().slice(0, 8)}`,
         '30m',

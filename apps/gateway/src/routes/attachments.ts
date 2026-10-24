@@ -1,10 +1,7 @@
 import { Hono } from 'hono';
-import {
-  InvalidAttachmentError,
-  MAX_UPLOAD_BYTES,
-  PayloadTooLargeError,
-} from '../attachments/attachment-policy';
+import { InvalidAttachmentError, PayloadTooLargeError } from '../attachments/attachment-policy';
 import type { AttachmentStore } from '../attachments/attachment-store';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits';
 import { errorResponse, requestLimit } from '../http';
 
 /** Multipart framing around a file is small; the limit counts the whole request body. */
@@ -36,9 +33,12 @@ export function createAttachmentRoutes(attachments: AttachmentStore): Hono {
   routes.delete('/attachments', async (c) => {
     const path = c.req.query('path') ?? '';
     if (path.length > 500) return errorResponse('Invalid attachment path', 400);
-    await attachments.registry
-      .removeUnused(path)
-      .catch((error) => console.error('[files] attachment removal failed:', error));
+    try {
+      await attachments.registry.removeUnused(path);
+    } catch (error) {
+      // A failed removal is reported, so the client knows the upload may still exist.
+      return errorResponse(error, 500);
+    }
     return new Response(null, { status: 204 });
   });
 

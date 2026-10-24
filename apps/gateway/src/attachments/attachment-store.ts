@@ -6,13 +6,14 @@ import { describeWorkspaceFile } from '../workspace/files';
 import {
   ATTACHMENT_PATH,
   InvalidAttachmentError,
-  MAX_UPLOAD_BYTES,
   PayloadTooLargeError,
   SNIFF_BYTES,
   attachmentPath,
   safeName,
 } from './attachment-policy';
 import { AttachmentRegistry } from './attachment-registry';
+import { ConversationAttachments } from './conversation-attachments';
+import { MAX_UPLOAD_BYTES } from './limits';
 
 /**
  * Uploads held in the workspace: stored under `data/attachments`, typed by their
@@ -21,6 +22,8 @@ import { AttachmentRegistry } from './attachment-registry';
 export class AttachmentStore {
   /** Which conversations reference which uploads. */
   readonly registry: AttachmentRegistry;
+  /** The reference bookkeeping the conversation routes use. */
+  readonly conversations: ConversationAttachments;
 
   /** @param stateDirectory the gateway's data directory, where the retention state lives. */
   constructor(
@@ -28,6 +31,7 @@ export class AttachmentStore {
     stateDirectory: string
   ) {
     this.registry = new AttachmentRegistry(workspace, stateDirectory);
+    this.conversations = new ConversationAttachments(this.registry);
   }
 
   /** Store an uploaded file in chunks, with its type sniffed from the first bytes. */

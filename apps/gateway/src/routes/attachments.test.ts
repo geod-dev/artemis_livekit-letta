@@ -4,8 +4,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
 import { AttachmentStore } from '../attachments/attachment-store';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits';
 import { composeWorkspace } from '../compose';
 import { createAttachmentRoutes } from './attachments';
 

@@ -47,9 +47,26 @@ export class AttachmentRegistry {
     return state.files[path]?.mimeType;
   }
 
-  /** Keep uploads alive while a conversation references them. */
-  async addReferences(owner: string, paths: readonly string[]): Promise<void> {
-    await this.update((state) => addOwner(state, owner, paths));
+  /**
+   * Keep uploads alive while a conversation references them. Reports the paths
+   * that could not be referenced (unknown or already removed) and the ones this
+   * call newly added, so a caller can undo exactly its own references.
+   */
+  async addReferences(
+    owner: string,
+    paths: readonly string[]
+  ): Promise<{ missing: string[]; added: string[] }> {
+    return this.update((state) => addOwner(state, owner, paths));
+  }
+
+  /** Undo references added by `addReferences`. */
+  async removeReferences(owner: string, paths: readonly string[]): Promise<void> {
+    await this.update((state) => {
+      for (const path of paths) {
+        const record = state.files[path];
+        if (record) record.owners = record.owners.filter((item) => item !== owner);
+      }
+    });
   }
 
   /** Replace the active references of a conversation after a message deletion. */
@@ -116,7 +133,7 @@ export class AttachmentRegistry {
     if (this.cleanupWork) return;
     const work: Promise<number> = this.cleanupAbandoned()
       .catch((error) => {
-        console.error('[workspace] attachment cleanup failed:', error);
+        console.error('[attachments] cleanup failed:', error);
         return 0;
       })
       .finally(() => {
@@ -193,12 +210,23 @@ function parseState(text: string): RetentionState {
   return { files };
 }
 
-function addOwner(state: RetentionState, owner: string, paths: readonly string[]): void {
+function addOwner(
+  state: RetentionState,
+  owner: string,
+  paths: readonly string[]
+): { missing: string[]; added: string[] } {
+  const missing: string[] = [];
+  const added: string[] = [];
   for (const path of paths) {
-    if (!ATTACHMENT_PATH.test(path)) continue;
-    const record = state.files[path];
-    if (record && !record.owners.includes(owner)) record.owners.push(owner);
+    const record = ATTACHMENT_PATH.test(path) ? state.files[path] : undefined;
+    if (!record) {
+      missing.push(path);
+    } else if (!record.owners.includes(owner)) {
+      record.owners.push(owner);
+      added.push(path);
+    }
   }
+  return { missing, added };
 }
 
 function removeOwner(state: RetentionState, owner: string): void {

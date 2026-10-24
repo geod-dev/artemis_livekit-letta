@@ -9,14 +9,19 @@ import {
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AgentServerClient } from '../agent-server/client';
-import { InvalidAttachmentError } from '../attachments/attachment-policy';
+import {
+  AttachmentUnavailableError,
+  InvalidAttachmentError,
+} from '../attachments/attachment-policy';
 import type { AttachmentStore } from '../attachments/attachment-store';
 import { PROXY_BODY_LIMIT, errorResponse, jsonObject, routeError, withQuery } from '../http';
 
 /**
  * The chat API. Conversations, messages, tasks and live events belong to the
  * agent-server; this router relays them and keeps the gateway's upload
- * references in step with the conversations that use the uploads.
+ * references in step with the conversations that use the uploads. Once the
+ * agent-server has accepted a change, a bookkeeping failure is logged and never
+ * answered as a failure of that change.
  */
 export function createConversationRoutes(agent: AgentServerClient, store: AttachmentStore): Hono {
   const conversations = new Hono();
@@ -33,12 +38,7 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
   conversations.delete('/:id', async (c) => {
     const id = c.req.param('id');
     const response = await agent.relay(c.req.raw, conversationPath(id));
-    if (!response.ok) return response;
-    try {
-      await store.registry.releaseReferences(id);
-    } catch (error) {
-      return errorResponse(error);
-    }
+    if (response.ok) await store.conversations.release(id).catch(logBookkeeping(id));
     return response;
   });
 
@@ -86,7 +86,10 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
         `text must be a string of at most ${MAX_TURN_TEXT_LENGTH} characters`,
         400
       );
-    if (effort !== undefined && !(TEXT_EFFORTS as readonly string[]).includes(String(effort))) {
+    if (
+      effort !== undefined &&
+      (typeof effort !== 'string' || !(TEXT_EFFORTS as readonly string[]).includes(effort))
+    ) {
       return errorResponse(`effort must be one of ${TEXT_EFFORTS.join(', ')}`, 400);
     }
     if (
@@ -130,27 +133,36 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
         ? errorResponse(error.message, 400)
         : errorResponse(error);
     }
-    const response = await agent.relay(
-      c.req.raw,
-      `${conversationPath(id)}/turns`,
-      JSON.stringify({
-        text: text.trim(),
-        attachments: resolved,
-        ...(effort !== undefined ? { effort: effort as TextEffort } : {}),
-        ...(typeof clientMessageId === 'string' ? { clientMessageId } : {}),
-      })
-    );
-    // Only an accepted turn keeps its uploads; a refused or unknown conversation must not pin them.
-    if (response.status === 202) {
-      try {
-        await store.registry.addReferences(
-          id,
-          resolved.map((a) => a.path)
-        );
-      } catch (error) {
-        return errorResponse(error);
-      }
+    // The uploads are reserved before the turn is relayed, so an accepted turn never names a removed upload.
+    let release: () => Promise<void>;
+    try {
+      release = await store.conversations.reserve(
+        id,
+        resolved.map((a) => a.path)
+      );
+    } catch (error) {
+      return error instanceof AttachmentUnavailableError
+        ? errorResponse(error.message, 409)
+        : errorResponse(error);
     }
+    let response: Response;
+    try {
+      response = await agent.relay(
+        c.req.raw,
+        `${conversationPath(id)}/turns`,
+        JSON.stringify({
+          text: text.trim(),
+          attachments: resolved,
+          ...(effort !== undefined ? { effort: effort as TextEffort } : {}),
+          ...(typeof clientMessageId === 'string' ? { clientMessageId } : {}),
+        })
+      );
+    } catch (error) {
+      await release().catch(logBookkeeping(id));
+      throw error;
+    }
+    // Only an accepted turn keeps its uploads; a refused or unknown conversation must not pin them.
+    if (response.status !== 202) await release().catch(logBookkeeping(id));
     return response;
   });
 
@@ -172,9 +184,9 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
     try {
       const { attachments } = JSON.parse(payload) as MessageDeleteResponse;
       if (!Array.isArray(attachments)) throw new Error('agent-server sent no attachment list');
-      await store.registry.setReferences(id, attachments);
+      await store.conversations.replace(id, attachments);
     } catch (error) {
-      return errorResponse(error);
+      logBookkeeping(id)(error);
     }
     return new Response(payload, { status: response.status, headers: response.headers });
   });
@@ -184,4 +196,13 @@ export function createConversationRoutes(agent: AgentServerClient, store: Attach
 
 function taskPath(id: string, taskId: string): string {
   return `${conversationPath(id)}/tasks/${encodeURIComponent(taskId)}`;
+}
+
+/** The message of a reference update that failed after the agent-server accepted its change. */
+function logBookkeeping(conversationId: string): (error: unknown) => void {
+  return (error) =>
+    console.error(
+      `[attachments] reference update failed for conversation ${conversationId}`,
+      error
+    );
 }

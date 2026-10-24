@@ -3,8 +3,7 @@ import type {
   ManagedMcpServersRequest,
   WarmRequest,
 } from '@artemis/contracts/agent-server';
-import type { ChatMessage, ConversationSummary, McpServer, Modality } from '../chat-types';
-import { HttpError } from '../http';
+import type { ConversationSummary, McpServer, Modality } from '@artemis/contracts/chat-types';
 
 interface AgentServerOptions {
   /** Base URL of the agent-server, e.g. `http://agent-server:4000`. */
@@ -13,9 +12,19 @@ interface AgentServerOptions {
   token: string;
 }
 
-interface MessagePage {
-  messages: ChatMessage[];
-  nextCursor: string | null;
+/**
+ * A failed call to the agent-server. `status` is the status the gateway answers
+ * with; the HTTP edge maps it to a response (see http.ts), so this module does
+ * not depend on the edge.
+ */
+export class GatewayClientError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = 'GatewayClientError';
+  }
 }
 
 /** Browser request headers the API relies on; cookies and the session stay at the gateway. */
@@ -59,7 +68,7 @@ export class AgentServerClient {
     // The browser's session is already valid at the gateway, so an upstream 401 means the gateway's own token is stale.
     if (upstream.status === 401) {
       await upstream.body?.cancel();
-      throw new HttpError('Agent server rejected the gateway credentials', 502);
+      throw new GatewayClientError('Agent server rejected the gateway credentials', 502);
     }
     return new Response(upstream.body, {
       status: upstream.status,
@@ -67,7 +76,7 @@ export class AgentServerClient {
     });
   }
 
-  /** A request whose non-2xx answer becomes an HttpError with the agent-server's message. */
+  /** A request whose non-2xx answer becomes a GatewayClientError with the agent-server's message. */
   async request(
     method: string,
     path: string,
@@ -80,7 +89,7 @@ export class AgentServerClient {
     });
     if (response.ok) return response;
     const detail = (await response.json().catch(() => null)) as Partial<AgentServerError> | null;
-    throw new HttpError(
+    throw new GatewayClientError(
       typeof detail?.error === 'string' ? detail.error : 'Agent server request failed',
       response.status
     );
@@ -106,16 +115,6 @@ export class AgentServerClient {
       { modality } satisfies WarmRequest,
       INTERNAL_TIMEOUT_MS
     );
-  }
-
-  async messagesPage(id: string, query: { before?: string; limit: number }): Promise<MessagePage> {
-    const params = new URLSearchParams({ limit: String(query.limit) });
-    if (query.before) params.set('before', query.before);
-    const response = await this.request('GET', `${conversationPath(id)}/messages?${params}`);
-    return {
-      messages: (await response.json()) as ChatMessage[],
-      nextCursor: response.headers.get('X-Next-Cursor'),
-    };
   }
 
   /** Replace the device-managed servers the agent-server merges into its MCP list. */
@@ -162,7 +161,7 @@ export class AgentServerClient {
       });
     } catch (error) {
       if (init.signal?.aborted) throw error;
-      throw new HttpError('Agent server is unavailable', 503);
+      throw new GatewayClientError('Agent server is unavailable', 503);
     } finally {
       clearTimeout(headersTimer);
     }

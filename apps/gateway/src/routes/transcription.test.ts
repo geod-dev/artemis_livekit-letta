@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits';
 import { type TranscriptionPort, createTranscriptionRoutes } from './transcription';
 
 test('transcription rejects oversized chunked multipart bodies before parsing', async () => {

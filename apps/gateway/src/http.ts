@@ -2,9 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { randomUUID } from 'node:crypto';
-
-// routes/voice.ts still imports the comparator from here; new code imports ./security.
-export { sameSecret } from './security';
+import { GatewayClientError } from './agent-server/client';
 
 /** Largest request body the gateway relays to the agent-server (uploads have their own route). */
 export const PROXY_BODY_LIMIT = 4 * 1024 * 1024;
@@ -29,7 +27,10 @@ const GENERIC_MESSAGE = 'The request could not be completed';
  * error is a generic message. A 5xx is always masked and gets a request id.
  */
 export function errorResponse(error: unknown, status = 500): Response {
-  const typed = error instanceof HttpError || error instanceof HTTPException;
+  const typed =
+    error instanceof HttpError ||
+    error instanceof HTTPException ||
+    error instanceof GatewayClientError;
   const resolvedStatus = typed ? error.status : status;
   let message = GENERIC_MESSAGE;
   if (resolvedStatus < 500) {

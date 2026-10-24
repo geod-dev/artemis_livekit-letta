@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { composeWorkspace } from '../compose';
-import { MAX_UPLOAD_BYTES, PayloadTooLargeError } from './attachment-policy';
+import { PayloadTooLargeError } from './attachment-policy';
 import { AttachmentStore } from './attachment-store';
+import { MAX_UPLOAD_BYTES } from './limits';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 

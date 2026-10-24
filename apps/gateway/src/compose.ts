@@ -15,8 +15,10 @@ import type { AppConfig } from './config';
 import { DeviceHub } from './devices/hub';
 import type { LinkMetadata } from './link-preview/link-description';
 import { linkPreview } from './link-preview/link-preview';
-import { type Transcriber, createGroqTranscriber } from './vendor/groq/transcription';
-import { type VoiceTokenIssuer, createVoiceTokenIssuer } from './vendor/livekit/tokens';
+import type { TranscriptionPort } from './routes/transcription';
+import type { VoiceTokenPort } from './routes/voice';
+import { createGroqTranscriber } from './vendor/groq/transcription';
+import { createVoiceTokenIssuer } from './vendor/livekit/tokens';
 
 export interface GatewayDependencies {
   config: AppConfig;
@@ -24,15 +26,15 @@ export interface GatewayDependencies {
   workspace: WorkspaceTransport;
   attachments: AttachmentStore;
   deviceHub: DeviceHub;
-  voiceTokens: VoiceTokenIssuer;
-  transcriber: Transcriber;
+  voiceTokens: VoiceTokenPort;
+  transcriber: TranscriptionPort;
   /** Title and description of a public page; refuses private destinations. */
   linkPreview: (href: string) => Promise<LinkMetadata>;
 }
 
 /**
  * The workspace served from a local directory: the gateway's view of the shared
- * workspace root. The root is created, as the gateway's first upload used to do.
+ * workspace root. The root is created when it is missing.
  */
 export function composeWorkspace(root: string): WorkspaceTransport {
   mkdirSync(root, { recursive: true });

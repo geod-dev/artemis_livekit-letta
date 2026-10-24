@@ -1,3 +1,4 @@
+import type { McpServer } from '@artemis/contracts/chat-types';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
@@ -9,7 +10,6 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { AgentServerClient } from '../agent-server/client';
 import { AttachmentStore } from '../attachments/attachment-store';
-import type { McpServer } from '../chat-types';
 import { composeWorkspace } from '../compose';
 import { createConversationRoutes } from './conversations';
 import { createMcpRoutes } from './mcp-settings';
@@ -244,6 +244,12 @@ test('a message references its uploads and goes to the agent-server as a turn', 
       json('POST', { text: 'hello', effort: 'extreme' })
     );
     assert.equal(invalid.status, 400);
+    // A non-string effort is refused too; String(['low']) would otherwise pass as 'low'.
+    const listed = await f.app.request(
+      'https://gateway.test/api/conversations/c1/messages',
+      json('POST', { text: 'hello', effort: ['low'] })
+    );
+    assert.equal(listed.status, 400);
     assert.equal(f.agentServer.received.filter((r) => r.path.endsWith('/turns')).length, 1);
   } finally {
     await f.close();

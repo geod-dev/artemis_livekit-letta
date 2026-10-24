@@ -1,7 +1,7 @@
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits';
 import { HttpError, errorResponse, jsonObject, requestLimit } from '../http';
 import { saveDeviceFile } from './files';
 import type { DeviceHub } from './hub';
