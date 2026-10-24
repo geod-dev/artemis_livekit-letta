@@ -55,17 +55,21 @@ final class ArtemisSite {
             && homePort == effectivePort(scheme, port);
     }
 
-    /** Opens web, mail and phone links in another app. Other schemes are ignored. */
-    static void openExternal(Activity activity, Uri uri) {
+    /**
+     * Opens web, mail and phone links in another app. Returns false, and opens nothing, for any
+     * other scheme (blob:, data:, and so on); the caller decides what the user sees then.
+     */
+    static boolean openExternal(Activity activity, Uri uri) {
         String scheme = uri.getScheme();
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)
                 && !"mailto".equalsIgnoreCase(scheme) && !"tel".equalsIgnoreCase(scheme)) {
-            return;
+            return false;
         }
         try {
             activity.startActivity(new Intent(Intent.ACTION_VIEW, uri));
         } catch (ActivityNotFoundException error) {
             Toast.makeText(activity, "No app can open this link", Toast.LENGTH_SHORT).show();
         }
+        return true;
     }
 }

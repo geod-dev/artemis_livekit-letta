@@ -1,31 +1,47 @@
 plugins { id 'com.android.application' }
 
-// Debug signing values are set explicitly, so the local key keeps working without relying on
-// AGP defaults. Each value comes from local.properties, then the environment, then the AGP
-// debug-key default. Set them to use a different key (see README).
+// Signing: when .signing/debug.keystore exists, the debug and release builds are signed with it.
+// Its store password, key alias and key password come from local.properties, then the
+// environment, and the build stops when one is missing. Without that key, both build types use
+// AGP's default debug key.
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) localPropertiesFile.withInputStream { localProperties.load(it) }
-def debugSigning = { String property, String variable, String fallback ->
-    localProperties.getProperty(property) ?: System.getenv(variable) ?: fallback
+def personalKey = rootProject.file('.signing/debug.keystore')
+def signingValue = { String property, String variable ->
+    def value = localProperties.getProperty(property) ?: System.getenv(variable)
+    if (!value) {
+        throw new org.gradle.api.GradleException(
+            "Set $property in local.properties or $variable in the environment to sign with .signing/debug.keystore.")
+    }
+    return value
 }
 
 android {
     namespace 'ai.artemis.mobile'
-    compileSdk 35
+    compileSdk 36
     signingConfigs {
-        debug {
-            def personalKey = rootProject.file('.signing/debug.keystore')
-            if (personalKey.exists()) storeFile personalKey
-            storePassword debugSigning('artemis.debugStorePassword', 'ARTEMIS_DEBUG_STORE_PASSWORD', 'android')
-            keyAlias debugSigning('artemis.debugKeyAlias', 'ARTEMIS_DEBUG_KEY_ALIAS', 'androiddebugkey')
-            keyPassword debugSigning('artemis.debugKeyPassword', 'ARTEMIS_DEBUG_KEY_PASSWORD', 'android')
+        if (personalKey.exists()) {
+            debug {
+                storeFile personalKey
+                storePassword signingValue('artemis.debugStorePassword', 'ARTEMIS_DEBUG_STORE_PASSWORD')
+                keyAlias signingValue('artemis.debugKeyAlias', 'ARTEMIS_DEBUG_KEY_ALIAS')
+                keyPassword signingValue('artemis.debugKeyPassword', 'ARTEMIS_DEBUG_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        // Not debuggable, so adb run-as cannot read app data (including WebView session cookies).
+        release {
+            debuggable false
+            minifyEnabled false
+            signingConfig signingConfigs.debug
         }
     }
     defaultConfig {
         applicationId 'ai.artemis.mobile'
         minSdk 26
-        targetSdk 35
+        targetSdk 36
         versionCode 1
         versionName '1.0'
     }
@@ -60,6 +76,8 @@ android {
 dependencies {
     // WebViewCompat.addWebMessageListener: the theme bridge is origin-bound.
     implementation 'androidx.webkit:webkit:1.12.1'
+    // @RequiresApi on the API 33 back-callback methods, so lint checks their SDK guards.
+    implementation 'androidx.annotation:annotation:1.9.1'
 
     // JVM unit tests run on the host JVM, where android.net.Uri and org.json are stubs.
     testImplementation 'junit:junit:4.13.2'

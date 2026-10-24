@@ -17,13 +17,7 @@ final class SiteWebViewClient extends WebViewClient {
     }
 
     @Override public void onPageStarted(WebView view, String url, Bitmap icon) {
-        activity.navigation++;
-        activity.cancelMicrophoneRequest();
-        activity.cancelFileRequest();
-        if (activity.networkDialog != null) {
-            activity.networkDialog.dismiss();
-            activity.networkDialog = null;
-        }
+        activity.pending.pageStarted();
     }
 
     @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -39,17 +33,17 @@ final class SiteWebViewClient extends WebViewClient {
     @Override public void onReceivedError(WebView view, WebResourceRequest request,
             WebResourceError error) {
         if (!request.isForMainFrame() || !activity.resumed || activity.isFinishing()
-                || activity.isDestroyed() || activity.networkDialog != null) {
+                || activity.isDestroyed() || activity.pending.hasNetworkDialog()) {
             return;
         }
-        activity.networkDialog = new AlertDialog.Builder(activity)
+        AlertDialog dialog = new AlertDialog.Builder(activity)
             .setTitle("Cannot reach Artemis")
             .setMessage("Check your connection and try again.")
             .setPositiveButton("Retry",
-                (dialog, which) -> activity.webView.loadUrl(activity.site.home().toString()))
-            .setNegativeButton("Close", (dialog, which) -> activity.finish())
-            .setOnDismissListener(dialog -> activity.networkDialog = null)
+                (choice, which) -> activity.webView.loadUrl(activity.site.home().toString()))
+            .setNegativeButton("Close", (choice, which) -> activity.finish())
+            .setOnDismissListener(gone -> activity.pending.clearNetworkDialog())
             .create();
-        activity.networkDialog.show();
+        activity.pending.showNetworkDialog(dialog);
     }
 }

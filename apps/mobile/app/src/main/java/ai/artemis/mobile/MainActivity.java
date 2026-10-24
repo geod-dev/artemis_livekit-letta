@@ -1,7 +1,6 @@
 package ai.artemis.mobile;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -14,25 +13,21 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
+import androidx.annotation.RequiresApi;
 
 /**
  * Native wrapper for the hosted site: one WebView, the site's navigation and permission rules,
- * and the theme bridge. The helpers live in their own classes; this one owns the lifecycle.
+ * and the theme bridge. The helpers live in their own classes and keep their pending answers in
+ * PendingRequests; this one owns the lifecycle.
  */
 public final class MainActivity extends Activity {
     static final int MICROPHONE = 1;
     static final int FILE_PICKER = 2;
 
     final ArtemisSite site = new ArtemisSite(Uri.parse(BuildConfig.HOME_URL));
+    final PendingRequests pending = new PendingRequests();
     WebView webView;
-    /** Counts page starts; a permission or file answer for an older page is dropped. */
-    int navigation;
     boolean resumed;
-    AlertDialog networkDialog;
-    PermissionRequest pendingMicrophone;
-    int pendingMicrophoneNavigation;
-    ValueCallback<Uri[]> pendingFiles;
-    int pendingFilesNavigation;
 
     private FrameLayout frame;
     private Downloads downloads;
@@ -50,10 +45,7 @@ public final class MainActivity extends Activity {
         if (state == null || webView.restoreState(state) == null) {
             webView.loadUrl(site.home().toString());
         }
-        if (Build.VERSION.SDK_INT >= 33) {
-            backCallback = this::navigateBack;
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(0, backCallback);
-        }
+        if (Build.VERSION.SDK_INT >= 33) registerBackCallback();
     }
 
     private void configureWindow() {
@@ -77,22 +69,12 @@ public final class MainActivity extends Activity {
             (url, agent, disposition, type) -> downloads.start(url, agent, disposition, type));
     }
 
-    void cancelMicrophoneRequest() {
-        if (pendingMicrophone != null) pendingMicrophone.deny();
-        pendingMicrophone = null;
-    }
-
-    void cancelFileRequest() {
-        if (pendingFiles != null) pendingFiles.onReceiveValue(null);
-        pendingFiles = null;
-    }
-
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
-        if (code != MICROPHONE || pendingMicrophone == null) return;
-        PermissionRequest request = pendingMicrophone;
-        pendingMicrophone = null;
-        if (pendingMicrophoneNavigation == navigation && resumed && webView != null
+        if (code != MICROPHONE) return;
+        PermissionRequest request = pending.takeMicrophone();
+        if (request == null) return;
+        if (pending.microphoneIsCurrent() && resumed && webView != null
                 && !isFinishing() && !isDestroyed()
                 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED
                 && site.contains(request.getOrigin())) {
@@ -104,10 +86,10 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
-        if (code != FILE_PICKER || pendingFiles == null) return;
-        ValueCallback<Uri[]> callback = pendingFiles;
-        pendingFiles = null;
-        if (pendingFilesNavigation == navigation && resumed && !isFinishing() && !isDestroyed()) {
+        if (code != FILE_PICKER) return;
+        ValueCallback<Uri[]> callback = pending.takeFiles();
+        if (callback == null) return;
+        if (pending.filesAreCurrent() && resumed && !isFinishing() && !isDestroyed()) {
             callback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result, data));
         } else {
             callback.onReceiveValue(null);
@@ -116,6 +98,17 @@ public final class MainActivity extends Activity {
 
     private void navigateBack() {
         if (webView.canGoBack()) webView.goBack(); else finish();
+    }
+
+    @RequiresApi(33)
+    private void registerBackCallback() {
+        backCallback = this::navigateBack;
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(0, backCallback);
+    }
+
+    @RequiresApi(33)
+    private void unregisterBackCallback() {
+        getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
     }
 
     /** Back on API 26-32. From API 33 the registered callback handles back (the manifest enables it). */
@@ -142,12 +135,10 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
-        cancelMicrophoneRequest();
-        cancelFileRequest();
-        if (networkDialog != null) networkDialog.dismiss();
-        if (Build.VERSION.SDK_INT >= 33 && backCallback != null) {
-            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
-        }
+        pending.cancelMicrophone();
+        pending.cancelFiles();
+        pending.dismissNetworkDialog();
+        if (Build.VERSION.SDK_INT >= 33 && backCallback != null) unregisterBackCallback();
         if (downloads != null) downloads.close();
         if (webView != null) webView.destroy();
         super.onDestroy();

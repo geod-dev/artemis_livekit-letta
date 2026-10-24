@@ -21,7 +21,7 @@ import java.util.concurrent.Executors;
 /**
  * Downloads from the Artemis origin, off the UI thread. On Android 10 and later the file goes
  * to the public Downloads folder; on Android 8 and 9 it goes to the app's own downloads folder.
- * Other URLs open in the browser. Shut down with the activity.
+ * Other web, mail and phone URLs open in the browser. Shut down with the activity.
  */
 final class Downloads {
     private static final String TAG = "ArtemisDownloads";
@@ -38,7 +38,7 @@ final class Downloads {
     void start(String url, String agent, String disposition, String type) {
         Uri uri = Uri.parse(url);
         if (!activity.site.contains(uri)) {
-            ArtemisSite.openExternal(activity, uri);
+            openOutside(uri);
             return;
         }
         String guessed = new File(URLUtil.guessFileName(url, disposition, type)).getName();
@@ -49,6 +49,13 @@ final class Downloads {
     /** Stops accepting downloads. A transfer already running ends at its socket timeout. */
     void close() {
         executor.shutdownNow();
+    }
+
+    /** Opens a download URL that is off the site; a scheme no app can open here gets a message. */
+    private void openOutside(Uri uri) {
+        if (!ArtemisSite.openExternal(activity, uri)) {
+            Toast.makeText(activity, "This kind of download is not supported", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void downloadSameOrigin(Uri start, String filename, String agent, String type) {
@@ -79,7 +86,7 @@ final class Downloads {
                     }
                     Uri target = Uri.parse(new URL(new URL(current.toString()), location).toExternalForm());
                     if (!activity.site.contains(target)) {
-                        activity.runOnUiThread(() -> ArtemisSite.openExternal(activity, target));
+                        activity.runOnUiThread(() -> openOutside(target));
                         return;
                     }
                     current = target;

@@ -39,30 +39,27 @@ final class SiteWebChromeClient extends WebChromeClient {
             request.grant(new String[] { PermissionRequest.RESOURCE_AUDIO_CAPTURE });
             return;
         }
-        activity.cancelMicrophoneRequest();
-        activity.pendingMicrophone = request;
-        activity.pendingMicrophoneNavigation = activity.navigation;
+        activity.pending.holdMicrophone(request);
         activity.requestPermissions(
             new String[] { Manifest.permission.RECORD_AUDIO }, MainActivity.MICROPHONE);
     }
 
     @Override public void onPermissionRequestCanceled(PermissionRequest request) {
-        if (activity.pendingMicrophone == request) activity.pendingMicrophone = null;
+        activity.pending.releaseMicrophone(request);
     }
 
     @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
             FileChooserParams params) {
-        activity.cancelFileRequest();
+        activity.pending.cancelFiles();
         if (!activity.resumed) {
             callback.onReceiveValue(null);
             return true;
         }
-        activity.pendingFiles = callback;
-        activity.pendingFilesNavigation = activity.navigation;
+        activity.pending.holdFiles(callback);
         try {
             activity.startActivityForResult(params.createIntent(), MainActivity.FILE_PICKER);
         } catch (ActivityNotFoundException error) {
-            activity.cancelFileRequest();
+            activity.pending.cancelFiles();
             Toast.makeText(activity, "No file picker available", Toast.LENGTH_SHORT).show();
         }
         return true;
