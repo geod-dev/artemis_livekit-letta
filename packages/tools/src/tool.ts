@@ -20,8 +20,8 @@ const ajv = new Ajv({ strict: false, allErrors: false });
  * `{isError: true}` results the model can read. Unexpected throws are turned
  * into error results by the executor.
  *
- * `C` is the context type the tool needs; generic tools use `ToolContext`,
- * agent-server tools use its `AgentToolContext` extension.
+ * `C` is the context type the tool needs; generic tools use `ToolContext`, and an
+ * application's tools may use a `ToolContext` extension it defines for itself.
  */
 export abstract class Tool<I = Record<string, unknown>, C extends ToolContext = ToolContext> {
   abstract readonly name: string;

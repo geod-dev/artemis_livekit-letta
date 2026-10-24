@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { AppError } from '@artemis/core';
+import { AppError, errorMessage } from '@artemis/core';
 import type { McpServer, McpTransport } from '@artemis/contracts/chat-types';
 
 
@@ -164,7 +164,7 @@ export function readMcpEntries(entries: readonly unknown[]): {
       names.add(server.name);
       servers.push(server);
     } catch (error) {
-      invalidEntries.push({ index, value: entry, diagnostic: messageOf(error) });
+      invalidEntries.push({ index, value: entry, diagnostic: errorMessage(error) });
     }
   });
   return { servers, invalidEntries };
@@ -176,7 +176,7 @@ export function describeInvalidEntry(value: unknown): string {
     validateServer(value, 0);
     return 'Stored entry is not operational';
   } catch (error) {
-    return messageOf(error);
+    return errorMessage(error);
   }
 }
 
@@ -199,8 +199,4 @@ function sortKeys(value: unknown): unknown {
     );
   }
   return value;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -1,3 +1,4 @@
+import type { ImageMediaType } from '@artemis/core';
 import type { ChatAttachment } from '@artemis/contracts/chat-types';
 import { imageType } from '@artemis/workspace';
 import { type ArtifactSink, type InlineImage, type McpCallResult } from '../../client.ts';
@@ -8,11 +9,16 @@ export const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024;
 /** Images up to this size are also inlined for the model. */
 export const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 
-const EXTENSIONS: Record<string, string> = {
+/** One extension per image type core lists (`IMAGE_MEDIA_TYPES`); the type forces an entry each. */
+const IMAGE_EXTENSIONS: Record<ImageMediaType, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/gif': '.gif',
   'image/webp': '.webp',
+};
+
+const EXTENSIONS: Record<string, string> = {
+  ...IMAGE_EXTENSIONS,
   'audio/mpeg': '.mp3',
   'audio/ogg': '.ogg',
   'audio/wav': '.wav',

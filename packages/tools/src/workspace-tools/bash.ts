@@ -1,3 +1,4 @@
+import { errorMessage } from '@artemis/core';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { ProcessExit, WorkspaceProcess } from '@artemis/workspace';
 import type { ToolContext } from '../context.ts';
@@ -81,7 +82,7 @@ export class BashTool extends Tool<BashInput> {
     try {
       handle = await ctx.workspace.spawn({ command: input.command, timeoutMs });
     } catch (error) {
-      return errorResult(`Could not start the command: ${messageOf(error)}`, {
+      return errorResult(`Could not start the command: ${errorMessage(error)}`, {
         display: commandDisplay(input),
       });
     }
@@ -120,7 +121,7 @@ export class BashTool extends Tool<BashInput> {
       });
     } catch (error) {
       await handle.kill();
-      return errorResult(`Could not move the command to the background: ${messageOf(error)}`, {
+      return errorResult(`Could not move the command to the background: ${errorMessage(error)}`, {
         display: commandDisplay(input),
       });
     }
@@ -234,8 +235,4 @@ function commandDisplay(input: BashInput): {
 
 function safeFileName(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100) || 'command';
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

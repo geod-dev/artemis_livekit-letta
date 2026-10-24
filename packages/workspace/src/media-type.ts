@@ -11,6 +11,14 @@ export interface MediaSniff {
   label: string;
 }
 
+/** One label per image type core lists (`IMAGE_MEDIA_TYPES`); the type forces a label each. */
+const IMAGE_LABELS: Record<ImageMediaType, string> = {
+  'image/png': 'PNG image',
+  'image/jpeg': 'JPEG image',
+  'image/gif': 'GIF image',
+  'image/webp': 'WebP image',
+};
+
 const MEDIA_LABELS: Readonly<Record<string, string>> = {
   'application/pdf': 'PDF document',
   'application/zip': 'zip archive (xlsx, docx, pptx, ...)',
@@ -21,10 +29,7 @@ const MEDIA_LABELS: Readonly<Record<string, string>> = {
   'audio/mp4': 'MPEG-4 media',
   'video/mp4': 'MPEG-4 media',
   'image/avif': 'AVIF image',
-  'image/png': 'PNG image',
-  'image/jpeg': 'JPEG image',
-  'image/gif': 'GIF image',
-  'image/webp': 'WebP image',
+  ...IMAGE_LABELS,
 };
 
 /** The image types models read, recognized by their content. */

@@ -7,7 +7,3 @@ export const IMAGE_MEDIA_TYPES: readonly ImageMediaType[] = [
   'image/gif',
   'image/webp',
 ];
-
-export function isImageMediaType(value: unknown): value is ImageMediaType {
-  return typeof value === 'string' && (IMAGE_MEDIA_TYPES as readonly string[]).includes(value);
-}

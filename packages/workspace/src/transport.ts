@@ -8,6 +8,7 @@
  * directory and spawns local processes; a future remote transport (SSH,
  * sandbox API, ...) implements the same two halves: files and processes.
  */
+import { AppError } from '@artemis/core';
 
 export interface FileStat {
   path: string;
@@ -135,12 +136,13 @@ export abstract class WorkspaceTransport {
   abstract assertWritable(path: string, policy: WorkspaceAccessPolicy): void;
 }
 
-export class WorkspacePathError extends Error {
+/** A path the workspace refuses (outside the root, read-only, invalid); a 400 at the API edge. */
+export class WorkspacePathError extends AppError {
   constructor(
     readonly path: string,
     reason: string
   ) {
-    super(`${path}: ${reason}`);
+    super('workspace_path', `${path}: ${reason}`, 400);
     this.name = 'WorkspacePathError';
   }
 }

@@ -3,7 +3,7 @@
  * generated schema in generated/present-tool.json). One place for the wire contract of these tools.
  * Plain JSON Schema objects, so this package keeps no runtime dependency.
  */
-export type ToolInputSchema = Record<string, unknown>;
+type ToolInputSchema = Record<string, unknown>;
 
 /** A subagent the server can start through `run_agent`. */
 export interface SubagentChoice {

@@ -1,3 +1,4 @@
+import { errorMessage } from '@artemis/core';
 import type { McpServer } from '@artemis/contracts/chat-types';
 import type { ListedTool, McpClient } from './client.ts';
 
@@ -119,7 +120,7 @@ export class McpCatalog {
         try {
           lists[index] = toCatalogTools(server, await this.client.listTools(server));
         } catch (error) {
-          failures.set(server.name, error instanceof Error ? error.message : String(error));
+          failures.set(server.name, errorMessage(error));
         }
       }
     };

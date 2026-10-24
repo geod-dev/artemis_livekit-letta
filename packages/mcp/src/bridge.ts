@@ -1,3 +1,4 @@
+import { errorMessage } from '@artemis/core';
 import {
   type AnyTool,
   Tool,
@@ -132,7 +133,7 @@ abstract class McpBridgeTool extends Tool {
       };
     } catch (error) {
       return errorResult(
-        `${found.qualified} could not be reached: ${error instanceof Error ? error.message : String(error)}`
+        `${found.qualified} could not be reached: ${errorMessage(error)}`
       );
     }
   }

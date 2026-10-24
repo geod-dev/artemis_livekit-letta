@@ -1,14 +1,10 @@
+import { errorMessage } from '@artemis/core';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { imageType, isTextContent, sniffMedia } from '@artemis/workspace';
 import { basename } from 'node:path';
 import type { ToolContext } from '../context.ts';
 import { type ToolResult, capText, errorResult, textResult } from '../result.ts';
 import { Tool } from '../tool.ts';
-
-/** A short human label for a binary file (e.g. `PDF document`); the workspace sniffer decides the type. */
-export function describeBinary(bytes: Uint8Array): string {
-  return sniffMedia(bytes).label;
-}
 
 const MAX_READ_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -66,7 +62,7 @@ export class ReadFileTool extends Tool<{ path: string; offset?: number; limit?: 
       };
     }
     if (!isTextContent(bytes)) {
-      return errorResult(`${path} is a ${describeBinary(bytes)} and cannot be read as text.`);
+      return errorResult(`${path} is a ${sniffMedia(bytes).label} and cannot be read as text.`);
     }
 
     const text = Buffer.from(bytes).toString('utf8');
@@ -151,7 +147,7 @@ export class EditFileTool extends Tool<{
     if (info.type !== 'file') return errorResult(`${path} is not a regular file.`);
     const bytes = await ctx.workspace.readFile(path);
     if (!isTextContent(bytes))
-      return errorResult(`${path} is a ${describeBinary(bytes)}; only text files can be edited.`);
+      return errorResult(`${path} is a ${sniffMedia(bytes).label}; only text files can be edited.`);
 
     const text = Buffer.from(bytes).toString('utf8');
     const occurrences = text.split(oldText).length - 1;
@@ -280,7 +276,7 @@ export class SearchFilesTool extends Tool<{
         limit: MAX_SEARCH_MATCHES,
       });
     } catch (error) {
-      return errorResult(`search_files: ${error instanceof Error ? error.message : String(error)}`);
+      return errorResult(`search_files: ${errorMessage(error)}`);
     }
     if (matches.length === 0)
       return textResult('No matches.', { display: { type: 'file', operation: 'search', path } });

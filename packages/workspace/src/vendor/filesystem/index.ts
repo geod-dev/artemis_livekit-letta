@@ -35,7 +35,7 @@ import { WorkspaceContainment, isWithin, lstatOrNull, toPosix, toRelativePath } 
 import { startProcess } from './process.ts';
 import { TextSearch } from './search.ts';
 
-export interface FilesystemWorkspaceOptions {
+interface FilesystemWorkspaceOptions {
   /** Absolute host path of the workspace root. */
   root: string;
   /** Shown to the model, e.g. `/workspace`. Defaults to `root`. */

@@ -15,4 +15,6 @@ export const CHAT_HTTP = {
   devices: '/api/devices',
   /** A sub-route of one conversation: pass it as the suffix of `conversationRoute(id, ...)`. */
   conversationContextUsage: '/context-usage',
+  /** The event stream of one conversation (suffix of `conversationRoute(id, ...)`). */
+  conversationEvents: '/events',
 } as const;

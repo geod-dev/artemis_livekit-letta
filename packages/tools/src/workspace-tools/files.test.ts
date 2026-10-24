@@ -1,4 +1,4 @@
-import { WorkspacePathError } from '@artemis/workspace';
+import { WorkspacePathError, sniffMedia } from '@artemis/workspace';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { FakeWorkspace, testContext } from '../testing/fake-workspace.ts';
@@ -92,4 +92,20 @@ test('edit_file refuses binary files with their kind', async () => {
     textOf(result),
     'bundle.xlsx is a zip archive (xlsx, docx, pptx, ...); only text files can be edited.'
   );
+});
+
+test('a binary file is labelled from its signature', () => {
+  const bytes = (text: string, prefix: number[] = []) =>
+    new Uint8Array([...prefix, ...Buffer.from(text, 'latin1')]);
+  const label = (data: Uint8Array) => sniffMedia(data).label;
+
+  assert.equal(label(bytes('%PDF-1.7\n')), 'PDF document');
+  assert.equal(
+    label(bytes('\x03\x04\x00\x00', [0x50, 0x4b])),
+    'zip archive (xlsx, docx, pptx, ...)'
+  );
+  assert.equal(label(bytes('RIFF\x00\x00\x00\x00WAVE')), 'WAV audio');
+  assert.equal(label(bytes('OggS\x00')), 'Ogg audio');
+  assert.equal(label(bytes('\x00\x00\x00\x18ftypmp42')), 'MPEG-4 media');
+  assert.equal(label(new Uint8Array([0, 1, 2, 3])), 'binary data');
 });

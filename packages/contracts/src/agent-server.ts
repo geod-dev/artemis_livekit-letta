@@ -69,6 +69,11 @@ export function conversationPath(id: string): string {
   return `/v1/conversations/${encodeURIComponent(id)}`;
 }
 
+/** Path of one task of a conversation on the agent-server API. */
+export function taskPath(id: string, taskId: string): string {
+  return `${conversationPath(id)}/tasks/${encodeURIComponent(taskId)}`;
+}
+
 /** Path of a conversation's voice routes on the agent-server API. */
 export function voicePath(id: string): string {
   return `/v1/voice/conversations/${encodeURIComponent(id)}`;

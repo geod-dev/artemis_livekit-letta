@@ -1,4 +1,4 @@
-import { AppError, consoleLogger, uuid } from '@artemis/core';
+import { AppError, consoleLogger, errorMessage, isRecord, uuid } from '@artemis/core';
 
 const logger = consoleLogger('http');
 
@@ -30,7 +30,7 @@ export function errorResponse(error: unknown, status = 500): Response {
       { status: resolved }
     );
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   return Response.json({ error: message, ...(code ? { code } : {}) }, { status: resolved });
 }
 
@@ -53,9 +53,7 @@ export async function jsonObject(
   } catch {
     return null;
   }
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
+  return isRecord(value) ? value : null;
 }
 
 async function readBounded(request: Request, maxBytes: number): Promise<Uint8Array | null> {

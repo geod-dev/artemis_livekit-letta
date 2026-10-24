@@ -24,13 +24,15 @@ export interface SdkMcpClientOptions {
   stdio?: { cwd?: string; env?: Record<string, string> };
   /** How device screenshots are checked and named (default: one PNG of at most 10 MB). */
   screenshots?: ScreenshotPolicy;
+  /** Name sent to MCP servers in the client info (default `mcp-client`). */
+  clientName?: string;
 }
 
 const DEFAULT_DEADLINE_MS = 120_000;
 const DEFAULT_MAX_TOOLS = 500;
+const DEFAULT_CLIENT_NAME = 'mcp-client';
 const MAX_TOOL_PAGES = 20;
 const CONNECT_TIMEOUT_MS = 15_000;
-const CLIENT_INFO = { name: 'artemis-agent-server', version: '1' };
 
 /** Validate one `tools/list` entry (the subset the bridge uses); null when it has no usable name. */
 export function adaptListedTool(value: unknown): ListedTool | null {
@@ -72,6 +74,7 @@ export class SdkMcpClient extends McpClient {
   private readonly clock: Clock;
   private readonly maxTools: number;
   private readonly screenshots: ScreenshotPolicy;
+  private readonly clientInfo: { name: string; version: string };
 
   constructor(readonly options: SdkMcpClientOptions) {
     super();
@@ -80,6 +83,7 @@ export class SdkMcpClient extends McpClient {
     this.clock = options.clock ?? systemClock;
     this.maxTools = options.maxTools ?? DEFAULT_MAX_TOOLS;
     this.screenshots = options.screenshots ?? deviceScreenshotPolicy;
+    this.clientInfo = { name: options.clientName ?? DEFAULT_CLIENT_NAME, version: '1' };
   }
 
   listTools(server: McpServer, signal?: AbortSignal): Promise<ListedTool[]> {
@@ -159,7 +163,7 @@ export class SdkMcpClient extends McpClient {
     run: (client: Client, deadline: number) => Promise<T>
   ): Promise<T> {
     const deadline = this.clock.now() + this.deadlineMs;
-    const client = new Client(CLIENT_INFO);
+    const client = new Client(this.clientInfo);
     this.open.add(client);
     try {
       await client.connect(this.transportFor(server), {

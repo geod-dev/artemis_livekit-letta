@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@artemis/core';
+import { type ToolDefinition, errorMessage } from '@artemis/core';
 import type { ToolContext } from './context.ts';
 import { type ToolResult, errorResult } from './result.ts';
 import { type AnyTool, ToolInputError } from './tool.ts';
@@ -40,13 +40,13 @@ export class Toolset<C extends ToolContext = ToolContext> {
       parsed = tool.parse(input);
     } catch (error) {
       if (error instanceof ToolInputError) return errorResult(error.message);
-      return errorResult(`${name}: invalid input (${messageOf(error)}).`);
+      return errorResult(`${name}: invalid input (${errorMessage(error)}).`);
     }
     try {
       return await tool.execute(parsed, context);
     } catch (error) {
-      context.logger.error('tool threw', { tool: name, error: messageOf(error) });
-      return errorResult(`${name} failed: ${messageOf(error)}`);
+      context.logger.error('tool threw', { tool: name, error: errorMessage(error) });
+      return errorResult(`${name} failed: ${errorMessage(error)}`);
     }
   }
 
@@ -54,8 +54,4 @@ export class Toolset<C extends ToolContext = ToolContext> {
   with(tools: readonly AnyTool<C>[]): Toolset<C> {
     return new Toolset<C>([...this.tools, ...tools]);
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
