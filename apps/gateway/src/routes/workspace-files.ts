@@ -2,7 +2,7 @@ import type { WorkspaceTransport } from '@artemis/workspace';
 import { Hono } from 'hono';
 import { basename } from 'node:path';
 import { errorResponse } from '../http.ts';
-import { describeWorkspaceFile } from '../workspace/files.ts';
+import { describeWorkspaceFile } from '../workspace/describe.ts';
 
 /** Read access to the agent's workspace: any file the agent or a user placed there. */
 export function createWorkspaceFileRoutes(workspace: WorkspaceTransport): Hono {

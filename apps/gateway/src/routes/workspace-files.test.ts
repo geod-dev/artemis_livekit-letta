@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { composeWorkspace } from '../compose.ts';
-import { describeWorkspaceFile } from '../workspace/files.ts';
+import { describeWorkspaceFile } from '../workspace/describe.ts';
 import { createWorkspaceFileRoutes, planWorkspaceResponse } from './workspace-files.ts';
 
 /** The workspace file routes over a workspace rooted at `root`. */
