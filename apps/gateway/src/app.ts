@@ -1,5 +1,5 @@
-import type { Hono } from 'hono';
-import { createAuth } from './auth.ts';
+import { type Context, Hono } from 'hono';
+import { createSessionAuth } from './auth.ts';
 import type { GatewayDependencies } from './compose.ts';
 import { createDeviceRoutes } from './devices/api.ts';
 import { createDeviceMcpRoutes } from './devices/mcp-endpoint.ts';
@@ -12,11 +12,16 @@ import { createTranscriptionRoutes } from './routes/transcription.ts';
 import { createVoiceRoutes } from './routes/voice.ts';
 import { createWorkspaceFileRoutes } from './routes/workspace-files.ts';
 
+export interface GatewayAppOptions {
+  /** The socket address of a request; the Node server supplies it (see server.ts). */
+  peerAddress?: (c: Context) => string | undefined;
+}
+
 /**
  * The gateway's HTTP application from its dependencies. Public liveness and
  * readiness endpoints sit outside the /api authentication middleware.
  */
-export function createGatewayApp(deps: GatewayDependencies): Hono {
+export function createGatewayApp(deps: GatewayDependencies, options: GatewayAppOptions = {}): Hono {
   const {
     config,
     agentServer,
@@ -27,7 +32,12 @@ export function createGatewayApp(deps: GatewayDependencies): Hono {
     transcriber,
     linkPreview,
   } = deps;
-  const app = createAuth(config.auth.password, config.auth.deviceToken, config.voiceGatewayToken);
+  const app = createSessionAuth({
+    password: config.auth.password,
+    deviceToken: config.auth.deviceToken,
+    dataDir: config.workspace.dataDir,
+    peerAddress: options.peerAddress,
+  });
   app.get('/health', (c) => c.json({ status: 'ok' }));
   app.get('/ready', async (c) => {
     try {

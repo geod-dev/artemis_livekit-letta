@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Server } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { createGatewayApp } from './app.ts';
@@ -6,7 +7,7 @@ import { composeGateway } from './compose.ts';
 import { loadConfig } from './config.ts';
 import { DeviceSync } from './devices/sync.ts';
 
-export interface GatewayApplication {
+interface GatewayApplication {
   close(): Promise<void>;
 }
 
@@ -16,7 +17,9 @@ export async function startGateway(): Promise<GatewayApplication> {
   const deps = composeGateway(config);
   const { agentServer, attachments, deviceHub } = deps;
   attachments.registry.startCleanup();
-  const app = createGatewayApp(deps);
+  const app = createGatewayApp(deps, {
+    peerAddress: (c) => getConnInfo(c).remote.address,
+  });
 
   const deviceSync = new DeviceSync({ devices: deviceHub, agent: agentServer });
   deviceSync.start();

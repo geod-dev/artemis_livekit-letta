@@ -28,6 +28,9 @@ const productionEnv: NodeJS.ProcessEnv = {
   LIVEKIT_API_KEY: 'prodkey',
   LIVEKIT_API_SECRET: 'private-livekit-secret',
   VOICE_GATEWAY_TOKEN: 'private-voice-token',
+  AGENT_SERVER_URL: 'http://agent-server:4000',
+  MCP_DEVICE_BASE_URL: 'http://gateway:3000',
+  LIVEKIT_URL: 'ws://livekit:7880',
 };
 
 /** The KEY=VALUE pairs of .env.example, as the repository ships them. */
@@ -113,6 +116,57 @@ test('production refuses change-me and dev- prefixed secrets, and accepts real o
     /LIVEKIT_API_KEY/
   );
   assert.equal(validateConfig(productionEnv).livekit.apiKey, 'prodkey');
+});
+
+test('production requires the service addresses, and no loopback default stands in for them', () => {
+  for (const name of ['AGENT_SERVER_URL', 'MCP_DEVICE_BASE_URL', 'LIVEKIT_URL'] as const) {
+    const env = { ...productionEnv, [name]: undefined };
+    assert.throws(() => validateConfig(env), new RegExp(`${name} must be set in production`));
+  }
+});
+
+test('service addresses must be absolute http(s) or ws(s) URLs, in every mode', () => {
+  assert.throws(
+    () => validateConfig({ MCP_DEVICE_BASE_URL: '/gateway' }),
+    /MCP_DEVICE_BASE_URL must be an absolute URL/
+  );
+  assert.throws(
+    () => validateConfig({ AGENT_SERVER_URL: 'ftp://agent-server:4000' }),
+    /AGENT_SERVER_URL must be an http\(s\) or ws\(s\) URL/
+  );
+  assert.throws(() => validateConfig({ LIVEKIT_URL: 'javascript:alert(1)' }), /LIVEKIT_URL/);
+  assert.equal(
+    validateConfig({ MCP_DEVICE_BASE_URL: 'https://gateway.example/' }).deviceBaseUrl,
+    'https://gateway.example'
+  );
+});
+
+test('production secrets must all differ from each other', () => {
+  assert.throws(
+    () =>
+      validateConfig({ ...productionEnv, ARTEMIS_DEVICE_TOKEN: productionEnv.ARTEMIS_PASSWORD }),
+    /Production secrets must all differ/
+  );
+  assert.throws(
+    () =>
+      validateConfig({
+        ...productionEnv,
+        VOICE_GATEWAY_TOKEN: productionEnv.AGENT_SERVER_TOKEN,
+      }),
+    /Production secrets must all differ/
+  );
+});
+
+test('the workspace and data roots must not overlap, even when only one is set', () => {
+  const dataDir = join(repoRoot, 'data', 'gateway');
+  assert.throws(
+    () => validateConfig({ WORKSPACE_PATH: dataDir }),
+    /must be separate, non-overlapping roots/
+  );
+  assert.throws(
+    () => validateConfig({ WORKSPACE_PATH: join(repoRoot, 'data'), ARTEMIS_DATA_DIR: dataDir }),
+    /must be separate, non-overlapping roots/
+  );
 });
 
 test('outside apps/ is the only production containment rule for runtime roots', () => {

@@ -27,11 +27,17 @@ interface VoiceToken {
   participantToken: string;
 }
 
+/**
+ * The voice agent's endpoints, authenticated by its bearer token inside this router. The
+ * gateway's session gate lets these paths through, so this router's check is the only one.
+ */
+export const VOICE_AGENT_PATH_PREFIX = '/api/voice/conversations/';
+
 const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
 /** The token request is a conversation id and a mode; anything larger is not one. */
 const TOKEN_BODY_LIMIT = 16 * 1024;
 
-export interface VoiceRouteDeps {
+interface VoiceRouteDeps {
   agentServer: AgentServerClient;
   voiceTokens: VoiceTokenPort;
   /** The voice agent's shared bearer token, required on its endpoints. */

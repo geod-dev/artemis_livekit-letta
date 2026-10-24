@@ -1,16 +1,35 @@
+import { getConnInfo } from '@hono/node-server/conninfo';
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { createAuth } from './auth.ts';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, test } from 'node:test';
+import { createSessionAuth } from './auth.ts';
 
-const VOICE_TOKEN = 'test-voice-token';
+const DEVICE_TOKEN = 'test-device-token';
 const PASSWORD = 'test-password';
 const ORIGIN = 'https://example.com';
+const root = mkdtempSync(join(tmpdir(), 'gateway-auth-'));
+after(() => rmSync(root, { recursive: true, force: true }));
 
-function fixture() {
-  const app = createAuth(PASSWORD, 'test-device-token', VOICE_TOKEN);
+/** A session gate over a data directory, with the Node socket lookup the server uses. */
+function gate(dataDir = mkdtempSync(join(root, 'data-')), password = PASSWORD) {
+  return createSessionAuth({
+    password,
+    deviceToken: DEVICE_TOKEN,
+    dataDir,
+    peerAddress: (c) => getConnInfo(c).remote.address,
+  });
+}
+
+/** The gate with a catch-all private API behind it, for the routes that need one. */
+function fixture(dataDir?: string, password = PASSWORD) {
+  const app = gate(dataDir, password);
   app.all('/api/*', (c) => c.json({ private: true }));
   return app;
 }
+
+type App = ReturnType<typeof fixture>;
 
 /** The socket address Node reports for a request, passed to app.request as the environment. */
 const peer = (address: string) => ({
@@ -26,17 +45,18 @@ const login = (password = PASSWORD, headers: Record<string, string> = {}) => ({
 });
 
 /** One login attempt from a socket address, optionally with the nginx X-Real-IP header. */
-const attempt = (
-  app: ReturnType<typeof fixture>,
-  address: string,
-  password = PASSWORD,
-  realIp?: string
-) =>
+const attempt = (app: App, address: string, password = PASSWORD, realIp?: string) =>
   app.request(
     `${ORIGIN}/api/auth/login`,
     login(password, realIp ? { 'X-Real-IP': realIp } : {}),
     peer(address)
   );
+
+/** The session cookie of a successful login, as the Cookie header a browser sends back. */
+async function sessionCookie(app: App): Promise<string> {
+  const response = await app.request(`${ORIGIN}/api/auth/login`, login());
+  return response.headers.get('Set-Cookie')!.split(';')[0]!;
+}
 
 test('all personal APIs, files, event streams and voice tokens require a session', async () => {
   const app = fixture();
@@ -51,24 +71,23 @@ test('all personal APIs, files, event streams and voice tokens require a session
   ]) {
     assert.equal((await app.request(ORIGIN + '/api' + path)).status, 401, path);
   }
-  assert.throws(() => createAuth('', '', ''), /ARTEMIS_PASSWORD/);
+  assert.throws(
+    () => createSessionAuth({ password: '', deviceToken: '', dataDir: root }),
+    /ARTEMIS_PASSWORD/
+  );
 });
 
-test('the voice agent reaches its own endpoints with the voice token only', async () => {
+test('the voice agent endpoints pass the session gate; the device token does not open other routes', async () => {
+  // The voice router checks its own bearer token (see routes/voice.test.ts); the gate lets the
+  // voice agent's paths through without a cookie, and nothing else.
   const app = fixture();
   const call = `${ORIGIN}/api/voice/conversations/c1/call`;
+  assert.equal((await app.request(call)).status, 200);
   assert.equal(
-    (await app.request(call, { headers: { Authorization: `Bearer ${VOICE_TOKEN}` } })).status,
+    (await app.request(call, { headers: { Authorization: `Bearer ${DEVICE_TOKEN}` } })).status,
     200
   );
-  assert.equal(
-    (await app.request(call, { headers: { Authorization: 'Bearer test-device-token' } })).status,
-    401
-  );
-  assert.equal(
-    (await app.request(call, { headers: { Authorization: `Basic ${VOICE_TOKEN}` } })).status,
-    401
-  );
+  assert.equal((await app.request(`${ORIGIN}/api/voice/token`)).status, 401);
 });
 
 test('login cookie is protected, survives requests, rejects forgery and password rotation', async () => {
@@ -91,7 +110,7 @@ test('login cookie is protected, survives requests, rejects forgery and password
   );
   assert.equal(
     (
-      await createAuth('rotated', '', '').request(`${ORIGIN}/api/conversations`, {
+      await fixture(undefined, 'rotated').request(`${ORIGIN}/api/conversations`, {
         headers,
       })
     ).status,
@@ -106,10 +125,7 @@ test('login cookie is protected, survives requests, rejects forgery and password
 
 test('a logged-out session token is revoked, even though its signature is still valid', async () => {
   const app = fixture();
-  const cookie = (await app.request(`${ORIGIN}/api/auth/login`, login())).headers
-    .get('Set-Cookie')!
-    .split(';')[0]!;
-  const headers = { Cookie: cookie };
+  const headers = { Cookie: await sessionCookie(app) };
   assert.equal((await app.request(`${ORIGIN}/api/auth/session`, { headers })).status, 200);
   assert.equal(
     (await app.request(`${ORIGIN}/api/auth/logout`, { method: 'POST', headers })).status,
@@ -118,6 +134,19 @@ test('a logged-out session token is revoked, even though its signature is still 
   assert.equal((await app.request(`${ORIGIN}/api/conversations`, { headers })).status, 401);
   const session = await app.request(`${ORIGIN}/api/auth/session`, { headers });
   assert.deepEqual(await session.json(), { authenticated: false });
+});
+
+test('a logged-out session stays revoked after the gateway restarts from the same data directory', async () => {
+  const dataDir = mkdtempSync(join(root, 'restart-'));
+  const before = fixture(dataDir);
+  const headers = { Cookie: await sessionCookie(before) };
+  assert.equal(
+    (await before.request(`${ORIGIN}/api/auth/logout`, { method: 'POST', headers })).status,
+    200
+  );
+  assert.ok(existsSync(join(dataDir, 'auth', 'revoked.json')));
+  const after = fixture(dataDir);
+  assert.equal((await after.request(`${ORIGIN}/api/conversations`, { headers })).status, 401);
 });
 
 test('CSRF and brute force rejected; device credentials cannot access chats', async () => {
@@ -131,7 +160,7 @@ test('CSRF and brute force rejected; device credentials cannot access chats', as
     ).status,
     403
   );
-  const headers = { Authorization: 'Bearer test-device-token' };
+  const headers = { Authorization: `Bearer ${DEVICE_TOKEN}` };
   assert.equal((await app.request(`${ORIGIN}/api/devices/register`, { headers })).status, 200);
   assert.equal((await app.request(`${ORIGIN}/api/conversations`, { headers })).status, 401);
   for (let i = 0; i < 10; i++)
@@ -150,6 +179,21 @@ test('login failures are limited per client, and X-Real-IP is read only from a p
   for (let i = 0; i < 10; i++)
     assert.equal((await attempt(app, '203.0.113.9', 'wrong', `10.9.0.${i}`)).status, 401);
   assert.equal((await attempt(app, '203.0.113.9', PASSWORD, '10.0.0.3')).status, 429);
+});
+
+test('a blocked client is told how long its window has left, and the refusal is in English', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 0 });
+  const app = fixture();
+  for (let i = 0; i < 10; i++)
+    assert.equal((await attempt(app, '203.0.113.40', 'wrong')).status, 401);
+  const refused = await attempt(app, '203.0.113.40');
+  assert.equal(refused.status, 429);
+  assert.equal(refused.headers.get('Retry-After'), '60');
+  assert.deepEqual(await refused.json(), { error: 'Too many attempts. Try again later.' });
+  t.mock.timers.tick(30_000);
+  assert.equal((await attempt(app, '203.0.113.40')).headers.get('Retry-After'), '30');
+  const wrong = await attempt(app, '203.0.113.41', 'wrong');
+  assert.deepEqual(await wrong.json(), { error: 'Incorrect password.' });
 });
 
 test('the global ceiling reached across clients refuses logins', async () => {
@@ -185,15 +229,12 @@ test('the global lockout doubles on each repeat and then reopens', async (t) => 
 });
 
 test('an /api response with no cache policy is no-store, raw Responses included', async () => {
-  const app = createAuth(PASSWORD, 'test-device-token', VOICE_TOKEN);
+  const app = gate();
   app.get('/api/relayed', () => new Response('relayed', { status: 200 }));
   app.get('/api/own-policy', (c) =>
     c.text('kept', 200, { 'Cache-Control': 'private, max-age=60' })
   );
-  const cookie = (await app.request(`${ORIGIN}/api/auth/login`, login())).headers
-    .get('Set-Cookie')!
-    .split(';')[0]!;
-  const headers = { Cookie: cookie };
+  const headers = { Cookie: await sessionCookie(app) };
   for (const path of ['/api/relayed', '/api/auth/session']) {
     const response = await app.request(`${ORIGIN}${path}`, { headers });
     assert.equal(response.headers.get('Cache-Control'), 'no-store', path);

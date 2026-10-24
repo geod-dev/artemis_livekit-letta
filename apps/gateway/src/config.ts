@@ -23,6 +23,24 @@ export interface AppConfig {
 
 const DEV_AGENT_SERVER_TOKEN = 'dev-agent-server-token-change-me';
 const DEV_VOICE_GATEWAY_TOKEN = 'dev-voice-token-change-me';
+/** The secrets a production start checks: none may be a placeholder, and all must differ. */
+const PRODUCTION_SECRETS = [
+  'ARTEMIS_PASSWORD',
+  'ARTEMIS_DEVICE_TOKEN',
+  'AGENT_SERVER_TOKEN',
+  'LIVEKIT_API_KEY',
+  'LIVEKIT_API_SECRET',
+  'VOICE_GATEWAY_TOKEN',
+] as const;
+/** The development value a placeholder check compares against, per production secret. */
+const PLACEHOLDER_FALLBACKS: Record<(typeof PRODUCTION_SECRETS)[number], string> = {
+  ARTEMIS_PASSWORD: '',
+  ARTEMIS_DEVICE_TOKEN: '',
+  AGENT_SERVER_TOKEN: DEV_AGENT_SERVER_TOKEN,
+  LIVEKIT_API_KEY: 'devkey',
+  LIVEKIT_API_SECRET: 'secret',
+  VOICE_GATEWAY_TOKEN: DEV_VOICE_GATEWAY_TOKEN,
+};
 const gatewayDir = fileURLToPath(new URL('../', import.meta.url));
 // The apps/ folder holds source code only. Production runtime roots must resolve outside it.
 const appsDir = resolve(gatewayDir, '..');
@@ -49,6 +67,30 @@ function isPlaceholderSecret(configured: string | undefined, fallback: string): 
     configured.startsWith('change-me') ||
     configured.startsWith('dev-')
   );
+}
+
+/**
+ * A service address (the agent-server, the device MCP base, LiveKit). It must be an absolute
+ * http(s) or ws(s) URL, and production requires it to be set rather than defaulted to loopback.
+ */
+function serviceUrl(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: string,
+  required: boolean
+): string {
+  const configured = env[name]?.trim();
+  if (required && !configured) throw new Error(`${name} must be set in production`);
+  const raw = configured || fallback;
+  let protocol: string;
+  try {
+    protocol = new URL(raw).protocol;
+  } catch {
+    throw new Error(`${name} must be an absolute URL`);
+  }
+  if (!['http:', 'https:', 'ws:', 'wss:'].includes(protocol))
+    throw new Error(`${name} must be an http(s) or ws(s) URL`);
+  return raw;
 }
 
 function integer(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number): number {
@@ -98,38 +140,41 @@ export function validateConfig(env: NodeJS.ProcessEnv): AppConfig {
   }
   if (dataValue && canonicalPath(dataDir) === canonicalPath(defaultWorkspace))
     throw new Error('ARTEMIS_DATA_DIR must not point at the default workspace root');
-  if (
-    workspaceValue &&
-    dataValue &&
-    (containsPath(workspaceDir, dataDir) || containsPath(dataDir, workspaceDir))
-  ) {
+  if (containsPath(workspaceDir, dataDir) || containsPath(dataDir, workspaceDir)) {
     throw new Error('WORKSPACE_PATH and ARTEMIS_DATA_DIR must be separate, non-overlapping roots');
   }
   const port = integer(env, 'GATEWAY_PORT', 3000, 1);
   if (port > 65535) throw new Error('GATEWAY_PORT must be between 1 and 65535');
   const agentServerPort = integer(env, 'AGENT_SERVER_PORT', 4000, 1);
+  const deviceBaseUrl = serviceUrl(
+    env,
+    'MCP_DEVICE_BASE_URL',
+    `http://127.0.0.1:${port}`,
+    production
+  );
+  const agentServerUrl = serviceUrl(
+    env,
+    'AGENT_SERVER_URL',
+    `http://${ip}:${agentServerPort}`,
+    production
+  );
+  const livekitUrl = serviceUrl(env, 'LIVEKIT_URL', `ws://${ip}:7880`, production);
   if (production) {
-    for (const [name, fallback] of [
-      ['ARTEMIS_PASSWORD', ''],
-      ['ARTEMIS_DEVICE_TOKEN', ''],
-      ['AGENT_SERVER_TOKEN', DEV_AGENT_SERVER_TOKEN],
-      ['LIVEKIT_API_KEY', 'devkey'],
-      ['LIVEKIT_API_SECRET', 'secret'],
-      ['VOICE_GATEWAY_TOKEN', DEV_VOICE_GATEWAY_TOKEN],
-    ] as const) {
-      if (isPlaceholderSecret(env[name]?.trim(), fallback))
+    for (const name of PRODUCTION_SECRETS) {
+      if (isPlaceholderSecret(env[name]?.trim(), PLACEHOLDER_FALLBACKS[name]))
         throw new Error(`${name} must be set to a real secret in production, not a placeholder`);
     }
+    // One value must not satisfy two credential families (for example the device and password).
+    const secretValues = new Set(PRODUCTION_SECRETS.map((name) => env[name]?.trim()));
+    if (secretValues.size !== PRODUCTION_SECRETS.length)
+      throw new Error(`Production secrets must all differ: ${PRODUCTION_SECRETS.join(', ')}`);
   }
   return {
     port,
     host: env.GATEWAY_HOST?.trim() || '127.0.0.1',
-    deviceBaseUrl: (env.MCP_DEVICE_BASE_URL?.trim() || `http://127.0.0.1:${port}`).replace(
-      /\/$/,
-      ''
-    ),
+    deviceBaseUrl: deviceBaseUrl.replace(/\/$/, ''),
     agentServer: {
-      url: value(env, 'AGENT_SERVER_URL', `http://${ip}:${agentServerPort}`),
+      url: agentServerUrl,
       token: value(env, 'AGENT_SERVER_TOKEN', DEV_AGENT_SERVER_TOKEN),
     },
     workspace: { dir: workspaceDir, dataDir },
@@ -138,7 +183,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): AppConfig {
       model: value(env, 'ASSISTANT_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'),
     },
     livekit: {
-      url: value(env, 'LIVEKIT_URL', `ws://${ip}:7880`),
+      url: livekitUrl,
       apiKey: value(env, 'LIVEKIT_API_KEY', 'devkey'),
       apiSecret: value(env, 'LIVEKIT_API_SECRET', 'secret'),
       agentName: value(env, 'LIVEKIT_AGENT_NAME', 'assistant'),
