@@ -10,6 +10,7 @@ import { LoopPersistence, runLoop } from './loop-persistence.ts';
 import { TaskWorker } from './task-worker.ts';
 import type { SubagentSpec, TaskOutcome } from './types.ts';
 import { toLlmMessages } from './codecs.ts';
+import { turnUsage } from './main-agent/outcome.ts';
 import { isoAt } from '../util/time.ts';
 
 /** Longest chain of resumed tasks replayed into one transcript. */
@@ -147,7 +148,7 @@ export class SubagentTaskWorker extends TaskWorker {
         : 'completed';
     const report = this.reportOf(status, failure, outcome);
     const needsInput = status === 'completed' && needsUserInput(report);
-    const usage: TurnUsage | null = outcome ? { ...outcome.usage, cacheReadTokens: outcome.usage.cacheReadTokens ?? 0, cacheWriteTokens: outcome.usage.cacheWriteTokens ?? 0, reasoningTokens: outcome.usage.reasoningTokens ?? 0 } : null;
+    const usage: TurnUsage | null = outcome ? turnUsage(outcome.usage) : null;
     const finished = await env.storage.tasks.finish(taskId, {
       status,
       report,

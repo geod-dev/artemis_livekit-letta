@@ -5,7 +5,7 @@ import { MAX_TURN_TEXT_LENGTH } from '@artemis/contracts/chat-types';
 import type { ConversationService } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
-import type { TaskService } from '../tasks/task-service.ts';
+import type { TaskPort } from '../tools/task-port.ts';
 import { noContent, pageResponse } from './http.ts';
 import {
   MAX_UPDATE_IDS,
@@ -24,7 +24,7 @@ import {
 /** The ports the conversation routes use. */
 export interface ConversationRouteDeps {
   conversations: ConversationService;
-  tasks: TaskService;
+  tasks: TaskPort;
   delivery: Pick<BackgroundDeliveryService, 'markRead'>;
   events: ConversationEventHub;
 }

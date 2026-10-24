@@ -10,7 +10,7 @@ import { createVoiceService } from '../calls/voice-service.ts';
 import type { AgentServerConfig } from '../config.ts';
 import type { ConversationService, TurnOutcome } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
-import type { TaskService } from '../tasks/task-service.ts';
+import type { TaskPort } from '../tools/task-port.ts';
 import { createApp } from './app.ts';
 import type { ApiDependencies } from './deps.ts';
 
@@ -56,7 +56,7 @@ function harness(options: { memory?: boolean } = {}) {
   const deps: ApiDependencies = {
     config: fake<AgentServerConfig>({ token: TOKEN }),
     conversations,
-    tasks: fake<TaskService>({}),
+    tasks: fake<TaskPort>({}),
     delivery,
     calls,
     voice: createVoiceService({ conversations, calls, delivery }),

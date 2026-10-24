@@ -8,7 +8,7 @@ import { createCallSessions } from '../calls/call-sessions.ts';
 import { createVoiceService } from '../calls/voice-service.ts';
 import type { ConversationService, TurnOutcome, UpdateTurn, VoiceTurn } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
-import type { TaskService } from '../tasks/task-service.ts';
+import type { TaskPort } from '../tools/task-port.ts';
 import { createApp } from './app.ts';
 import type { ApiDependencies } from './deps.ts';
 
@@ -77,7 +77,7 @@ function harness() {
   const deps: ApiDependencies = {
     config: fake<ApiDependencies['config']>({ token: TOKEN }),
     conversations,
-    tasks: fake<TaskService>({}),
+    tasks: fake<TaskPort>({}),
     delivery,
     calls,
     voice: createVoiceService({ conversations, calls, delivery }),

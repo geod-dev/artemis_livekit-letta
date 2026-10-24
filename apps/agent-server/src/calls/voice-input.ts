@@ -1,4 +1,5 @@
 import type { Clock } from '@artemis/core';
+import { isRecord } from '../util/content.ts';
 
 /**
  * Voice input extraction.
@@ -89,7 +90,7 @@ interface Row {
 }
 
 function asRow(value: unknown): Row | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Row) : null;
+  return isRecord(value) ? (value as Row) : null;
 }
 
 function identityOf(row: Row): string | null {

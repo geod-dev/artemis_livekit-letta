@@ -4,6 +4,7 @@ import type { ConversationEvent } from '@artemis/contracts/chat-types';
 import type { ToolContext, ToolResult } from '@artemis/tools';
 import type { Storage, ToolCallStatus } from '@artemis/storage';
 import type { CallStateFilter } from '../calls/call-state-filter.ts';
+import { isoAt } from '../util/time.ts';
 
 /** Drives an `AgentLoop` run: `handle` is awaited for every event before the loop continues. */
 async function drainLoop(events: AsyncIterable<LoopEvent>, handle: (event: LoopEvent) => Promise<void>): Promise<LoopOutcome> {
@@ -121,7 +122,7 @@ export class LoopPersistence {
       usage: response.usage,
       timings: response.timings,
     });
-    const startedAt = new Date(clock.now()).toISOString();
+    const startedAt = isoAt(clock.now());
     for (const block of message.content) {
       const call = block as { type?: string; id?: string; name?: string; input?: unknown };
       if (call.type !== 'tool_use' || !call.id || !call.name) continue;
@@ -140,7 +141,7 @@ export class LoopPersistence {
 
   private async toolResult(toolCallId: string, input: unknown, result: ToolResult): Promise<void> {
     const { storage, clock, signal } = this.options;
-    const text = textOf(result);
+    const text = toolResultText(result);
     const status: ToolCallStatus = result.backgrounded
       ? 'backgrounded'
       : result.isError
@@ -154,7 +155,7 @@ export class LoopPersistence {
       isError: result.isError,
       display: result.display ?? null,
       taskRef: result.task ?? null,
-      endedAt: new Date(clock.now()).toISOString(),
+      endedAt: isoAt(clock.now()),
     });
     this.publish({
       type: 'tool_result',
@@ -203,6 +204,6 @@ export class LoopPersistence {
 }
 
 /** The model-facing text of a tool result (images are not text). */
-export function textOf(result: ToolResult): string {
+export function toolResultText(result: ToolResult): string {
   return result.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n');
 }

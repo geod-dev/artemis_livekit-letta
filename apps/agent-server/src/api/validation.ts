@@ -7,6 +7,7 @@ import {
   type TextEffort,
 } from '@artemis/contracts/chat-types';
 import type { Context, Next } from 'hono';
+import { isRecord } from '../util/content.ts';
 
 /** Request validation: body, query and path checks shared by the route modules. Each failure is a 4xx AppError. */
 
@@ -84,9 +85,6 @@ export function invalidField(message: string): AppError {
   return new AppError('invalid_field', message, 400);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export function optionalList(body: Record<string, unknown>, field: string, max: number): unknown[] {
   const value = body[field];

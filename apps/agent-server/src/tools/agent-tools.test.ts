@@ -27,7 +27,7 @@ function fakeCalls(overrides: Partial<Pick<CallSessions, 'setMode' | 'requestEnd
     setMode: () => false,
     requestEnd: () => false,
     ...overrides,
-  } as unknown as CallSessions;
+  } as CallSessions;
 }
 
 function context(overrides: Partial<AgentToolContext> = {}): AgentToolContext {
@@ -43,7 +43,7 @@ function context(overrides: Partial<AgentToolContext> = {}): AgentToolContext {
     tasks: fakeTasks(),
     calls: fakeCalls(),
     ...overrides,
-  } as unknown as AgentToolContext;
+  } as AgentToolContext;
 }
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {

@@ -151,6 +151,9 @@ export class NoMemory implements MemoryCoordinator {
   async recallFor(): Promise<[]> {
     return [];
   }
+  async recall(): Promise<[]> {
+    return [];
+  }
   async turnCompleted(): Promise<void> {}
   async flush(): Promise<void> {}
   start(): void {}

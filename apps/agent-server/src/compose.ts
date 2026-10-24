@@ -29,13 +29,13 @@ import type { WorkspaceTransport } from '@artemis/workspace';
 import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
 import type { Hono } from 'hono';
 import { createApp } from './api/app.ts';
-import { workspaceArtifactSink } from './artifacts/workspace-artifact-sink.ts';
+import { workspaceArtifactSink } from './tools/artifact-sink.ts';
 import { createCallSessions, type CallSessions } from './calls/call-sessions.ts';
 import { createVoiceService, type VoiceService } from './calls/voice-service.ts';
 import { type AgentServerConfig, WORKSPACE_RIPGREP } from './config.ts';
 import { createConversationService, type ConversationService } from './conversations/service.ts';
 import { ConversationEventHub } from './events/hub.ts';
-import { createMemoryCoordinator, type MemoryCoordinator } from './memory/coordinator.ts';
+import { createMemoryCoordinator, LAST_ACTIVE_CONVERSATION_KEY, type MemoryCoordinator } from './memory/coordinator.ts';
 import { NoopMemoryStore } from './memory/noop-memory-store.ts';
 import { createModelRouter, type ModelRouter } from './models/routing.ts';
 import { PromptRenderer } from './prompts/renderer.ts';
@@ -45,8 +45,6 @@ import { createMemoryTools } from './tools/memory-tools.ts';
 import { type AgentRuntime, createAgentRuntime } from './workers/wiring.ts';
 
 const PROMPTS_DIR = fileURLToPath(new URL('../templates', import.meta.url));
-/** The memory coordinator's record of the conversation the user was last in (flushed at shutdown). */
-const LAST_ACTIVE_KEY = 'last_active_conversation_id';
 
 /** Every implementation the service runs on; the service graph receives these, never a vendor type. */
 export interface ComposedPorts {
@@ -189,7 +187,7 @@ export async function buildServices(
     workspace,
     catalog,
     mcp: mcpClient,
-    memoryTools: createMemoryTools({ store: memoryStore, config, clock, logger: logger.child('memory-tools') }),
+    memoryTools: createMemoryTools({ store: memoryStore, coordinator: memory, config, clock, logger: logger.child('memory-tools') }),
     present: config.assistant.presentTool,
     clock,
     logger: logger.child('agent'),
@@ -274,7 +272,7 @@ export async function buildApp(config: AgentServerConfig, options: BuildAppOptio
     },
     close: async () => {
       await runtime.supervisor.shutdown();
-      const lastActive = await storage.appState.get<string>(LAST_ACTIVE_KEY).catch(() => null);
+      const lastActive = await storage.appState.get<string>(LAST_ACTIVE_CONVERSATION_KEY).catch(() => null);
       if (lastActive) await memory.flush(lastActive, 'shutdown').catch(() => undefined);
       await memory.stop();
       await titles.stop();

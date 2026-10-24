@@ -2,7 +2,7 @@ import { errorMessage } from '@artemis/core';
 import type { TaskRecord } from '@artemis/storage';
 import type { Toolset } from '@artemis/tools';
 import { createBackgroundDelivery, type BackgroundDeliveryService } from '../tasks/delivery.ts';
-import { createTaskService, type TaskService, type TaskWorkers } from '../tasks/task-service.ts';
+import { createTaskService, type TaskWorkers } from '../tasks/task-service.ts';
 import type { AgentToolContext } from '../tools/index.ts';
 import type { SubagentSpec, TaskPort } from '../tools/task-port.ts';
 import { isoAt } from '../util/time.ts';
@@ -39,7 +39,7 @@ function isLive(worker: TaskWorker): boolean {
  * inflight updates -> reverted, running tasks -> failed with an update.
  */
 export class WorkerSupervisor implements TaskWorkers {
-  readonly taskService: TaskService;
+  readonly taskService: TaskPort;
   readonly delivery: BackgroundDeliveryService;
   readonly toolset: Toolset<AgentToolContext>;
   private readonly env: WorkerEnv;

@@ -1,8 +1,20 @@
 import { type Clock, type Logger, consoleLogger, errorMessage, systemClock, uuid } from '@artemis/core';
 import type { RecalledMemory, Repositories, MemoryRetentionRecord, MessageRecord, RecallTrace, TurnRecord } from '@artemis/storage';
-import { recallBudget, type MemoryStore, type RetainRequest, type TranscriptTurn } from '@artemis/memory';
+import {
+  recallBudget,
+  type MemoryFact,
+  type MemoryStore,
+  type RecallBudget,
+  type RetainRequest,
+  type TranscriptTurn,
+} from '@artemis/memory';
 import type { AgentServerConfig } from '../config.ts';
+import { contentText } from '../util/content.ts';
 import { runWithTimeout } from '../util/async.ts';
+import { isoAt } from '../util/time.ts';
+
+/** The app-state key of the conversation the user wrote to last (swapped on every accepted user message). */
+export const LAST_ACTIVE_CONVERSATION_KEY = 'last_active_conversation_id';
 
 /**
  * Applies the memory rules (docs/architecture.md, "Conversations memory and
@@ -23,7 +35,10 @@ import { runWithTimeout } from '../util/async.ts';
  */
 export interface MemoryCoordinator {
   conversationActivated(conversationId: string): Promise<void>;
+  /** Automatic recall before an answer: never throws (a failure gives no memories). */
   recallFor(input: RecallInput): Promise<RecalledMemory[]>;
+  /** The same recall policy for on-demand search: throws on failure or timeout. */
+  recall(input: RecallInput): Promise<MemoryFact[]>;
   turnCompleted(turn: TurnRecord): Promise<void>;
   /** Retains every unanalyzed completed turn of the conversation (reason `switch` or `shutdown`). */
   flush(conversationId: string, reason: 'switch' | 'shutdown'): Promise<void>;
@@ -33,13 +48,16 @@ export interface MemoryCoordinator {
   stop(): Promise<void>;
 }
 
-interface RecallInput {
+export interface RecallInput {
   conversationId: string;
-  turnId: string;
+  /** The turn the recall serves; null for a subagent task's search (no ledger, no trace). */
+  turnId: string | null;
   modality: 'text' | 'voice';
   effort?: TurnRecord['effort'];
   /** The user's words (update turns: titles and first lines of reports). */
   query: string;
+  /** Explicit budget (memory_search); default: `recallBudget` of the modality and effort. */
+  budget?: RecallBudget;
   signal?: AbortSignal;
 }
 
@@ -62,7 +80,6 @@ interface MemoryCoordinatorOptions {
   retainTimeoutMs?: number;
 }
 
-const LAST_ACTIVE_KEY = 'last_active_conversation_id';
 const PUMP_BATCH = 10;
 const MAX_BACKOFF_MS = 5 * 60_000;
 
@@ -96,7 +113,7 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
   async conversationActivated(conversationId: string): Promise<void> {
     if (!this.enabled) return;
     try {
-      const previous = await this.options.storage.appState.swap<string>(LAST_ACTIVE_KEY, conversationId);
+      const previous = await this.options.storage.appState.swap<string>(LAST_ACTIVE_CONVERSATION_KEY, conversationId);
       if (typeof previous === 'string' && previous !== conversationId) {
         await this.flush(previous, 'switch');
       }
@@ -107,12 +124,20 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
 
   async recallFor(input: RecallInput): Promise<RecalledMemory[]> {
     if (!this.enabled) return [];
+    try {
+      return (await this.recall(input)).map(toRecalledMemory);
+    } catch (error) {
+      this.logger.warn('recall skipped', { turnId: input.turnId, error: errorMessage(error) });
+      return [];
+    }
+  }
+
+  async recall(input: RecallInput): Promise<MemoryFact[]> {
     const { memory } = this.options.config;
-    const budget = recallBudget({ modality: input.modality, effort: input.effort });
+    const budget = input.budget ?? recallBudget({ modality: input.modality, effort: input.effort });
     const timeoutMs = input.modality === 'voice' ? memory.recallTimeoutMs.voice : memory.recallTimeoutMs.text;
     const started = this.clock.now();
     const trace: RecallTrace = { budget, query: input.query, memoryIds: [], durationMs: 0 };
-    let memories: RecalledMemory[] = [];
     try {
       const result = await runWithTimeout({ clock: this.clock, timeoutMs, parent: input.signal }, (signal) =>
         this.options.store.recall(
@@ -125,31 +150,35 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
           signal
         )
       );
-      const injected = await this.options.storage.recallLedger.injectedIds(input.conversationId);
-      const fresh = result.facts.filter((fact) => !injected.has(fact.id));
-      if (fresh.length > 0) {
-        await this.options.storage.recallLedger.record(
-          input.conversationId,
-          input.turnId,
-          fresh.map((fact) => fact.id)
-        );
-      }
-      memories = fresh.map((fact) => ({
-        id: fact.id,
-        text: fact.text,
-        type: fact.type,
-        ...(fact.occurredAt || fact.mentionedAt ? { date: fact.occurredAt ?? fact.mentionedAt } : {}),
-      }));
-      trace.memoryIds = memories.map((item) => item.id);
+      const fresh = await this.freshFacts(input, result.facts);
+      trace.memoryIds = fresh.map((fact) => fact.id);
+      return fresh;
     } catch (error) {
       trace.error = errorMessage(error);
-      this.logger.warn('recall skipped', { turnId: input.turnId, error: trace.error });
+      throw error;
+    } finally {
+      trace.durationMs = this.clock.now() - started;
+      if (input.turnId) {
+        const turnId = input.turnId;
+        await this.options.storage.turns.setRecall(turnId, trace).catch((error: unknown) => {
+          this.logger.warn('recall trace not stored', { turnId, error: errorMessage(error) });
+        });
+      }
     }
-    trace.durationMs = this.clock.now() - started;
-    await this.options.storage.turns.setRecall(input.turnId, trace).catch((error: unknown) => {
-      this.logger.warn('recall trace not stored', { turnId: input.turnId, error: errorMessage(error) });
-    });
-    return memories;
+  }
+
+  /**
+   * The facts this conversation has not been given yet; the fresh ones go to the
+   * ledger under the turn. A search with no turn (a subagent task) is not deduplicated
+   * and records nothing: the ledger and the trace belong to a turn.
+   */
+  private async freshFacts(input: RecallInput, facts: MemoryFact[]): Promise<MemoryFact[]> {
+    if (!input.turnId) return facts;
+    const { recallLedger } = this.options.storage;
+    const injected = await recallLedger.injectedIds(input.conversationId);
+    const fresh = facts.filter((fact) => !injected.has(fact.id));
+    if (fresh.length > 0) await recallLedger.record(input.conversationId, input.turnId, fresh.map((fact) => fact.id));
+    return fresh;
   }
 
   async turnCompleted(turn: TurnRecord): Promise<void> {
@@ -287,12 +316,12 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
       const at = turn.endedAt ?? turn.startedAt;
       for (const message of byTurn.get(turn.id) ?? []) {
         if (message.role === 'user') {
-          lines.push({ speaker: 'User', at: turn.startedAt, text: message.envelope?.text ?? textOf(message.content) });
+          lines.push({ speaker: 'User', at: turn.startedAt, text: message.envelope?.text ?? contentText(message.content) });
           for (const update of message.envelope?.updates ?? []) {
             lines.push({ speaker: `Background task ${update.title}`, at: turn.startedAt, text: update.report });
           }
         } else {
-          lines.push({ speaker: this.options.config.assistant.name, at, text: textOf(message.content) });
+          lines.push({ speaker: this.options.config.assistant.name, at, text: contentText(message.content) });
         }
       }
     }
@@ -320,7 +349,7 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
   }
 
   private iso(): string {
-    return new Date(this.clock.now()).toISOString();
+    return isoAt(this.clock.now());
   }
 }
 
@@ -333,12 +362,12 @@ function retryDelayMs(attempts: number): number {
   return Math.min(1_000 * 2 ** attempts, MAX_BACKOFF_MS);
 }
 
-function textOf(content: unknown[]): string {
-  return content
-    .flatMap((block) => {
-      if (!block || typeof block !== 'object') return [];
-      const { type, text } = block as { type?: unknown; text?: unknown };
-      return type === 'text' && typeof text === 'string' ? [text] : [];
-    })
-    .join('\n');
+/** The shape automatic recall hands to the turn envelope (the trace keeps the ids only). */
+function toRecalledMemory(fact: MemoryFact): RecalledMemory {
+  return {
+    id: fact.id,
+    text: fact.text,
+    type: fact.type,
+    ...(fact.occurredAt || fact.mentionedAt ? { date: fact.occurredAt ?? fact.mentionedAt } : {}),
+  };
 }

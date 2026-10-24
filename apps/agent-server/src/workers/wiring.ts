@@ -10,7 +10,7 @@ import type { MemoryCoordinator } from '../memory/coordinator.ts';
 import type { ModelRouter } from '../models/routing.ts';
 import type { PromptRenderer } from '../prompts/renderer.ts';
 import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
-import type { TaskService } from '../tasks/task-service.ts';
+import type { TaskPort } from '../tools/task-port.ts';
 import type { SubagentDefinition } from '../subagents/definitions.ts';
 import type { TitleService } from '../titles/title-service.ts';
 import { createAgentToolset, type AgentToolContext } from '../tools/index.ts';
@@ -40,7 +40,7 @@ interface AgentRuntimeDeps {
 /** The wired workers, tasks, delivery and toolset. Call `recover()` before `start()`. */
 export interface AgentRuntime {
   supervisor: WorkerSupervisor;
-  tasks: TaskService;
+  tasks: TaskPort;
   delivery: BackgroundDeliveryService;
   tools: Toolset<AgentToolContext>;
 }

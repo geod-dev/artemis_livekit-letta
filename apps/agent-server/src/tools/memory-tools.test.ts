@@ -3,16 +3,30 @@ import { test } from 'node:test';
 import { Toolset } from '@artemis/tools';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { AgentServerConfig } from '../config.ts';
+import { EphemeralStorage } from '@artemis/storage/testing';
+import type { Logger } from '@artemis/core';
 import { FakeClock } from '@artemis/core/testing';
 import { FakeMemoryStore } from '@artemis/memory/testing';
-import { fact } from '../../test/memory-support.ts';
+import { fact, seedConversation, seedTurn } from '../../test/memory-support.ts';
+import { createMemoryCoordinator } from '../memory/coordinator.ts';
 import type { AgentToolContext } from './index.ts';
 import { createMemoryTools } from './memory-tools.ts';
 
-function setup(enabled = true) {
+const silent: Logger = {
+  debug() {},
+  info() {},
+  warn() {},
+  error() {},
+  child() {
+    return silent;
+  },
+};
+
+async function setup(enabled = true) {
   const store = new FakeMemoryStore();
-  const config = {
-    assistant: { name: 'Artemis', timezone: 'UTC' },
+  const clock = new FakeClock();
+  const config: Pick<AgentServerConfig, 'assistant' | 'memory'> = {
+    assistant: { name: 'Artemis', timezone: 'UTC', presentTool: false },
     memory: {
       enabled,
       hindsightUrl: 'http://hindsight:8888',
@@ -21,8 +35,13 @@ function setup(enabled = true) {
       recallTimeoutMs: { voice: 1500, text: 4000 },
       recallMaxTokens: { low: 800, mid: 1500, high: 3000 },
     },
-  } as unknown as AgentServerConfig;
-  const toolset = new Toolset<AgentToolContext>(createMemoryTools({ store, config, clock: new FakeClock() }));
+  };
+  // The tools search through the coordinator, so the recall policy under test is the production one.
+  const storage = new EphemeralStorage({ clock });
+  await seedConversation(storage, 'c1');
+  await seedTurn(storage, { id: 't1', conversationId: 'c1', text: 'What do I prefer?' });
+  const coordinator = createMemoryCoordinator({ store, storage, config, clock, logger: silent });
+  const toolset = new Toolset<AgentToolContext>(createMemoryTools({ store, coordinator, config, clock }));
   return { store, toolset };
 }
 
@@ -43,8 +62,8 @@ function context(overrides: Partial<AgentToolContext> = {}): AgentToolContext {
   } as AgentToolContext;
 }
 
-test('memory tools use the names of the toolset order', () => {
-  const { toolset } = setup();
+test('memory tools use the names of the toolset order', async () => {
+  const { toolset } = await setup();
   assert.deepEqual(
     toolset.definitions().map((definition) => definition.name),
     [TOOL_NAMES.memorySearch, TOOL_NAMES.memoryRemember]
@@ -52,7 +71,7 @@ test('memory tools use the names of the toolset order', () => {
 });
 
 test('memory_search renders the recalled facts with the default budget of the turn', async () => {
-  const { store, toolset } = setup();
+  const { store, toolset } = await setup();
   store.facts = [fact('f1', 'Lucas prefers metric units')];
 
   const result = await toolset.execute(TOOL_NAMES.memorySearch, { query: 'units' }, context({ mode: 'voice-short' }));
@@ -64,7 +83,7 @@ test('memory_search renders the recalled facts with the default budget of the tu
 });
 
 test('memory_search honours an explicit budget and reports empty results without error', async () => {
-  const { store, toolset } = setup();
+  const { store, toolset } = await setup();
   const result = await toolset.execute(TOOL_NAMES.memorySearch, { query: 'nothing', budget: 'high' }, context({ effort: 'low' }));
 
   assert.equal(result.isError, false);
@@ -74,7 +93,7 @@ test('memory_search honours an explicit budget and reports empty results without
 });
 
 test('memory_search turns store failures into an error result', async () => {
-  const { store, toolset } = setup();
+  const { store, toolset } = await setup();
   store.recall = async () => {
     throw new Error('hindsight down');
   };
@@ -84,14 +103,14 @@ test('memory_search turns store failures into an error result', async () => {
 });
 
 test('memory_search rejects invalid input before reaching the store', async () => {
-  const { store, toolset } = setup();
+  const { store, toolset } = await setup();
   const result = await toolset.execute(TOOL_NAMES.memorySearch, { query: '', budget: 'huge' }, context());
   assert.equal(result.isError, true);
   assert.equal(store.recalls.length, 0);
 });
 
 test('memory_remember retains a tool note under its own document', async () => {
-  const { store, toolset } = setup();
+  const { store, toolset } = await setup();
   const result = await toolset.execute(
     TOOL_NAMES.memoryRemember,
     { content: 'Prefers morning meetings', context: 'said during planning' },
@@ -109,12 +128,12 @@ test('memory_remember retains a tool note under its own document', async () => {
 });
 
 test('memory_remember reports a failed retain and is refused when memory is disabled', async () => {
-  const failing = setup();
+  const failing = await setup();
   failing.store.retainFailures = 1;
   const failed = await failing.toolset.execute(TOOL_NAMES.memoryRemember, { content: 'note' }, context());
   assert.equal(failed.isError, true);
 
-  const disabled = setup(false);
+  const disabled = await setup(false);
   const refused = await disabled.toolset.execute(TOOL_NAMES.memoryRemember, { content: 'note' }, context());
   assert.equal(refused.isError, true);
   assert.equal(disabled.store.retains.length, 0);

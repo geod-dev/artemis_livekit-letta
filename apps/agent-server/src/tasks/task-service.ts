@@ -16,7 +16,6 @@ import type { SubagentStartMode, TaskOutcome } from '../workers/types.ts';
  * the workers to run them, publishes `task` SSE events, and projects
  * `TaskRecord` into `ConversationTask`. Implements the bash `CommandHandoff`.
  */
-export type TaskService = TaskPort;
 
 export interface TaskServiceDeps {
   storage: Storage;
@@ -57,7 +56,7 @@ export interface TaskWorkers {
 
 const LIST_LIMIT = 200;
 
-class WorkerTaskService implements TaskService {
+class WorkerTaskService implements TaskPort {
   constructor(
     private readonly deps: TaskServiceDeps,
     private readonly workers: TaskWorkers
@@ -205,7 +204,7 @@ class WorkerTaskService implements TaskService {
 }
 
 /** The task service over the given storage, hub and workers. */
-export function createTaskService(deps: TaskServiceDeps, workers: TaskWorkers): TaskService {
+export function createTaskService(deps: TaskServiceDeps, workers: TaskWorkers): TaskPort {
   return new WorkerTaskService(deps, workers);
 }
 

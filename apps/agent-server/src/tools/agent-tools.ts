@@ -2,6 +2,7 @@ import type { JsonSchema } from '@artemis/llm';
 import { capText, errorResult, Tool, textResult, type ToolResult } from '@artemis/tools';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import { validatePresentTree } from '@artemis/contracts/present-validation';
+import { runAgentInputSchema } from '@artemis/contracts/tool-schemas';
 import presentTool from '@artemis/contracts/present-tool.json' with { type: 'json' };
 import type { SubagentDefinition } from '../subagents/definitions.ts';
 import type { AgentToolContext } from './index.ts';
@@ -30,21 +31,7 @@ export class RunAgentTool extends Tool<RunAgentInput, AgentToolContext> {
 
   constructor(definitions: readonly SubagentDefinition[]) {
     super();
-    this.inputSchema = {
-      type: 'object',
-      properties: {
-        subagent_type: {
-          type: 'string',
-          enum: definitions.map((definition) => definition.name),
-          description: definitions.map((definition) => `${definition.name}: ${definition.description}`).join(' | '),
-        },
-        description: { type: 'string', minLength: 1, description: 'Short title shown in the UI.' },
-        prompt: { type: 'string', minLength: 1, description: 'Complete assignment: the subagent sees nothing else.' },
-        resume_task_id: { type: 'string', minLength: 1, description: 'Continue this earlier subagent task.' },
-      },
-      required: ['subagent_type', 'description', 'prompt'],
-      additionalProperties: false,
-    };
+    this.inputSchema = runAgentInputSchema(definitions);
   }
 
   async execute(input: RunAgentInput, ctx: AgentToolContext): Promise<ToolResult> {

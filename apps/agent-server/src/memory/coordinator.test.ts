@@ -22,8 +22,8 @@ function setup(options: { enabled?: boolean; maxAttempts?: number } = {}) {
   const clock = new FakeClock();
   const storage = new EphemeralStorage({ clock });
   const store = new FakeMemoryStore();
-  const config = {
-    assistant: { name: 'Artemis', timezone: 'UTC' },
+  const config: Pick<AgentServerConfig, 'assistant' | 'memory'> = {
+    assistant: { name: 'Artemis', timezone: 'UTC', presentTool: false },
     memory: {
       enabled: options.enabled ?? true,
       hindsightUrl: 'http://hindsight:8888',
@@ -32,7 +32,7 @@ function setup(options: { enabled?: boolean; maxAttempts?: number } = {}) {
       recallTimeoutMs: { voice: 1500, text: 4000 },
       recallMaxTokens: { low: 800, mid: 1500, high: 3000 },
     },
-  } as unknown as AgentServerConfig;
+  };
   const coordinator = createMemoryCoordinator({
     store,
     storage,

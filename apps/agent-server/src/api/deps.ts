@@ -6,7 +6,7 @@ import type { AgentServerConfig } from '../config.ts';
 import type { ConversationService } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
-import type { TaskService } from '../tasks/task-service.ts';
+import type { TaskPort } from '../tools/task-port.ts';
 
 /**
  * Everything the HTTP app is built from (`createApp`). Each route module takes only the
@@ -16,7 +16,7 @@ import type { TaskService } from '../tasks/task-service.ts';
 export interface ApiDependencies {
   config: AgentServerConfig;
   conversations: ConversationService;
-  tasks: TaskService;
+  tasks: TaskPort;
   delivery: BackgroundDeliveryService;
   calls: CallSessions;
   voice: VoiceService;
