@@ -1,8 +1,10 @@
-import { Hono } from 'hono';
+import { getConnInfo } from '@hono/node-server/conninfo';
+import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { bearerToken, sameSecret } from './http';
+import { createHmac, randomBytes } from 'node:crypto';
+import { bearerToken } from './http';
+import { isLocalOrPrivateAddress, sameSecret } from './security';
 
 const COOKIE = 'artemis_session';
 const TTL = 90 * 24 * 60 * 60;
@@ -10,16 +12,12 @@ const TTL = 90 * 24 * 60 * 60;
 const LOGIN_WINDOW_MS = 60_000;
 const LOGIN_LIMIT_PER_CLIENT = 10;
 const LOGIN_LIMIT_GLOBAL = 50;
+/** The lockout of the global ceiling doubles on each repeat, up to this length. */
+const MAX_GLOBAL_LOCKOUT_MS = 15 * 60_000;
 /** Client windows kept in memory; expired windows are dropped when the map is full. */
 const MAX_TRACKED_CLIENTS = 10_000;
 
-export function equalSecret(a: string, b: string): boolean {
-  const left = Buffer.from(a),
-    right = Buffer.from(b);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
-/** Failed logins in the current window, for one key (a client address, or every client). */
+/** Failed logins in the current window, for one client address. */
 class FailureWindow {
   private failures = 0;
   private resetAt = 0;
@@ -44,27 +42,109 @@ class FailureWindow {
   }
 }
 
+/**
+ * The ceiling across all clients. When one window collects the limit of failures,
+ * logins are refused for a lockout that doubles on each repeat (60 s, 120 s, ... up to
+ * 15 min). A successful login clears the repeats. A full quiet window after the
+ * lockout ends clears them too.
+ */
+class GlobalCeiling {
+  private failures = 0;
+  private windowEnd = 0;
+  private lockedUntil = 0;
+  private repeats = 0;
+
+  /** Milliseconds until logins are accepted again; 0 while they are open. */
+  lockedFor(now: number): number {
+    return Math.max(0, this.lockedUntil - now);
+  }
+
+  fail(now: number): void {
+    if (now >= this.windowEnd) {
+      this.failures = 0;
+      this.windowEnd = now + LOGIN_WINDOW_MS;
+      if (now >= this.lockedUntil + LOGIN_WINDOW_MS) this.repeats = 0;
+    }
+    this.failures++;
+    if (this.failures < LOGIN_LIMIT_GLOBAL) return;
+    this.failures = 0;
+    this.repeats++;
+    this.lockedUntil =
+      now + Math.min(LOGIN_WINDOW_MS * 2 ** (this.repeats - 1), MAX_GLOBAL_LOCKOUT_MS);
+  }
+
+  /** A login succeeds only while the ceiling is open, so this resets the repeat count only. */
+  succeed(): void {
+    this.repeats = 0;
+  }
+}
+
+/** The socket address of the request, when the app is served by Node (absent in-process). */
+function peerAddress(c: Context): string | undefined {
+  try {
+    return getConnInfo(c).remote.address;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The address a login failure is counted against. nginx sets X-Real-IP from the socket
+ * and overwrites any value the client sent, so the header is read only when the direct
+ * peer is a loopback or private address (the proxy). Otherwise the socket address counts.
+ */
+function clientAddress(c: Context): string {
+  const peer = peerAddress(c);
+  const forwarded = c.req.header('X-Real-IP');
+  if (forwarded && peer && isLocalOrPrivateAddress(peer)) return forwarded;
+  return peer ?? 'unknown';
+}
+
+/** Every /api response is uncacheable. Relayed responses have immutable headers, so the header goes on a copy. */
+function withNoStore(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-store');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export function createAuth(password: string, deviceToken: string, voiceToken: string) {
   if (!password) throw new Error('Set ARTEMIS_PASSWORD in .env before starting the gateway');
   // The cookie is signed with a key derived from the password, so the password never signs directly.
   const signingKey = createHmac('sha256', password).update('artemis-session-signing-key').digest();
   const sign = (value: string) =>
     createHmac('sha256', signingKey).update(`artemis-session:${value}`).digest('base64url');
+  // Logged-out sessions, by token nonce, kept until the token itself expires (epoch seconds).
+  const revoked = new Map<string, number>();
   const valid = (token: string) => {
-    const [expires, nonce, signature = '', extra] = token.split('.');
+    const [expires = '', nonce = '', signature = '', extra] = token.split('.');
     return (
       !extra &&
       Boolean(nonce && signature) &&
       Number(expires) > Date.now() / 1000 &&
-      equalSecret(signature, sign(`${expires}.${nonce}`))
+      sameSecret(signature, sign(`${expires}.${nonce}`)) &&
+      !revoked.has(nonce)
     );
   };
+  const revoke = (token: string) => {
+    const [expires = '', nonce = ''] = token.split('.');
+    const now = Date.now() / 1000;
+    for (const [id, until] of revoked) if (until <= now) revoked.delete(id);
+    revoked.set(nonce, Number(expires));
+  };
   const app = new Hono();
-  // Login failures are limited per client and across all clients. The client address is
-  // the X-Real-IP header, which nginx sets from the socket address and overwrites whatever
-  // the client sent; the gateway trusts it only behind that proxy. Without the header,
-  // every request shares one client window.
-  const everyone = new FailureWindow(LOGIN_LIMIT_GLOBAL);
+  // Registered first, so it also sees the responses the authentication below returns early.
+  // A response that names no cache policy of its own (a JSON body, or a relayed one without
+  // Cache-Control) is uncacheable; a route or the agent-server that sets one keeps it.
+  app.use('/api/*', async (c, next) => {
+    await next();
+    if (!c.res.headers.has('Cache-Control')) c.res = withNoStore(c.res);
+  });
+  // Login failures are limited per client and across all clients (see clientAddress).
+  const everyone = new GlobalCeiling();
   const clients = new Map<string, FailureWindow>();
   const clientWindow = (key: string): FailureWindow => {
     const known = clients.get(key);
@@ -78,7 +158,6 @@ export function createAuth(password: string, deviceToken: string, voiceToken: st
     return window;
   };
   app.use('/api/*', async (c, next) => {
-    c.header('Cache-Control', 'no-store');
     const path = c.req.path;
     const internal =
       path.startsWith('/api/voice/conversations/') &&
@@ -115,22 +194,26 @@ export function createAuth(password: string, deviceToken: string, voiceToken: st
   });
   app.post('/api/auth/login', bodyLimit({ maxSize: 4096 }), async (c) => {
     const now = Date.now();
-    const client = clientWindow(c.req.header('X-Real-IP') ?? 'unknown');
-    if (everyone.blocked(now) || client.blocked(now)) {
-      c.header('Retry-After', '60');
-      return c.json({ error: 'Trop de tentatives. Réessayez dans une minute.' }, 429);
+    const client = clientWindow(clientAddress(c));
+    const globalWait = everyone.lockedFor(now);
+    if (globalWait > 0 || client.blocked(now)) {
+      c.header('Retry-After', String(globalWait > 0 ? Math.ceil(globalWait / 1000) : 60));
+      return c.json({ error: 'Trop de tentatives. Réessayez plus tard.' }, 429);
     }
     const body = await c.req.json().catch(() => null);
-    if (typeof body?.password !== 'string' || !equalSecret(body.password, password)) {
-      everyone.fail();
+    if (typeof body?.password !== 'string' || !sameSecret(body.password, password)) {
+      everyone.fail(now);
       client.fail();
       return c.json({ error: 'Mot de passe incorrect.' }, 401);
     }
+    everyone.succeed();
     const value = `${Math.floor(Date.now() / 1000) + TTL}.${randomBytes(24).toString('base64url')}`;
     setCookie(c, COOKIE, `${value}.${sign(value)}`, { ...cookieOptions(c), maxAge: TTL });
     return c.json({ authenticated: true });
   });
   app.post('/api/auth/logout', (c) => {
+    const token = getCookie(c, COOKIE) ?? '';
+    if (valid(token)) revoke(token);
     setCookie(c, COOKIE, '', { ...cookieOptions(c), maxAge: 0 });
     return c.json({ authenticated: false });
   });

@@ -1,12 +1,15 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+
+// routes/voice.ts still imports the comparator from here; new code imports ./security.
+export { sameSecret } from './security';
 
 /** Largest request body the gateway relays to the agent-server (uploads have their own route). */
 export const PROXY_BODY_LIMIT = 4 * 1024 * 1024;
 /** Largest JSON object the gateway parses from a request body. */
-export const JSON_BODY_LIMIT = 1_000_000;
+const JSON_BODY_LIMIT = 1_000_000;
 
 export class HttpError extends Error {
   constructor(
@@ -44,11 +47,10 @@ export function errorResponse(error: unknown, status = 500): Response {
   );
 }
 
-export type BoundedBody =
-  { ok: true; body: Uint8Array } | { ok: false; status: 400 | 413; error: string };
+type BoundedBody = { ok: true; body: Uint8Array } | { ok: false; status: 400 | 413; error: string };
 
 /** Reads a request body into memory, stopping as soon as it passes `maxBytes`. */
-export async function readBoundedBody(request: Request, maxBytes: number): Promise<BoundedBody> {
+async function readBoundedBody(request: Request, maxBytes: number): Promise<BoundedBody> {
   const declared = request.headers.get('content-length');
   if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) {
     return { ok: false, status: 413, error: 'Request body is too large' };
@@ -110,14 +112,6 @@ export async function jsonObject(
 /** The token of an `Authorization: Bearer` header; any other scheme has no bearer token. */
 export function bearerToken(req: Request): string | undefined {
   return /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')?.[1];
-}
-
-/** Compares a presented secret with the expected one in constant time. */
-export function sameSecret(presented: string | undefined, expected: string): boolean {
-  if (presented === undefined || !expected) return false;
-  const given = Buffer.from(presented);
-  const wanted = Buffer.from(expected);
-  return given.length === wanted.length && timingSafeEqual(given, wanted);
 }
 
 /**

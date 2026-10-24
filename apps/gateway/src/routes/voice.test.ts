@@ -1,12 +1,12 @@
 import { VOICE_DISPATCH_KEYS } from '@artemis/contracts/agent-server';
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { after, before, test } from 'node:test';
 import type { AgentServerClient } from '../agent-server/client';
-import { composeGateway } from '../compose';
+import { type GatewayDependencies, composeGateway } from '../compose';
 import { validateConfig } from '../config';
 import { createVoiceRoutes } from './voice';
 
@@ -17,22 +17,27 @@ const LIVEKIT = {
   apiSecret: 'route-test-secret-that-is-long-enough-for-hs256',
   agentName: 'assistant',
 };
-const root = mkdtempSync(join(tmpdir(), 'artemis-gateway-voice-'));
-after(() => rmSync(root, { recursive: true, force: true }));
-// The LiveKit token issuer comes from the composition root, as in server.ts.
-const { voiceTokens } = composeGateway(
-  validateConfig({
-    AGENT_SERVER_URL: 'http://127.0.0.1:9',
-    AGENT_SERVER_TOKEN: 'voice-route-agent-token',
-    ARTEMIS_PASSWORD: 'voice-route-password',
-    WORKSPACE_PATH: join(root, 'workspace'),
-    ARTEMIS_DATA_DIR: join(root, 'data'),
-    LIVEKIT_URL: LIVEKIT.url,
-    LIVEKIT_API_KEY: LIVEKIT.apiKey,
-    LIVEKIT_API_SECRET: LIVEKIT.apiSecret,
-    LIVEKIT_AGENT_NAME: LIVEKIT.agentName,
-  })
-);
+let root = '';
+let voiceTokens: GatewayDependencies['voiceTokens'];
+// The workspace root is created per run, under the OS temp dir, when the suite starts.
+before(async () => {
+  root = await mkdtemp(join(tmpdir(), 'artemis-gateway-voice-'));
+  // The LiveKit token issuer comes from the composition root, as in server.ts.
+  voiceTokens = composeGateway(
+    validateConfig({
+      AGENT_SERVER_URL: 'http://127.0.0.1:9',
+      AGENT_SERVER_TOKEN: 'voice-route-agent-token',
+      ARTEMIS_PASSWORD: 'voice-route-password',
+      WORKSPACE_PATH: join(root, 'workspace'),
+      ARTEMIS_DATA_DIR: join(root, 'data'),
+      LIVEKIT_URL: LIVEKIT.url,
+      LIVEKIT_API_KEY: LIVEKIT.apiKey,
+      LIVEKIT_API_SECRET: LIVEKIT.apiSecret,
+      LIVEKIT_AGENT_NAME: LIVEKIT.agentName,
+    })
+  ).voiceTokens;
+});
+after(() => rm(root, { recursive: true, force: true }));
 
 /** The agent-server calls the token route makes: the conversation and the warm-up. */
 const agentServer = {

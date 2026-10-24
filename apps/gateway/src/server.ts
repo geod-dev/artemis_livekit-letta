@@ -4,13 +4,11 @@ import { pathToFileURL } from 'node:url';
 import { createGatewayApp } from './app';
 import { composeGateway } from './compose';
 import { loadConfig } from './config';
+import { DeviceSync } from './devices/sync';
 
 export interface GatewayApplication {
   close(): Promise<void>;
 }
-
-/** The agent-server reports devices again this often, so a restarted instance learns them too. */
-const DEVICE_SYNC_EVERY_MS = 30_000;
 
 /** Compose, start and own all process resources of the gateway. */
 export async function startGateway(): Promise<GatewayApplication> {
@@ -20,24 +18,8 @@ export async function startGateway(): Promise<GatewayApplication> {
   attachments.registry.startCleanup();
   const app = createGatewayApp(deps);
 
-  // Each sync sends the full device list, one at a time, so the last request
-  // always carries the current list. Device changes retry through the hub.
-  let deviceSync: Promise<void> = Promise.resolve();
-  const syncDevices = () => {
-    deviceSync = deviceSync
-      .catch(() => {})
-      .then(() => agentServer.setManagedMcp(deviceHub.servers()));
-    return deviceSync;
-  };
-  deviceHub.onChange(syncDevices);
-  const reportDevices = () =>
-    syncDevices().catch((error) =>
-      console.error('[devices] could not sync devices to the agent-server', error)
-    );
-  void reportDevices();
-  const deviceSyncTimer = setInterval(() => void reportDevices(), DEVICE_SYNC_EVERY_MS);
-  deviceSyncTimer.unref();
-
+  const deviceSync = new DeviceSync({ devices: deviceHub, agent: agentServer });
+  deviceSync.start();
   deviceHub.start();
   const server = serve(
     { fetch: app.fetch, hostname: config.host, port: config.port },
@@ -56,7 +38,7 @@ export async function startGateway(): Promise<GatewayApplication> {
           resolve();
         });
       });
-      clearInterval(deviceSyncTimer);
+      deviceSync.stop();
       deviceHub.close();
       await attachments.registry.stopCleanup();
     })();

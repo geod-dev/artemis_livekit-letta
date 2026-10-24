@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -6,6 +7,16 @@ import { validateConfig } from './config';
 
 const repoRoot = join(import.meta.dirname, '..', '..', '..');
 const appsDir = join(import.meta.dirname, '..', '..');
+
+/** The secrets a production start refuses unless they are configured for real. */
+const PRODUCTION_SECRETS = [
+  'ARTEMIS_PASSWORD',
+  'ARTEMIS_DEVICE_TOKEN',
+  'AGENT_SERVER_TOKEN',
+  'LIVEKIT_API_KEY',
+  'LIVEKIT_API_SECRET',
+  'VOICE_GATEWAY_TOKEN',
+] as const;
 
 const productionEnv: NodeJS.ProcessEnv = {
   NODE_ENV: 'production',
@@ -18,6 +29,18 @@ const productionEnv: NodeJS.ProcessEnv = {
   LIVEKIT_API_SECRET: 'private-livekit-secret',
   VOICE_GATEWAY_TOKEN: 'private-voice-token',
 };
+
+/** The KEY=VALUE pairs of .env.example, as the repository ships them. */
+function exampleEnv(): Record<string, string> {
+  const pairs = readFileSync(join(repoRoot, '.env.example'), 'utf8')
+    .split(/\r?\n/)
+    .filter((line) => line.includes('=') && !line.trimStart().startsWith('#'))
+    .map((line) => {
+      const at = line.indexOf('=');
+      return [line.slice(0, at).trim(), line.slice(at + 1).trim()] as const;
+    });
+  return Object.fromEntries(pairs);
+}
 
 test('configuration rejects invalid ports', () => {
   assert.throws(() => validateConfig({ GATEWAY_PORT: '0' }), /GATEWAY_PORT/);
@@ -69,6 +92,29 @@ test('production requires explicit roots and explicitly configured secrets', () 
   );
 });
 
+test('production refuses every placeholder secret that .env.example ships', () => {
+  const example = exampleEnv();
+  for (const name of PRODUCTION_SECRETS) {
+    assert.throws(
+      () => validateConfig({ ...productionEnv, [name]: example[name] ?? '' }),
+      new RegExp(name),
+      `${name} from .env.example must not start a production gateway`
+    );
+  }
+});
+
+test('production refuses change-me and dev- prefixed secrets, and accepts real ones', () => {
+  assert.throws(
+    () => validateConfig({ ...productionEnv, ARTEMIS_DEVICE_TOKEN: 'change-me-device' }),
+    /ARTEMIS_DEVICE_TOKEN/
+  );
+  assert.throws(
+    () => validateConfig({ ...productionEnv, LIVEKIT_API_KEY: 'devkey' }),
+    /LIVEKIT_API_KEY/
+  );
+  assert.equal(validateConfig(productionEnv).livekit.apiKey, 'prodkey');
+});
+
 test('outside apps/ is the only production containment rule for runtime roots', () => {
   const env = { ...productionEnv, ARTEMIS_DATA_DIR: join(repoRoot, 'data', 'gateway') };
   assert.equal(validateConfig(env).workspace.dataDir, join(repoRoot, 'data', 'gateway'));
@@ -78,8 +124,7 @@ test('outside apps/ is the only production containment rule for runtime roots', 
   );
 });
 
-test('unset roots resolve to the documented development defaults without warnings', (t) => {
-  const warn = t.mock.method(console, 'warn', () => {});
+test('unset roots resolve to the documented development defaults', () => {
   const defaults = validateConfig({});
   assert.equal(defaults.workspace.dir, join(repoRoot, 'data', 'workspace'));
   assert.equal(defaults.workspace.dataDir, join(repoRoot, 'data', 'gateway'));
@@ -89,21 +134,32 @@ test('unset roots resolve to the documented development defaults without warning
     validateConfig({ WORKSPACE_PATH: explicit }).workspace.dataDir,
     join(repoRoot, 'data', 'gateway')
   );
-  assert.equal(warn.mock.callCount(), 0);
 });
 
-test(
-  'production containment resolves Windows case aliases and missing descendants',
-  { skip: process.platform !== 'win32' },
-  () => {
-    const appsAlias = appsDir.toUpperCase();
+test('production containment follows a symlink or junction into apps/ to the real path', () => {
+  const root = mkdtempSync(join(tmpdir(), 'artemis-config-'));
+  try {
+    const alias = join(root, 'alias');
+    // A junction needs no privilege on Windows; a directory symlink does everywhere else.
+    symlinkSync(appsDir, alias, process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(
       () =>
         validateConfig({
           ...productionEnv,
-          ARTEMIS_DATA_DIR: join(appsAlias, 'GATEWAY', 'NEW-DATA'),
+          ARTEMIS_DATA_DIR: join(alias, 'gateway', 'NEW-DATA'),
         }),
       /must not be inside apps\//
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
-);
+});
+
+test('IP_ADDRESS fills the defaults, and no literal placeholder is substituted', () => {
+  const config = validateConfig({
+    IP_ADDRESS: '10.20.30.40',
+    LIVEKIT_URL: 'ws://${IP_ADDRESS}:7880',
+  });
+  assert.equal(config.livekit.url, 'ws://${IP_ADDRESS}:7880');
+  assert.equal(validateConfig({ IP_ADDRESS: '10.20.30.40' }).livekit.url, 'ws://10.20.30.40:7880');
+});

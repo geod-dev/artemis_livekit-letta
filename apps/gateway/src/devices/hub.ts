@@ -1,3 +1,4 @@
+import type { McpServer } from '@artemis/contracts/chat-types';
 import {
   type DeviceTool,
   type DeviceToolResult,
@@ -5,8 +6,8 @@ import {
   parseDeviceTools,
 } from '@artemis/mcp/device-server';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { equalSecret } from '../auth';
-import type { McpServer } from '../chat-types';
+import { HttpError } from '../http';
+import { sameSecret } from '../security';
 
 /**
  * The one device tool with a file-export flow: the device names a local path and
@@ -90,20 +91,30 @@ export class DeviceHub {
     for (const name of this.devices.keys()) this.remove(name);
   }
 
-  async register(name: string, tools: unknown): Promise<string> {
+  async register(name: unknown, tools: unknown): Promise<string> {
     if (typeof name !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(name))
-      throw new Error('Device name must contain 1–64 letters, digits, underscores or hyphens');
-    const validated = parseDeviceTools(tools);
+      throw new HttpError(
+        'Device name must contain 1–64 letters, digits, underscores or hyphens',
+        400
+      );
+    let validated: DeviceTool[];
+    try {
+      validated = parseDeviceTools(tools);
+    } catch {
+      throw new HttpError('Invalid device tools', 400);
+    }
     if (!validated.every((t: DeviceTool) => /^[a-zA-Z0-9_-]{1,128}$/.test(t.name)))
-      throw new Error('Invalid MCP tool name');
+      throw new HttpError('Invalid MCP tool name', 400);
     if (new Set(validated.map((t: DeviceTool) => t.name)).size !== validated.length)
-      throw new Error('Duplicate tool names');
+      throw new HttpError('Duplicate tool names', 400);
     let expired = false;
     for (const [deviceName, device] of this.devices)
       if (this.now() - device.seen > LEASE_MS) expired = this.remove(deviceName) || expired;
     if (expired) this.refreshRegistry();
-    if (!this.devices.has(name) && this.devices.size >= 100) throw new Error('Too many devices');
-    this.remove(name);
+    // A connected device keeps its name. Only a new or lapsed name can be registered.
+    if (this.devices.has(name))
+      throw new HttpError('Device name is in use by a connected device', 409);
+    if (this.devices.size >= 100) throw new HttpError('Too many devices', 400);
     const session = randomUUID();
     this.devices.set(name, {
       session,
@@ -152,7 +163,7 @@ export class DeviceHub {
   private get(name: string, session: string, touch = false): Device {
     const d = this.devices.get(name);
     if (!d || d.session !== session || this.now() - d.seen > LEASE_MS)
-      throw new Error('Device session expired; register again');
+      throw new HttpError('Device session expired; register again', 409);
     if (touch) d.seen = this.now();
     return d;
   }
@@ -161,7 +172,7 @@ export class DeviceHub {
   }
   openStream(name: string, session: string) {
     const d = this.get(name, session, true);
-    if (d.streaming) throw new Error('Device already has an active connection');
+    if (d.streaming) throw new HttpError('Device already has an active connection', 409);
     d.streaming = true;
   }
   servers(): McpServer[] {
@@ -183,7 +194,7 @@ export class DeviceHub {
   }
   authenticate(name: string, header: string): string | null {
     const d = this.devices.get(name);
-    return d && this.now() - d.seen <= LEASE_MS && equalSecret(header, `Bearer ${d.key}`)
+    return d && this.now() - d.seen <= LEASE_MS && sameSecret(header, `Bearer ${d.key}`)
       ? d.session
       : null;
   }
@@ -192,7 +203,7 @@ export class DeviceHub {
   }
   async poll(name: string, session: string, signal: AbortSignal, touch = true): Promise<Rpc[]> {
     const d = this.get(name, session, touch);
-    if (d.wake) throw new Error('A poll is already active');
+    if (d.wake) throw new HttpError('A poll is already active', 409);
     if (!d.queue.length && !signal.aborted)
       await new Promise<void>((resolve) => {
         const done = () => {
@@ -206,13 +217,24 @@ export class DeviceHub {
         signal.addEventListener('abort', done, { once: true });
       });
     this.get(name, session, touch);
-    return signal.aborted ? [] : d.queue.splice(0);
+    const requests = d.queue.splice(0);
+    // A poll whose client has gone keeps its requests queued for the next poll.
+    if (signal.aborted) {
+      d.queue.unshift(...requests);
+      return [];
+    }
+    return requests;
   }
   result(name: string, session: string, id: string, result: unknown) {
     this.get(name, session, true);
     const p = this.pending.get(id);
-    if (!p || p.session !== session) throw new Error('Unknown or expired tool call');
-    const validated = parseDeviceToolResult(result);
+    if (!p || p.session !== session) throw new HttpError('Unknown or expired tool call', 409);
+    let validated: DeviceToolResult;
+    try {
+      validated = parseDeviceToolResult(result);
+    } catch {
+      throw new HttpError('Invalid tool result', 400);
+    }
     clearTimeout(p.timer);
     this.pending.delete(id);
     p.resolve(validated);
@@ -220,7 +242,7 @@ export class DeviceHub {
   beginFileUpload(name: string, session: string, id: string): string {
     this.checkFileUpload(name, session, id);
     const p = this.pending.get(id)!;
-    if (p.uploadStarted) throw new Error('File upload already started');
+    if (p.uploadStarted) throw new HttpError('File upload already started', 409);
     p.uploadStarted = true;
     return p.sourcePath!;
   }
@@ -228,7 +250,7 @@ export class DeviceHub {
     this.get(name, session, true);
     const p = this.pending.get(id);
     if (!p || p.session !== session || p.tool !== FILE_EXPORT_TOOL || !p.sourcePath)
-      throw new Error('No matching pending file export');
+      throw new HttpError('No matching pending file export', 409);
   }
   async call(
     name: string,

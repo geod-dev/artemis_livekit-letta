@@ -1,3 +1,4 @@
+import type { McpServer } from '@artemis/contracts/chat-types';
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -5,7 +6,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import type { McpServer } from '../chat-types';
+import { HttpError } from '../http';
 import { createDeviceRoutes } from './api';
 import { DeviceHub } from './hub';
 import { createDeviceMcpRoutes } from './mcp-endpoint';
@@ -150,30 +151,56 @@ test('devices with the same tool name have independent MCP endpoints and lifetim
   }
 });
 
-test('replacement, missed heartbeat and internal endpoint authentication are scoped per device', async () => {
+test('a connected device keeps its name, and a lapsed name can be registered again', async () => {
   const f = await fixture();
   try {
     const session = await f.hub.register('laptop', tools);
     const oldServer = f.hub.servers()[0]!;
     assert.equal((await fetch(oldServer.url!)).status, 401);
     const call = f.hub.call('laptop', session, 'open_url', {});
-    await f.hub.poll('laptop', session, new AbortController().signal);
+    const [request] = await f.hub.poll('laptop', session, new AbortController().signal);
+    // A second registration of a live name is refused, and the connected device is not evicted.
+    await assert.rejects(
+      f.hub.register('laptop', tools),
+      (error) => error instanceof HttpError && error.status === 409
+    );
+    assert.equal(f.hub.servers().length, 1);
+    assert.equal(f.hub.tools('laptop', session).length, 1);
+    f.hub.result('laptop', session, request!.id, { content: [{ type: 'text', text: 'Opened' }] });
+    assert.notEqual((await call).isError, true);
+
+    // Once the lease lapses, the name can be registered again and the old session is dead.
+    f.advance(75_001);
+    await f.hub.expire();
     const replacement = await f.hub.register('laptop', tools);
     assert.notEqual(replacement, session);
-    assert.equal((await call).isError, true);
-    // The replaced session can no longer unregister the device, which stays connected.
+    await assert.rejects(f.hub.poll('laptop', session, new AbortController().signal), /expired/);
     await f.hub.unregister('laptop', session);
     assert.equal(f.hub.servers().length, 1);
-    assert.equal((await fetch(oldServer.url!, { headers: oldServer.headers })).status, 401);
-    await assert.rejects(f.hub.poll('laptop', session, new AbortController().signal), /expired/);
-    const current = await f.hub.register('laptop', tools);
     f.advance(75_001);
     await f.hub.expire();
     assert.deepEqual(f.hub.servers(), []);
-    assert.throws(() => f.hub.tools('laptop', current), /expired/);
+    assert.throws(() => f.hub.tools('laptop', replacement), /expired/);
     await assert.rejects(f.hub.register('../bad', tools));
   } finally {
     await f.close();
+  }
+});
+
+test('requests queued before an aborted poll are delivered by the next poll', async () => {
+  const hub = new DeviceHub({ baseUrl: () => 'http://gateway.test' });
+  try {
+    const session = await hub.register('laptop', tools);
+    const pending = hub.call('laptop', session, 'open_url', { url: 'https://example.com' });
+    const aborted = new AbortController();
+    aborted.abort();
+    assert.deepEqual(await hub.poll('laptop', session, aborted.signal), []);
+    const [request] = await hub.poll('laptop', session, new AbortController().signal);
+    assert.deepEqual(request?.params.arguments, { url: 'https://example.com' });
+    hub.result('laptop', session, request!.id, { content: [{ type: 'text', text: 'Opened' }] });
+    assert.notEqual((await pending).isError, true);
+  } finally {
+    hub.close();
   }
 });
 

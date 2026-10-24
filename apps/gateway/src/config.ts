@@ -34,7 +34,21 @@ const defaultDataDir = join(repoDir, 'data', 'gateway');
 let rootEnvLoaded = false;
 
 function value(env: NodeJS.ProcessEnv, name: string, fallback: string): string {
-  return (env[name]?.trim() || fallback).replaceAll('${IP_ADDRESS}', env.IP_ADDRESS || '127.0.0.1');
+  return env[name]?.trim() || fallback;
+}
+
+function isProduction(env: NodeJS.ProcessEnv): boolean {
+  return env.NODE_ENV === 'production';
+}
+
+/** Empty, the development fallback, or a placeholder shipped in .env.example (change-me..., dev-...). */
+function isPlaceholderSecret(configured: string | undefined, fallback: string): boolean {
+  return (
+    !configured ||
+    configured === fallback ||
+    configured.startsWith('change-me') ||
+    configured.startsWith('dev-')
+  );
 }
 
 function integer(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number): number {
@@ -69,7 +83,7 @@ function canonicalPath(path: string): string {
 /** Validate a supplied environment without loading files, for deployment checks and tests. */
 export function validateConfig(env: NodeJS.ProcessEnv): AppConfig {
   const ip = value(env, 'IP_ADDRESS', '127.0.0.1');
-  const production = env.NODE_ENV === 'production';
+  const production = isProduction(env);
   const workspaceValue = env.WORKSPACE_PATH?.trim();
   const workspaceDir = workspaceValue ? resolve(workspaceValue) : defaultWorkspace;
   const dataValue = env.ARTEMIS_DATA_DIR?.trim();
@@ -103,9 +117,8 @@ export function validateConfig(env: NodeJS.ProcessEnv): AppConfig {
       ['LIVEKIT_API_SECRET', 'secret'],
       ['VOICE_GATEWAY_TOKEN', DEV_VOICE_GATEWAY_TOKEN],
     ] as const) {
-      const configured = env[name]?.trim();
-      if (!configured || configured === fallback)
-        throw new Error(`${name} must be explicitly set to a non-development secret in production`);
+      if (isPlaceholderSecret(env[name]?.trim(), fallback))
+        throw new Error(`${name} must be set to a real secret in production, not a placeholder`);
     }
   }
   return {
@@ -146,11 +159,8 @@ export function loadConfig(): AppConfig {
     if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
     rootEnvLoaded = true;
   }
+  // Production secrets are checked by validateConfig; createAuth checks the login password.
   const config = validateConfig(process.env);
-  if (!config.auth.password)
-    throw new Error('Set ARTEMIS_PASSWORD in .env before starting the gateway');
-  if (process.env.NODE_ENV === 'production' && !config.auth.deviceToken)
-    throw new Error('Set ARTEMIS_DEVICE_TOKEN in production');
   if (!config.voiceGatewayToken)
     throw new Error('Set VOICE_GATEWAY_TOKEN in .env before starting the gateway');
   return config;

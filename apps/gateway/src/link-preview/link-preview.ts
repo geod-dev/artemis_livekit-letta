@@ -1,9 +1,22 @@
 /** Fetch a public web page for its link preview, refusing private destinations. */
+import type { LookupAddress } from 'node:dns';
 import { lookup } from 'node:dns/promises';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP } from 'node:net';
 import { type LinkMetadata, linkMetadata } from './link-description';
+
+/** How a preview reaches the network. Production uses DNS and the page's own address; tests inject both. */
+export interface PreviewNetwork {
+  /** The addresses a host name may use. Every one must be public. */
+  lookup?: (hostname: string) => Promise<LookupAddress[]>;
+  /** The address actually dialled for a validated one. The URL keeps its host name for Host and TLS. */
+  dial?: (address: LookupAddress) => LookupAddress;
+  /** Ports a preview may come from. */
+  ports?: readonly number[];
+}
+
+const DEFAULT_PORTS = [80, 443];
 
 const blocked = new BlockList();
 for (const [ip, prefix] of [
@@ -32,22 +45,28 @@ function isPublic(address: string): boolean {
   return family === 6 && /^[23]/.test(address) && !blocked.check(address, 'ipv6');
 }
 
-async function readPage(url: URL, signal: AbortSignal, redirects = 0): Promise<string> {
+async function readPage(
+  url: URL,
+  signal: AbortSignal,
+  network: Required<PreviewNetwork>,
+  redirects = 0
+): Promise<string> {
   if (
     !['http:', 'https:'].includes(url.protocol) ||
     url.username ||
     url.password ||
-    (url.port && url.port !== '80' && url.port !== '443')
+    (url.port && !network.ports.includes(Number(url.port)))
   )
     throw new Error('Unsupported URL');
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
-  const addresses = await lookup(hostname, { all: true });
+  const addresses = await network.lookup(hostname);
   if (!addresses.length || addresses.some(({ address }) => !isPublic(address)))
     throw new Error('Private destination');
   signal.throwIfAborted();
   // Pin the validated address so DNS cannot change between validation and connection.
-  const address = addresses[0];
-  if (!address) throw new Error('Private destination');
+  const validated = addresses[0];
+  if (!validated) throw new Error('Private destination');
+  const address = network.dial(validated);
   return new Promise((resolve, reject) => {
     const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
       url,
@@ -70,7 +89,9 @@ async function readPage(url: URL, signal: AbortSignal, redirects = 0): Promise<s
             return;
           }
           try {
-            resolve(readPage(new URL(response.headers.location, url), signal, redirects + 1));
+            resolve(
+              readPage(new URL(response.headers.location, url), signal, network, redirects + 1)
+            );
           } catch (error) {
             reject(error);
           }
@@ -102,6 +123,14 @@ async function readPage(url: URL, signal: AbortSignal, redirects = 0): Promise<s
 }
 
 /** The title and description of a public page (5 s budget). */
-export async function linkPreview(href: string): Promise<LinkMetadata> {
-  return linkMetadata(await readPage(new URL(href), AbortSignal.timeout(5000)));
+export async function linkPreview(
+  href: string,
+  network: PreviewNetwork = {}
+): Promise<LinkMetadata> {
+  const resolved: Required<PreviewNetwork> = {
+    lookup: network.lookup ?? ((hostname) => lookup(hostname, { all: true })),
+    dial: network.dial ?? ((address) => address),
+    ports: network.ports ?? DEFAULT_PORTS,
+  };
+  return linkMetadata(await readPage(new URL(href), AbortSignal.timeout(5000), resolved));
 }

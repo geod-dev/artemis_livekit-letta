@@ -2,6 +2,7 @@ import type { WorkspaceTransport } from '@artemis/workspace';
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { composeWorkspace } from '../compose';
@@ -14,7 +15,7 @@ function routesFor(root: string): Hono {
 }
 
 test('workspace file GET and HEAD use inspected MIME and bounded byte ranges', async () => {
-  const root = await mkdtemp(join(process.cwd(), '.test-workspace-file-'));
+  const root = await mkdtemp(join(tmpdir(), 'artemis-workspace-file-'));
   const app = routesFor(root);
   try {
     await writeFile(join(root, 'note.txt'), 'abcdef');
@@ -40,14 +41,16 @@ test('workspace file GET and HEAD use inspected MIME and bounded byte ranges', a
 });
 
 test('a symlink to a workspace file is served under the target name', async (ctx) => {
-  const root = await mkdtemp(join(process.cwd(), '.test-workspace-link-'));
+  const root = await mkdtemp(join(tmpdir(), 'artemis-workspace-link-'));
   const app = routesFor(root);
   try {
     await writeFile(join(root, 'report.txt'), 'linked body');
     try {
       await symlink(join(root, 'report.txt'), join(root, 'shared.txt'), 'file');
-    } catch {
-      return ctx.skip('file symlinks need privileges on this platform');
+    } catch (error) {
+      // Windows needs developer mode or a privilege for file symlinks. CI must not skip this.
+      if (process.env.CI) throw error;
+      return ctx.skip(`file symlinks are unavailable here: ${(error as Error).message}`);
     }
     const inline = await app.fetch(new Request('http://localhost/api/workspace/shared.txt'));
     assert.equal(inline.status, 200);

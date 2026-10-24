@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
@@ -9,8 +10,8 @@ import { composeWorkspace } from '../compose';
 import { createAttachmentRoutes } from './attachments';
 
 test('upload rejects oversized streamed bodies before multipart parsing without content-length', async () => {
-  const root = await mkdtemp(join(process.cwd(), '.test-workspace-upload-'));
-  const state = await mkdtemp(join(process.cwd(), '.test-workspace-upload-state-'));
+  const root = await mkdtemp(join(tmpdir(), 'artemis-attachments-upload-'));
+  const state = await mkdtemp(join(tmpdir(), 'artemis-attachments-upload-state-'));
   try {
     const app = new Hono().route(
       '/api',

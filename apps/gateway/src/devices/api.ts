@@ -1,25 +1,41 @@
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import { errorResponse } from '../http';
+import { MAX_UPLOAD_BYTES } from '../attachments/attachment-policy';
+import { HttpError, errorResponse, jsonObject, requestLimit } from '../http';
 import { saveDeviceFile } from './files';
 import type { DeviceHub } from './hub';
 
-/** The text of a failure, for the device client: the message without the error's class name. */
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+const REGISTER_BODY_LIMIT = 256_000;
+/** A 10 MB screenshot is about 13.4 MB when base64 encoded in JSON. */
+const RESULT_BODY_LIMIT = 16_000_000;
+const NOT_A_JSON_OBJECT = 'Request body must be a JSON object';
+
+/** A file upload declares its size, which is checked before any byte is stored. */
+function checkDeclaredSize(request: Request): void {
+  const declared = request.headers.get('Content-Length');
+  if (declared === null || !/^\d+$/.test(declared))
+    throw new HttpError('Upload requires a Content-Length header', 400);
+  if (Number(declared) > MAX_UPLOAD_BYTES)
+    throw new HttpError(
+      `File is larger than the ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB upload limit`,
+      413
+    );
 }
 
-/** The HTTP API a device client uses: registration, its event stream, requests and results. */
+/**
+ * The HTTP API a device client uses: registration, its event stream, requests and results.
+ * Client-facing failures are HttpErrors from the hub; anything else is a masked 500.
+ */
 export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport): Hono {
   const routes = new Hono();
-  routes.post('/register', bodyLimit({ maxSize: 256_000 }), async (c) => {
+  routes.post('/register', requestLimit(REGISTER_BODY_LIMIT), async (c) => {
+    const body = await jsonObject(c.req.raw, REGISTER_BODY_LIMIT);
+    if (!body) return errorResponse(NOT_A_JSON_OBJECT, 400);
     try {
-      const body = await c.req.json();
       return c.json({ session: await hub.register(body.name, body.tools) });
-    } catch (e) {
-      return errorResponse(errorText(e), 400);
+    } catch (error) {
+      return errorResponse(error);
     }
   });
   const sessionOf = (c: { req: { header: (name: string) => string | undefined } }) =>
@@ -29,6 +45,7 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
       session = sessionOf(c),
       id = c.req.param('id');
     try {
+      checkDeclaredSize(c.req.raw);
       const sourcePath = hub.beginFileUpload(name, session, id);
       return c.json(
         await saveDeviceFile(workspace, c.req.raw, sourcePath, () =>
@@ -36,7 +53,7 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
         )
       );
     } catch (error) {
-      return errorResponse(errorText(error), 409);
+      return errorResponse(error);
     }
   });
   routes.get('/:name/events', (c) => {
@@ -44,8 +61,8 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
       session = sessionOf(c);
     try {
       hub.openStream(name, session);
-    } catch (e) {
-      return errorResponse(errorText(e), 409);
+    } catch (error) {
+      return errorResponse(error);
     }
     return streamSSE(c, async (stream) => {
       const controller = new AbortController();
@@ -78,41 +95,41 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
       return c.json({
         requests: await hub.poll(c.req.param('name'), sessionOf(c), c.req.raw.signal),
       });
-    } catch (e) {
-      return errorResponse(errorText(e), 409);
+    } catch (error) {
+      return errorResponse(error);
     }
   });
   routes.post('/:name/heartbeat', (c) => {
     try {
       hub.heartbeat(c.req.param('name'), sessionOf(c));
       return c.json({ ok: true });
-    } catch (e) {
-      return errorResponse(errorText(e), 409);
+    } catch (error) {
+      return errorResponse(error);
     }
   });
   routes.post('/:name/disconnect', async (c) => {
     try {
       await hub.unregister(c.req.param('name'), sessionOf(c));
       return c.json({ ok: true });
-    } catch (e) {
-      return errorResponse(errorText(e), 503);
+    } catch (error) {
+      return errorResponse(error, 503);
     }
   });
-  // A 10 MB screenshot is about 13.4 MB when base64 encoded in JSON.
-  routes.post('/:name/results', bodyLimit({ maxSize: 16_000_000 }), async (c) => {
+  routes.post('/:name/results', requestLimit(RESULT_BODY_LIMIT), async (c) => {
+    const body = await jsonObject(c.req.raw, RESULT_BODY_LIMIT);
+    if (!body) return errorResponse(NOT_A_JSON_OBJECT, 400);
     try {
-      const body = await c.req.json();
       hub.result(
         c.req.param('name'),
         sessionOf(c),
-        body.id,
+        String(body.id),
         body.error
           ? { isError: true, content: [{ type: 'text', text: JSON.stringify(body.error) }] }
           : body.result
       );
       return c.json({ ok: true });
-    } catch (e) {
-      return errorResponse(errorText(e), 409);
+    } catch (error) {
+      return errorResponse(error);
     }
   });
   return routes;
