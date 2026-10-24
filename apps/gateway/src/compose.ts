@@ -2,7 +2,7 @@
  * Composition root for the gateway: the only module that chooses vendor
  * implementations and builds the shared dependencies. The workspace is a local
  * directory (`@artemis/workspace/filesystem`), LiveKit and Groq sit behind the
- * interfaces in `src/vendor`, and device MCP endpoints are served through
+ * ports of `@artemis/voice-services`, and device MCP endpoints are served through
  * `@artemis/mcp/device-server`. Modules receive these values; none reads a
  * module-level singleton.
  */
@@ -11,6 +11,8 @@ import {
   parseDeviceToolResult,
   parseDeviceTools,
 } from '@artemis/mcp/device-server';
+import { createGroqTranscriber } from '@artemis/voice-services/groq';
+import { createVoiceTokenIssuer } from '@artemis/voice-services/livekit';
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
 import { mkdirSync } from 'node:fs';
@@ -23,8 +25,6 @@ import type { LinkMetadata } from './link-preview/link-description.ts';
 import { linkPreview } from './link-preview/link-preview.ts';
 import type { TranscriptionPort } from './routes/transcription.ts';
 import type { VoiceTokenPort } from './routes/voice.ts';
-import { createGroqTranscriber } from './vendor/groq/transcription.ts';
-import { createVoiceTokenIssuer } from './vendor/livekit/tokens.ts';
 
 export interface GatewayDependencies {
   config: AppConfig;

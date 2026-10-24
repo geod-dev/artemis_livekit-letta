@@ -18,10 +18,10 @@
   "dependencies": {
     "@artemis/contracts": "workspace:*",
     "@artemis/mcp": "workspace:*",
+    "@artemis/voice-services": "workspace:*",
     "@artemis/workspace": "workspace:*",
     "@hono/node-server": "^1.19.5",
-    "hono": "^4.10.1",
-    "livekit-server-sdk": "^2.19.1"
+    "hono": "^4.10.1"
   },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",

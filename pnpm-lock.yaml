@@ -78,6 +78,9 @@ importers:
       '@artemis/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@artemis/voice-services':
+        specifier: workspace:*
+        version: link:../../packages/voice-services
       '@artemis/workspace':
         specifier: workspace:*
         version: link:../../packages/workspace
@@ -87,9 +90,6 @@ importers:
       hono:
         specifier: ^4.10.1
         version: 4.13.13
-      livekit-server-sdk:
-        specifier: ^2.19.1
-        version: 2.19.2
     devDependencies:
       '@trivago/prettier-plugin-sort-imports':
         specifier: ^5.2.2
@@ -245,6 +245,9 @@ importers:
 
   packages/agent-loop:
     dependencies:
+      '@artemis/core':
+        specifier: workspace:*
+        version: link:../core
       '@artemis/llm':
         specifier: workspace:*
         version: link:../llm
@@ -252,9 +255,6 @@ importers:
         specifier: workspace:*
         version: link:../tools
     devDependencies:
-      '@artemis/core':
-        specifier: workspace:*
-        version: link:../core
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
@@ -407,6 +407,25 @@ importers:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+      tsx:
+        specifier: ^4.20.6
+        version: 4.23.15
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/voice-services:
+    dependencies:
+      '@artemis/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      livekit-server-sdk:
+        specifier: ^2.19.1
+        version: 2.19.2
     devDependencies:
       '@types/node':
         specifier: ^24.0.0

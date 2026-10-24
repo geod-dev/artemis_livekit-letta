@@ -1,7 +1,7 @@
 import { VOICE_DISPATCH_KEYS } from '@artemis/contracts/agent-server';
 import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
 import { randomUUID } from 'node:crypto';
-import type { AppConfig } from '../../config.ts';
+import type { LiveKitSettings } from '../../types.ts';
 
 /** The browser's connection details for a LiveKit room (the route's VoiceToken). */
 interface VoiceToken {
@@ -20,7 +20,7 @@ type Grant = Parameters<AccessToken['addGrant']>[0];
  * agent dispatched into it) and a warm-up before any conversation exists (a room
  * with no agent).
  */
-export function createVoiceTokenIssuer(livekit: AppConfig['livekit']) {
+export function createVoiceTokenIssuer(livekit: LiveKitSettings) {
   const issue = async (
     roomName: string,
     ttl: string,

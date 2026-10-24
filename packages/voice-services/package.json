@@ -1,0 +1,25 @@
+{
+  "name": "@artemis/voice-services",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Voice providers behind ports: the LiveKit token issuer and the Groq speech-to-text transcriber. Vendor SDK code lives in src/vendor and is reached only through the package root, from composition roots.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./groq": "./src/vendor/groq/transcription.ts",
+    "./livekit": "./src/vendor/livekit/tokens.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@artemis/contracts": "workspace:*",
+    "livekit-server-sdk": "^2.19.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
