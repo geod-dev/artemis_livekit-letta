@@ -55,9 +55,7 @@ test('PostgresStorage migrations', { skip }, async (t) => {
   });
 });
 
-if (baseUrl === undefined) {
-  test('PostgresStorage contract', { skip }, () => {});
-} else {
+if (baseUrl !== undefined) {
   storageContract('PostgresStorage', async (): Promise<StorageFixture> => {
     const database = await createTempDatabase(baseUrl ?? '');
     const storage = new PostgresStorage({ connectionString: database.url });

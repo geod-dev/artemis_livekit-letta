@@ -1,3 +1,4 @@
+import { errorMessage, type ToolDefinition } from '@artemis/core';
 import type {
   AssistantContent,
   LlmMessage,
@@ -5,7 +6,6 @@ import type {
   LlmResponse,
   LlmUsage,
   ModelRoute,
-  ToolDefinition,
   ToolUseBlock,
 } from '@artemis/llm';
 import { errorResult, type ToolContext, type ToolResult, type Toolset } from '@artemis/tools';
@@ -382,8 +382,4 @@ class CompletionQueue<T> {
     if (this.ready.length > 0) return Promise.resolve(this.ready.shift() as T);
     return new Promise((resolve) => this.waiting.push(resolve));
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

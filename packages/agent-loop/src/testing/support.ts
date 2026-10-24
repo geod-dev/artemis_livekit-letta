@@ -1,3 +1,4 @@
+import type { ToolDefinition } from '@artemis/core';
 import {
   LlmProvider,
   type AssistantContent,
@@ -6,7 +7,6 @@ import {
   type LlmStreamEvent,
   type ModelRoute,
   type StopReason,
-  type ToolDefinition,
   type ToolUseBlock,
 } from '@artemis/llm';
 import { errorResult, Toolset, type ToolContext, type ToolResult } from '@artemis/tools';

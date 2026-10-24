@@ -12,7 +12,7 @@ import {
   type RetainRequest,
 } from '../../store.ts';
 
-export interface HindsightMemoryOptions {
+interface HindsightMemoryOptions {
   /** `http://hindsight:8888` */
   baseUrl: string;
   /** Sent as `Authorization: Bearer` (ApiKeyTenantExtension). */

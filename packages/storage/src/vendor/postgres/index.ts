@@ -20,7 +20,7 @@ import { PgRepositories } from './repositories.ts';
 import { PgSession } from './session.ts';
 import { Migrator, type MigrationFile, readMigrationFiles } from './migrator.ts';
 
-export interface PostgresStorageOptions {
+interface PostgresStorageOptions {
   /** `postgresql://artemis:...@postgres:5432/artemis` */
   connectionString: string;
   poolSize?: number;

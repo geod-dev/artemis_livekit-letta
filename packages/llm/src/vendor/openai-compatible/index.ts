@@ -1,4 +1,5 @@
 import OpenAI, { APIConnectionError, APIError, APIUserAbortError } from 'openai';
+import { errorMessage } from '@artemis/core';
 import { ResponseAccumulator } from '../../accumulator.ts';
 import { llmErrorFromHttp, llmNetworkError } from '../../http-errors.ts';
 import { LlmError, LlmProvider, type ModelInfo } from '../../provider.ts';
@@ -8,7 +9,7 @@ import { openAiCompatibleModelInfo } from './models.ts';
 import { buildChatRequest } from './request.ts';
 import { OpenAiStreamMapper } from './stream.ts';
 
-export interface OpenAiCompatibleProviderOptions {
+interface OpenAiCompatibleProviderOptions {
   /** Base URL used as-is (Telnyx: https://api.telnyx.com/v2/ai/openai). No `/v1` is appended. */
   baseUrl: string;
   apiKey: string;
@@ -69,7 +70,7 @@ function toError(error: unknown): LlmError {
   if (error instanceof APIError) {
     return llmErrorFromHttp(error.status, error.message, error);
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   return new LlmError(
     'unknown',
     message,

@@ -12,11 +12,11 @@
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@artemis/core": "workspace:*",
     "@artemis/llm": "workspace:*",
     "@artemis/tools": "workspace:*"
   },
   "devDependencies": {
-    "@artemis/core": "workspace:*",
     "@types/node": "^24.0.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"

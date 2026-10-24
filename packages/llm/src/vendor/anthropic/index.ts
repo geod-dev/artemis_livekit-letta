@@ -1,4 +1,5 @@
 import Anthropic, { APIConnectionError, APIError, APIUserAbortError } from '@anthropic-ai/sdk';
+import { errorMessage } from '@artemis/core';
 import { ResponseAccumulator } from '../../accumulator.ts';
 import { llmErrorFromHttp, llmNetworkError } from '../../http-errors.ts';
 import { LlmError, LlmProvider, type ModelInfo } from '../../provider.ts';
@@ -8,7 +9,7 @@ import { anthropicModelInfo } from './models.ts';
 import { buildAnthropicCall } from './request.ts';
 import { AnthropicStreamMapper, type AnthropicRawEvent } from './stream.ts';
 
-export interface AnthropicProviderOptions {
+interface AnthropicProviderOptions {
   /** Defaults to the SDK's own credential resolution (ANTHROPIC_API_KEY ...). */
   apiKey?: string;
   baseUrl?: string;
@@ -78,7 +79,7 @@ function toError(error: unknown): LlmError {
   if (error instanceof APIError) {
     return llmErrorFromHttp(error.status, error.message, error);
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   return new LlmError(
     'unknown',
     message,

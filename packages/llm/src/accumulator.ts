@@ -1,3 +1,4 @@
+import { isRecord } from '@artemis/core';
 import type {
   AssistantContent,
   LlmResponse,
@@ -213,12 +214,8 @@ export function parseToolInput(json: string): unknown {
   if (!json.trim()) return {};
   try {
     const parsed: unknown = JSON.parse(json);
-    return isPlainObject(parsed) ? parsed : {};
+    return isRecord(parsed) ? parsed : {};
   } catch {
     return {};
   }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

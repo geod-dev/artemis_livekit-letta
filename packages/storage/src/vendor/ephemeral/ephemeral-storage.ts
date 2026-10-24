@@ -17,7 +17,7 @@ import {
 import { EphemeralAccess, EphemeralDatabase } from './database.ts';
 import { EphemeralRepositories } from './repositories.ts';
 
-export interface EphemeralStorageOptions {
+interface EphemeralStorageOptions {
   /** Time source for `created_at`-style columns (default: system clock). */
   clock?: Clock;
 }
