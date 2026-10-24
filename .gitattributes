@@ -1,0 +1,15 @@
+# Text files are stored and checked out with LF endings, whatever core.autocrlf says. Shell
+# scripts, Dockerfiles and nginx.conf run inside Linux containers, and the Python and Node
+# tools read the same files on every platform.
+* text=auto eol=lf
+
+# Windows batch files keep CRLF, as the Gradle wrapper ships them.
+*.bat text eol=crlf
+
+# Binary assets: never converted, never diffed as text.
+*.jar binary
+*.keystore binary
+*.jks binary
+*.png binary
+*.ico binary
+*.otf binary

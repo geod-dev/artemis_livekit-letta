@@ -27,3 +27,5 @@ coverage/
 **/.pytest_cache/
 **/.ruff_cache/
 /data/
+# Per-developer Claude Code permissions; the shared settings file is tracked.
+.claude/settings.local.json

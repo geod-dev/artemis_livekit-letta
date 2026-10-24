@@ -17,7 +17,8 @@ jobs:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
     services:
       postgres:
-        image: pgvector/pgvector:pg18
+        # Same tag as deploy/postgres/Dockerfile, so the suites run against the deployed image.
+        image: pgvector/pgvector:0.8.7-pg18-bookworm
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -43,7 +44,7 @@ jobs:
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm --version
 
-      - name: Set up uv (same line as the voice-agent image) and Python from .python-version
+      - name: Set up uv (same patch release as the voice-agent image) and Python from .python-version
         uses: astral-sh/setup-uv@v10.3.2
         with:
           version: "0.7.22"
@@ -92,6 +93,13 @@ jobs:
 
       - name: Build images
         run: docker compose -f docker-compose.yml build gateway agent-server web voice-agent
+
+      # The Coolify stack has its own web service, so its image is built and its nginx config tested
+      # on its own. The upstreams are variables resolved at request time, so nginx -t needs no hosts.
+      - name: Build the Coolify web image and test its nginx config
+        run: |
+          docker compose -f docker-compose.coolify.yml build web
+          docker compose -f docker-compose.coolify.yml run --rm --no-deps --entrypoint nginx web -t
 
       - name: Build the Coolify Postgres image
         run: docker build -t artemis-postgres deploy/postgres
