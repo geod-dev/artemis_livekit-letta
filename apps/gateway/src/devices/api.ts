@@ -1,10 +1,10 @@
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { MAX_UPLOAD_BYTES } from '../attachments/limits';
-import { HttpError, errorResponse, jsonObject, requestLimit } from '../http';
-import { saveDeviceFile } from './files';
-import type { DeviceHub } from './hub';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
+import { HttpError, errorResponse, jsonObject, requestLimit } from '../http.ts';
+import { saveDeviceFile } from './files.ts';
+import type { DeviceHub } from './hub.ts';
 
 const REGISTER_BODY_LIMIT = 256_000;
 /** A 10 MB screenshot is about 13.4 MB when base64 encoded in JSON. */

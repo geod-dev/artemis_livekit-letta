@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { linkMetadata } from './link-description';
+import { linkMetadata } from './link-description.ts';
 
 test('prefers social preview titles and decodes their text', () => {
   assert.equal(

@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { LinkMetadata } from '../link-preview/link-description';
-import { createLinkPreviewRoutes } from './link-previews';
+import type { LinkMetadata } from '../link-preview/link-description.ts';
+import { createLinkPreviewRoutes } from './link-previews.ts';
 
 function appWith(linkPreview: (href: string) => Promise<LinkMetadata>): Hono {
   return new Hono().route('/api', createLinkPreviewRoutes({ linkPreview }));

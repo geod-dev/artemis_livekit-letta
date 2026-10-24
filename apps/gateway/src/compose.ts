@@ -9,16 +9,16 @@
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
 import { mkdirSync } from 'node:fs';
-import { AgentServerClient } from './agent-server/client';
-import { AttachmentStore } from './attachments/attachment-store';
-import type { AppConfig } from './config';
-import { DeviceHub } from './devices/hub';
-import type { LinkMetadata } from './link-preview/link-description';
-import { linkPreview } from './link-preview/link-preview';
-import type { TranscriptionPort } from './routes/transcription';
-import type { VoiceTokenPort } from './routes/voice';
-import { createGroqTranscriber } from './vendor/groq/transcription';
-import { createVoiceTokenIssuer } from './vendor/livekit/tokens';
+import { AgentServerClient } from './agent-server/client.ts';
+import { AttachmentStore } from './attachments/attachment-store.ts';
+import type { AppConfig } from './config.ts';
+import { DeviceHub } from './devices/hub.ts';
+import type { LinkMetadata } from './link-preview/link-description.ts';
+import { linkPreview } from './link-preview/link-preview.ts';
+import type { TranscriptionPort } from './routes/transcription.ts';
+import type { VoiceTokenPort } from './routes/voice.ts';
+import { createGroqTranscriber } from './vendor/groq/transcription.ts';
+import { createVoiceTokenIssuer } from './vendor/livekit/tokens.ts';
 
 export interface GatewayDependencies {
   config: AppConfig;

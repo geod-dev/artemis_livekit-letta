@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { MAX_UPLOAD_BYTES } from '../attachments/limits';
-import { errorResponse, requestLimit } from '../http';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
+import { errorResponse, requestLimit } from '../http.ts';
 
 /** The speech-to-text port of this route; the provider is chosen in compose and matches this shape. */
 export interface TranscriptionPort {

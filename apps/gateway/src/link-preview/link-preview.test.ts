@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { type IncomingMessage, type ServerResponse, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
-import { type PreviewNetwork, linkPreview } from './link-preview';
+import { type PreviewNetwork, linkPreview } from './link-preview.ts';
 
 // The refusals below happen before any connection, and IP literals resolve without DNS.
 // The redirect, redirect-limit and size tests run against a loopback page server: the

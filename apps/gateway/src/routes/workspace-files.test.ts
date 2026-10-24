@@ -5,9 +5,9 @@ import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { composeWorkspace } from '../compose';
-import { describeWorkspaceFile } from '../workspace/files';
-import { createWorkspaceFileRoutes, planWorkspaceResponse } from './workspace-files';
+import { composeWorkspace } from '../compose.ts';
+import { describeWorkspaceFile } from '../workspace/files.ts';
+import { createWorkspaceFileRoutes, planWorkspaceResponse } from './workspace-files.ts';
 
 /** The workspace file routes over a workspace rooted at `root`. */
 function routesFor(root: string): Hono {

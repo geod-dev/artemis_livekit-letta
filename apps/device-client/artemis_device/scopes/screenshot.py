@@ -8,9 +8,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+from ._powershell import run_powershell
 from .settings import ScopeSettings
 
 MAX_IMAGE_BYTES = 10_000_000
+SCREENSHOT_TIMEOUT_SECONDS = 20
 
 
 def register(args: ScopeSettings):
@@ -20,21 +22,21 @@ def register(args: ScopeSettings):
         path = Path(output)
         try:
             if os.name == "nt":
-                powershell = shutil.which("powershell") or shutil.which("pwsh")
-                if not powershell:
-                    raise RuntimeError("PowerShell is required for screenshots on Windows")
                 output_path = str(path).replace("'", "''")
                 script = (
                     "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $i=New-Object System.Drawing.Bitmap($b.Width,$b.Height); $g=[System.Drawing.Graphics]::FromImage($i); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $i.Save('"
                     + output_path
                     + "',[System.Drawing.Imaging.ImageFormat]::Png); $g.Dispose(); $i.Dispose()"
                 )
-                subprocess.run(
-                    [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-                    capture_output=True,
-                    timeout=20,
-                    check=True,
+                result = run_powershell(
+                    script,
+                    SCREENSHOT_TIMEOUT_SECONDS,
+                    missing_message="PowerShell is required for screenshots on Windows",
                 )
+                if result.returncode:
+                    raise RuntimeError(
+                        result.stderr.strip() or "PowerShell could not capture the screen"
+                    )
             elif sys.platform == "darwin":
                 executable = shutil.which("screencapture")
                 if not executable:

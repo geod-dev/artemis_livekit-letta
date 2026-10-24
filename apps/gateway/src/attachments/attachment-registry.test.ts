@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { composeWorkspace } from '../compose';
-import { AttachmentStore } from './attachment-store';
+import { composeWorkspace } from '../compose.ts';
+import { AttachmentStore } from './attachment-store.ts';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 

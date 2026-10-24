@@ -1,11 +1,21 @@
 """Filesystem access using absolute paths across the device's filesystem."""
 
 import json
+from itertools import islice
 from pathlib import Path
 
 from .settings import ScopeSettings
 
 MAX_FILE_BYTES = 1_000_000
+MAX_EXPORT_BYTES = 25 * 1024 * 1024
+MAX_LIST_ENTRIES = 500
+
+
+def _sort_key(entry):
+    try:
+        return (not entry.is_dir(), entry.name.casefold())
+    except OSError:
+        return (True, entry.name.casefold())
 
 
 def register(args: ScopeSettings):
@@ -23,24 +33,36 @@ def register(args: ScopeSettings):
         path = resolve(arguments.get("path"))
         if not path.is_dir():
             raise ValueError("Path is not a directory")
+        # Stop iterating at the cap, so a huge directory is never fully read into memory.
+        collected = list(islice(path.iterdir(), MAX_LIST_ENTRIES + 1))
+        truncated = len(collected) > MAX_LIST_ENTRIES
         entries = []
-        for item in sorted(
-            path.iterdir(), key=lambda entry: (not entry.is_dir(), entry.name.casefold())
-        )[:500]:
-            if item.is_symlink():
-                entries.append({"name": item.name, "type": "symlink", "size": None})
+        for item in sorted(collected[:MAX_LIST_ENTRIES], key=_sort_key):
+            try:
+                if item.is_symlink():
+                    entries.append({"name": item.name, "type": "symlink", "size": None})
+                    continue
+                is_directory = item.is_dir()
+                size = item.stat().st_size
+            except OSError:
+                # One unreadable entry must not fail the whole listing.
+                entries.append({"name": item.name, "type": "unknown", "size": None})
                 continue
-            info = item.stat()
             entries.append(
                 {
                     "name": item.name,
-                    "type": "directory" if item.is_dir() else "file",
-                    "size": info.st_size,
+                    "type": "directory" if is_directory else "file",
+                    "size": size,
                 }
             )
         return {
             "content": [
-                {"type": "text", "text": json.dumps({"path": str(path), "entries": entries})}
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {"path": str(path), "entries": entries, "truncated": truncated}
+                    ),
+                }
             ]
         }
 
@@ -77,7 +99,7 @@ def register(args: ScopeSettings):
         path = resolve(arguments.get("path"))
         if not path.is_file():
             raise ValueError("Path is not a file")
-        if path.stat().st_size > 25 * 1024 * 1024:
+        if path.stat().st_size > MAX_EXPORT_BYTES:
             raise ValueError("File exceeds the 25 MB export limit")
         if upload is None:
             raise ValueError("File transfer connection is unavailable")

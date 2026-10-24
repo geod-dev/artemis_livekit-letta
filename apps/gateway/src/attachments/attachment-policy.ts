@@ -3,7 +3,7 @@
  * safe, and the errors their routes answer with. The bytes themselves are
  * workspace files; the workspace is reached only through its interface.
  */
-import { MAX_UPLOAD_BYTES } from './limits';
+import { MAX_UPLOAD_BYTES } from './limits.ts';
 
 /** Leading bytes that decide an upload's type; larger files are never read whole for it. */
 export const SNIFF_BYTES = 8192;

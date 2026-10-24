@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MAX_UPLOAD_BYTES } from '../attachments/limits';
-import { type TranscriptionPort, createTranscriptionRoutes } from './transcription';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
+import { type TranscriptionPort, createTranscriptionRoutes } from './transcription.ts';
 
 test('transcription rejects oversized chunked multipart bodies before parsing', async () => {
   const transcriber: TranscriptionPort = { enabled: true, transcribe: async () => 'unused' };

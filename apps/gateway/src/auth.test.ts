@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createAuth } from './auth';
+import { createAuth } from './auth.ts';
 
 const VOICE_TOKEN = 'test-voice-token';
 const PASSWORD = 'test-password';

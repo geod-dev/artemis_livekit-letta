@@ -5,10 +5,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import type { AgentServerClient } from '../agent-server/client';
-import { type GatewayDependencies, composeGateway } from '../compose';
-import { validateConfig } from '../config';
-import { createVoiceRoutes } from './voice';
+import type { AgentServerClient } from '../agent-server/client.ts';
+import { type GatewayDependencies, composeGateway } from '../compose.ts';
+import { validateConfig } from '../config.ts';
+import { createVoiceRoutes } from './voice.ts';
 
 const VOICE_TOKEN = 'voice-route-test-token';
 const LIVEKIT = {

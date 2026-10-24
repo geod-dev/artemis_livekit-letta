@@ -2,7 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { randomUUID } from 'node:crypto';
-import { GatewayClientError } from './agent-server/client';
+import { GatewayClientError } from './agent-server/client.ts';
 
 /** Largest request body the gateway relays to the agent-server (uploads have their own route). */
 export const PROXY_BODY_LIMIT = 4 * 1024 * 1024;

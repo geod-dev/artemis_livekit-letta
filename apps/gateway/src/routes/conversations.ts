@@ -8,13 +8,13 @@ import {
 } from '@artemis/contracts/chat-types';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { AgentServerClient } from '../agent-server/client';
+import type { AgentServerClient } from '../agent-server/client.ts';
 import {
   AttachmentUnavailableError,
   InvalidAttachmentError,
-} from '../attachments/attachment-policy';
-import type { AttachmentStore } from '../attachments/attachment-store';
-import { PROXY_BODY_LIMIT, errorResponse, jsonObject, routeError, withQuery } from '../http';
+} from '../attachments/attachment-policy.ts';
+import type { AttachmentStore } from '../attachments/attachment-store.ts';
+import { PROXY_BODY_LIMIT, errorResponse, jsonObject, routeError, withQuery } from '../http.ts';
 
 /**
  * The chat API. Conversations, messages, tasks and live events belong to the

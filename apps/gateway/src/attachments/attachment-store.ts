@@ -2,7 +2,7 @@ import type { ChatAttachment } from '@artemis/contracts/chat-types';
 import { type WorkspaceTransport, imageType, inspectedMimeType } from '@artemis/workspace';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
-import { describeWorkspaceFile } from '../workspace/files';
+import { describeWorkspaceFile } from '../workspace/files.ts';
 import {
   ATTACHMENT_PATH,
   InvalidAttachmentError,
@@ -10,10 +10,10 @@ import {
   SNIFF_BYTES,
   attachmentPath,
   safeName,
-} from './attachment-policy';
-import { AttachmentRegistry } from './attachment-registry';
-import { ConversationAttachments } from './conversation-attachments';
-import { MAX_UPLOAD_BYTES } from './limits';
+} from './attachment-policy.ts';
+import { AttachmentRegistry } from './attachment-registry.ts';
+import { ConversationAttachments } from './conversation-attachments.ts';
+import { MAX_UPLOAD_BYTES } from './limits.ts';
 
 /**
  * Uploads held in the workspace: stored under `data/attachments`, typed by their

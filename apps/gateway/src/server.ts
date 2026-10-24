@@ -1,10 +1,10 @@
 import { serve } from '@hono/node-server';
 import type { Server } from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { createGatewayApp } from './app';
-import { composeGateway } from './compose';
-import { loadConfig } from './config';
-import { DeviceSync } from './devices/sync';
+import { createGatewayApp } from './app.ts';
+import { composeGateway } from './compose.ts';
+import { loadConfig } from './config.ts';
+import { DeviceSync } from './devices/sync.ts';
 
 export interface GatewayApplication {
   close(): Promise<void>;

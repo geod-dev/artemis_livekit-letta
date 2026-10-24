@@ -1,7 +1,7 @@
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { ATTACHMENT_PATH, ATTACHMENT_RETENTION_FILE } from './attachment-policy';
+import { ATTACHMENT_PATH, ATTACHMENT_RETENTION_FILE } from './attachment-policy.ts';
 
 /**
  * Owners (conversations) of the uploads in `data/attachments`. An upload stays

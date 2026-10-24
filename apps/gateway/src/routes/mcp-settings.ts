@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { AgentServerClient } from '../agent-server/client';
-import { PROXY_BODY_LIMIT, routeError } from '../http';
+import type { AgentServerClient } from '../agent-server/client.ts';
+import { PROXY_BODY_LIMIT, routeError } from '../http.ts';
 
 /** The shared MCP server list: the agent-server validates, stores and reports it. */
 export function createMcpRoutes(agent: AgentServerClient): Hono {

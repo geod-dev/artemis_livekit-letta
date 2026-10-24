@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { HttpError, errorResponse, jsonObject } from './http';
+import { HttpError, errorResponse, jsonObject } from './http.ts';
 
 test('server failures are masked and carry a request id, client errors keep their message', async () => {
   const masked = errorResponse(new Error('database password leaked'));

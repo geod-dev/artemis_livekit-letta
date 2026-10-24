@@ -8,12 +8,12 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AgentServerClient } from '../agent-server/client';
-import { AttachmentStore } from '../attachments/attachment-store';
-import { composeWorkspace } from '../compose';
-import { createConversationRoutes } from './conversations';
-import { createMcpRoutes } from './mcp-settings';
-import { createVoiceRoutes } from './voice';
+import { AgentServerClient } from '../agent-server/client.ts';
+import { AttachmentStore } from '../attachments/attachment-store.ts';
+import { composeWorkspace } from '../compose.ts';
+import { createConversationRoutes } from './conversations.ts';
+import { createMcpRoutes } from './mcp-settings.ts';
+import { createVoiceRoutes } from './voice.ts';
 
 const AGENT_TOKEN = 'agent-server-test-token';
 const VOICE_TOKEN = 'voice-agent-test-token';

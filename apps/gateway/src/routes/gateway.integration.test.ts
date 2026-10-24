@@ -14,9 +14,9 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { createGatewayApp } from '../app';
-import { composeGateway } from '../compose';
-import { type AppConfig, validateConfig } from '../config';
+import { createGatewayApp } from '../app.ts';
+import { composeGateway } from '../compose.ts';
+import { type AppConfig, validateConfig } from '../config.ts';
 
 const AGENT_TOKEN = 'gateway-integration-agent-token';
 const PASSWORD = 'gateway-integration-password';

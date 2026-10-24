@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { InvalidAttachmentError, PayloadTooLargeError } from '../attachments/attachment-policy';
-import type { AttachmentStore } from '../attachments/attachment-store';
-import { MAX_UPLOAD_BYTES } from '../attachments/limits';
-import { errorResponse, requestLimit } from '../http';
+import { InvalidAttachmentError, PayloadTooLargeError } from '../attachments/attachment-policy.ts';
+import type { AttachmentStore } from '../attachments/attachment-store.ts';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
+import { errorResponse, requestLimit } from '../http.ts';
 
 /** Multipart framing around a file is small; the limit counts the whole request body. */
 const MULTIPART_OVERHEAD_BYTES = 1024 * 1024;

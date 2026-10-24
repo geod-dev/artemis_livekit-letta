@@ -3,11 +3,11 @@
 
 import argparse
 import getpass
-import hashlib
 import json
 import os
 import queue
 import shlex
+import sys
 import threading
 import time
 import urllib.error
@@ -18,7 +18,25 @@ from pathlib import Path
 
 from .menu import AVAILABLE_SCOPES, select_scopes
 from .scopes import ScopeSettings, build_scopes
+from .scopes.filesystem import MAX_EXPORT_BYTES
 from .transport import StdioMcp, interruptible_stream_events
+
+DEVICE_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_GATEWAY_PORT = 3000
+HTTP_TIMEOUT_SECONDS = 35
+UPLOAD_TIMEOUT_SECONDS = 45
+RESULT_TIMEOUT_SECONDS = 10
+HEARTBEAT_TIMEOUT_SECONDS = 10
+DISCONNECT_TIMEOUT_SECONDS = 3
+REQUEST_QUEUE_SIZE = 32
+EXECUTION_WORKERS = 4
+MAX_RECONNECT_DELAY_SECONDS = 30
+# Tools whose calls are written to stderr before they run, so the operator sees what is asked.
+AUDITED_TOOLS = ("terminal_run", "filesystem_read", "filesystem_write", "filesystem_export")
+AUDIT_LINE_LIMIT = 300
+TOKEN_TAIL_MIN_LENGTH = 16
 
 
 def normalize_token(value):
@@ -40,6 +58,43 @@ def normalize_token(value):
     return value
 
 
+def dotenv_value(path, name):
+    """Return one unquoted value from a dotenv-style file, or None when it is missing or unclear."""
+    try:
+        if not path.is_file():
+            return None
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("export "):
+            stripped = stripped[7:].lstrip()
+        if "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        if key.strip() == name:
+            try:
+                parts = shlex.split(value, comments=True)
+            except ValueError:
+                return None
+            return parts[0] if len(parts) == 1 else None
+    return None
+
+
+def default_server():
+    """Gateway URL when --server is omitted, resolved the way voice-agent resolves IP_ADDRESS."""
+    configured = os.environ.get("ARTEMIS_URL")
+    if configured:
+        return configured
+    host = (
+        os.environ.get("IP_ADDRESS", "").strip()
+        or dotenv_value(REPO_ROOT / ".env", "IP_ADDRESS")
+        or DEFAULT_HOST
+    )
+    return f"http://{host}:{DEFAULT_GATEWAY_PORT}"
+
+
 def load_device_token(env_file=None):
     if env_file:
         candidates = [Path(env_file)]
@@ -47,7 +102,7 @@ def load_device_token(env_file=None):
         value = os.environ.get("ARTEMIS_DEVICE_TOKEN")
         if value and value.strip():
             return normalize_token(value), "ARTEMIS_DEVICE_TOKEN environment variable"
-        candidates = [Path.cwd() / ".env", Path(__file__).resolve().parent.parent / ".env"]
+        candidates = [REPO_ROOT / ".env", DEVICE_DIR / ".env"]
     for path in candidates:
         if not path.is_file():
             if env_file:
@@ -72,11 +127,16 @@ def load_device_token(env_file=None):
     return normalize_token(getpass.getpass("Device token: ")), "interactive input"
 
 
+def token_tail(token):
+    """The last four characters: enough to match a 401 to the token in use, not to reveal it."""
+    return token[-4:] if len(token) >= TOKEN_TAIL_MIN_LENGTH else None
+
+
 def upload_device_file(server, token, name, session, call_id, path):
     """Stream raw bytes over HTTP; return only server-generated file metadata."""
     with path.open("rb") as file:
         size = os.fstat(file.fileno()).st_size
-        if size > 25 * 1024 * 1024:
+        if size > MAX_EXPORT_BYTES:
             raise ValueError("File exceeds the 25 MB export limit")
         url = (
             server.rstrip("/")
@@ -96,14 +156,283 @@ def upload_device_file(server, token, name, session, call_id, path):
                 "Content-Length": str(size),
             },
         )
-        with urllib.request.urlopen(req, timeout=45) as response:
+        with urllib.request.urlopen(req, timeout=UPLOAD_TIMEOUT_SECONDS) as response:
             return json.load(response)
 
 
-def run():
+def is_request(message):
+    """A relayed request must be a JSON-RPC object with an id, or its result cannot be returned."""
+    return isinstance(message, dict) and "id" in message
+
+
+def audit(tool, arguments):
+    """Write one line to stderr describing a tool call; file contents are never logged."""
+    if not isinstance(arguments, dict):
+        arguments = {}
+    if tool == "terminal_run":
+        detail = f"command={arguments.get('command')!r} cwd={arguments.get('cwd')!r}"
+    else:
+        detail = f"path={arguments.get('path')!r}"
+    line = f"[audit] {tool} {detail}"
+    if len(line) > AUDIT_LINE_LIMIT:
+        line = line[:AUDIT_LINE_LIMIT] + "..."
+    print(line, file=sys.stderr, flush=True)
+
+
+class DeviceSession:
+    """One device registration: relays Artemis tool calls to the scopes or a local MCP server."""
+
+    def __init__(
+        self,
+        *,
+        name,
+        server,
+        token,
+        token_source,
+        token_hint,
+        scope_tools,
+        scope_handlers,
+        mcp_command,
+    ):
+        self.name = name
+        self.server = server
+        self.token = token
+        self.token_source = token_source
+        self.token_hint = token_hint
+        self.scope_tools = scope_tools
+        self.scope_handlers = scope_handlers
+        self.mcp_command = mcp_command
+        self.device_path = urllib.parse.quote(name, safe="")
+        self.local = None
+        self.local_stack = ExitStack()
+        self.local_lock = threading.Lock()
+        self.stop_workers = threading.Event()
+        self.requests_to_run = queue.Queue(maxsize=REQUEST_QUEUE_SIZE)
+        self.overload_responses = queue.Queue(maxsize=REQUEST_QUEUE_SIZE)
+        self.heartbeats = queue.Queue(maxsize=1)
+
+    def close(self):
+        self.stop_workers.set()
+        self.local_stack.close()
+
+    def local_client(self):
+        if not self.mcp_command:
+            return None
+        with self.local_lock:
+            if self.local is None or self.local.is_closed or self.local.process.poll() is not None:
+                if self.local is not None:
+                    self.local.close()
+                print("Starting the local MCP server and loading its tools...", flush=True)
+                self.local = self.local_stack.enter_context(StdioMcp(self.mcp_command))
+            return self.local
+
+    def open_request(self, path, body=None, session=None, timeout=HTTP_TIMEOUT_SECONDS):
+        headers = {"Authorization": "Bearer " + self.token, "Content-Type": "application/json"}
+        if session:
+            headers["X-Device-Session"] = session
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(
+            self.server + "/api/devices/" + path, data=data, headers=headers
+        )
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as error:
+            error.artemis_endpoint = path
+            raise
+        except OSError as error:
+            raise ConnectionError(f"{path}: {error}") from error
+
+    def request(self, path, body=None, session=None, timeout=HTTP_TIMEOUT_SECONDS):
+        with self.open_request(path, body, session, timeout=timeout) as response:
+            return json.load(response)
+
+    def upload_file(self, path, call_id, active_session):
+        return upload_device_file(self.server, self.token, self.name, active_session, call_id, path)
+
+    def execute(self, message, active_session):
+        try:
+            if message.get("method") != "tools/call":
+                raise ValueError("Unsupported MCP method")
+            params = message["params"]
+            active_local = self.local_client()
+            if active_local:
+                return active_local.rpc("tools/call", params)
+            tool = params["name"]
+            handler = self.scope_handlers.get(tool)
+            if handler is None:
+                raise ValueError("Unknown tool")
+            arguments = params.get("arguments", {})
+            if tool in AUDITED_TOOLS:
+                audit(tool, arguments)
+            if tool == "filesystem_export":
+                return handler(
+                    arguments,
+                    upload=lambda path: self.upload_file(path, message["id"], active_session),
+                )
+            return handler(arguments)
+        except Exception as error:
+            return {"isError": True, "content": [{"type": "text", "text": str(error)}]}
+
+    def _execution_worker(self):
+        while not self.stop_workers.is_set():
+            try:
+                message, active_session = self.requests_to_run.get(timeout=0.25)
+            except queue.Empty:
+                continue
+            try:
+                result = self.execute(message, active_session)
+                self.request(
+                    self.device_path + "/results",
+                    {"jsonrpc": "2.0", "id": message["id"], "result": result},
+                    active_session,
+                    timeout=HTTP_TIMEOUT_SECONDS,
+                )
+            except Exception as error:
+                # Any failure is logged; the worker survives to serve the next call.
+                print(f"Unable to deliver tool result: {error}", flush=True)
+            finally:
+                self.requests_to_run.task_done()
+
+    def _heartbeat_worker(self):
+        while not self.stop_workers.is_set():
+            try:
+                active_session = self.heartbeats.get(timeout=0.25)
+            except queue.Empty:
+                continue
+            try:
+                self.request(
+                    self.device_path + "/heartbeat",
+                    {},
+                    active_session,
+                    timeout=HEARTBEAT_TIMEOUT_SECONDS,
+                )
+            except Exception as error:
+                print(f"Heartbeat failed: {error}", flush=True)
+            finally:
+                self.heartbeats.task_done()
+
+    def _overload_worker(self):
+        while not self.stop_workers.is_set():
+            try:
+                message, active_session = self.overload_responses.get(timeout=0.25)
+            except queue.Empty:
+                continue
+            try:
+                result = {
+                    "isError": True,
+                    "content": [{"type": "text", "text": "Device is busy; request queue is full."}],
+                }
+                self.request(
+                    self.device_path + "/results",
+                    {"jsonrpc": "2.0", "id": message["id"], "result": result},
+                    active_session,
+                    timeout=RESULT_TIMEOUT_SECONDS,
+                )
+            except Exception as error:
+                print(f"Unable to deliver busy response: {error}", flush=True)
+            finally:
+                self.overload_responses.task_done()
+
+    def _start_workers(self):
+        for _ in range(EXECUTION_WORKERS):
+            threading.Thread(target=self._execution_worker, daemon=True).start()
+        threading.Thread(target=self._heartbeat_worker, daemon=True).start()
+        threading.Thread(target=self._overload_worker, daemon=True).start()
+
+    def serve(self):
+        """Stay connected, reconnecting with backoff, until interrupted or refused."""
+        self._start_workers()
+        session = None
+        delay = 1
+        while True:
+            try:
+                active_local = self.local_client()
+                tools = active_local.tools() if active_local else self.scope_tools
+                print(f"Registering device with Artemis ({len(tools)} tool(s))...", flush=True)
+                session = self.request("register", {"name": self.name, "tools": tools})["session"]
+                with self.open_request(self.device_path + "/events", session=session) as response:
+                    for event, message in interruptible_stream_events(response):
+                        if event == "connected":
+                            print(
+                                f"Connected: {self.name} ({len(tools)} tool(s)). Leave this window "
+                                f"open.",
+                                flush=True,
+                            )
+                            delay = 1
+                        elif event == "ping":
+                            try:
+                                self.heartbeats.put_nowait(session)
+                            except queue.Full:
+                                pass
+                        elif event == "request":
+                            if not is_request(message):
+                                print(
+                                    "Ignoring a malformed request (expected a JSON-RPC object "
+                                    "with an id).",
+                                    flush=True,
+                                )
+                                continue
+                            try:
+                                self.requests_to_run.put_nowait((message, session))
+                            except queue.Full:
+                                try:
+                                    self.overload_responses.put_nowait((message, session))
+                                except queue.Full:
+                                    print(
+                                        "Unable to queue busy response; pending call will expire.",
+                                        flush=True,
+                                    )
+                raise ConnectionError("Artemis closed the device connection")
+            except urllib.error.HTTPError as error:
+                endpoint = getattr(error, "artemis_endpoint", "unknown endpoint")
+                try:
+                    body = json.loads(error.read(4096))
+                    detail = (
+                        body.get("error", error.reason) if isinstance(body, dict) else error.reason
+                    )
+                except (ValueError, OSError):
+                    detail = error.reason
+                if error.code == 401:
+                    tail_note = (
+                        f'; token ends with "{self.token_hint}"' if self.token_hint else ""
+                    )
+                    raise SystemExit(
+                        f"HTTP 401 at {endpoint}: {detail}. Token source: "
+                        f"{self.token_source}{tail_note}. Check that this is the VPS "
+                        f"ARTEMIS_DEVICE_TOKEN."
+                    )
+                if error.code == 403:
+                    raise SystemExit(
+                        f"HTTP 403 at {endpoint}: access blocked ({detail}). This response does "
+                        f"not establish that the device token is wrong."
+                    )
+                print(
+                    f"Artemis returned HTTP {error.code} at {endpoint} ({detail}); reconnecting in "
+                    f"{delay}s.",
+                    flush=True,
+                )
+            except (OSError, ValueError, KeyError, RuntimeError) as error:
+                print(f"Connection failed ({error}); retrying in {delay}s.", flush=True)
+            finally:
+                if session:
+                    try:
+                        self.request(
+                            self.device_path + "/disconnect",
+                            {},
+                            session,
+                            timeout=DISCONNECT_TIMEOUT_SECONDS,
+                        )
+                    except (OSError, ValueError):
+                        pass
+                    session = None
+            time.sleep(delay)
+            delay = min(delay * 2, MAX_RECONNECT_DELAY_SECONDS)
+
+
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("name", help="Unique device name: letters, numbers, underscores, hyphens")
-    parser.add_argument("--server", default=os.environ.get("ARTEMIS_URL", "http://127.0.0.1:3000"))
+    parser.add_argument("--server", default=default_server())
     parser.add_argument("--firefox", help="Firefox executable path")
     parser.add_argument(
         "--scopes",
@@ -123,8 +452,8 @@ def run():
     )
     parser.add_argument(
         "--env-file",
-        help="Read ARTEMIS_DEVICE_TOKEN from this file instead of the environment or the project "
-        ".env",
+        help="Read ARTEMIS_DEVICE_TOKEN from this file instead of the environment or the repo or "
+        "device .env files",
     )
     parser.add_argument(
         "--mcp-command",
@@ -134,16 +463,23 @@ def run():
     parser.add_argument(
         "--verbose-auth",
         action="store_true",
-        help="Also print a SHA-256 fingerprint prefix of the device token (diagnostics only)",
+        help="Also print the last four characters of the device token (diagnostics only)",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def parse_args(argv=None, parser=None):
+    """Parse and validate the command line; argv defaults to sys.argv[1:]."""
+    parser = parser or build_parser()
+    args = parser.parse_args(argv)
     args.active_folder = Path(args.active_folder).expanduser().resolve()
     if not args.active_folder.is_dir():
         parser.error("--active-folder must be an existing directory")
-    if urllib.parse.urlsplit(args.server).scheme != "https" and urllib.parse.urlsplit(
-        args.server
-    ).hostname not in ("localhost", "127.0.0.1"):
+    server = urllib.parse.urlsplit(args.server)
+    if server.scheme != "https" and server.hostname not in ("localhost", "127.0.0.1"):
         parser.error("Use HTTPS for remote servers")
+    if args.mcp_command and args.scopes:
+        parser.error("--mcp-command cannot be combined with built-in --scopes")
     if args.scopes is None:
         if args.mcp_command:
             args.scopes = []
@@ -152,8 +488,13 @@ def run():
                 args.scopes = select_scopes()
             except RuntimeError as error:
                 parser.error(str(error))
-    if args.mcp_command and args.scopes:
-        parser.error("--mcp-command cannot be combined with built-in --scopes")
+    return args
+
+
+def run(argv=None):
+    """Entry point: parse options, load scopes and the token, then serve until interrupted."""
+    parser = build_parser()
+    args = parse_args(argv, parser)
     try:
         scope_tools, scope_handlers = build_scopes(
             args.scopes,
@@ -165,207 +506,26 @@ def run():
         token, token_source = load_device_token(args.env_file)
     except (ValueError, OSError) as error:
         parser.error(str(error))
-    # The token itself and its fingerprint stay out of routine output; the fingerprint is opt-in.
-    fingerprint = hashlib.sha256(token.encode()).hexdigest()[:12] if args.verbose_auth else None
-    fingerprint_text = f", fingerprint {fingerprint}" if fingerprint else ""
-    print(f"Token source: {token_source} ({len(token)} characters{fingerprint_text}).", flush=True)
+    # The token itself stays out of routine output; its last four characters are opt-in.
+    token_hint = token_tail(token) if args.verbose_auth else None
+    hint_text = f', ends with "{token_hint}"' if token_hint else ""
+    print(f"Token source: {token_source} ({len(token)} characters{hint_text}).", flush=True)
     server = args.server.rstrip("/")
     print(f'Connecting to Artemis at {server} as "{args.name}"...', flush=True)
-    local = None
-    local_stack = ExitStack()
-    local_lock = threading.Lock()
-
-    def local_client():
-        nonlocal local
-        if not args.mcp_command:
-            return None
-        with local_lock:
-            if local is None or local._closed or local.process.poll() is not None:
-                if local:
-                    local.close()
-                print("Starting the local MCP server and loading its tools...", flush=True)
-                local = local_stack.enter_context(StdioMcp(args.mcp_command))
-            return local
-
-    def open_request(path, body=None, session=None, timeout=35):
-        headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
-        if session:
-            headers["X-Device-Session"] = session
-        data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(server + "/api/devices/" + path, data=data, headers=headers)
-        try:
-            return urllib.request.urlopen(req, timeout=timeout)
-        except urllib.error.HTTPError as error:
-            error.artemis_endpoint = path
-            raise
-        except OSError as error:
-            raise ConnectionError(f"{path}: {error}") from error
-
-    def request(path, body=None, session=None, timeout=35):
-        with open_request(path, body, session, timeout=timeout) as response:
-            return json.load(response)
-
-    def upload_file(path, call_id, active_session):
-        return upload_device_file(server, token, args.name, active_session, call_id, path)
-
-    def execute(message, active_session):
-        try:
-            if message.get("method") != "tools/call":
-                raise ValueError("Unsupported MCP method")
-            params = message["params"]
-            active_local = local_client()
-            if active_local:
-                return active_local.rpc("tools/call", params)
-            handler = scope_handlers.get(params["name"])
-            if handler is None:
-                raise ValueError("Unknown tool")
-            if params["name"] == "filesystem_export":
-                return handler(
-                    params.get("arguments", {}),
-                    upload=lambda path: upload_file(path, message["id"], active_session),
-                )
-            return handler(params.get("arguments", {}))
-        except Exception as error:
-            return {"isError": True, "content": [{"type": "text", "text": str(error)}]}
-
-    device_path = urllib.parse.quote(args.name, safe="")
-    session = None
-    delay = 1
-    stop_workers = threading.Event()
-    requests_to_run = queue.Queue(maxsize=32)
-    overload_responses = queue.Queue(maxsize=32)
-    heartbeats = queue.Queue(maxsize=1)
-
-    def execution_worker():
-        while not stop_workers.is_set():
-            try:
-                message, active_session = requests_to_run.get(timeout=0.25)
-            except queue.Empty:
-                continue
-            try:
-                result = execute(message, active_session)
-                request(
-                    device_path + "/results",
-                    {"jsonrpc": "2.0", "id": message["id"], "result": result},
-                    active_session,
-                )
-            except (OSError, ValueError, KeyError, RuntimeError) as error:
-                print(f"Unable to deliver tool result: {error}", flush=True)
-            finally:
-                requests_to_run.task_done()
-
-    def heartbeat_worker():
-        while not stop_workers.is_set():
-            try:
-                active_session = heartbeats.get(timeout=0.25)
-            except queue.Empty:
-                continue
-            try:
-                request(device_path + "/heartbeat", {}, active_session, timeout=10)
-            except (OSError, ValueError) as error:
-                print(f"Heartbeat failed: {error}", flush=True)
-            finally:
-                heartbeats.task_done()
-
-    def overload_worker():
-        while not stop_workers.is_set():
-            try:
-                message, active_session = overload_responses.get(timeout=0.25)
-            except queue.Empty:
-                continue
-            try:
-                result = {
-                    "isError": True,
-                    "content": [{"type": "text", "text": "Device is busy; request queue is full."}],
-                }
-                request(
-                    device_path + "/results",
-                    {"jsonrpc": "2.0", "id": message["id"], "result": result},
-                    active_session,
-                    timeout=10,
-                )
-            except (OSError, ValueError, KeyError) as error:
-                print(f"Unable to deliver busy response: {error}", flush=True)
-            finally:
-                overload_responses.task_done()
-
-    for _ in range(4):
-        threading.Thread(target=execution_worker, daemon=True).start()
-    threading.Thread(target=heartbeat_worker, daemon=True).start()
-    threading.Thread(target=overload_worker, daemon=True).start()
+    session = DeviceSession(
+        name=args.name,
+        server=server,
+        token=token,
+        token_source=token_source,
+        token_hint=token_hint,
+        scope_tools=scope_tools,
+        scope_handlers=scope_handlers,
+        mcp_command=args.mcp_command,
+    )
     try:
-        while True:
-            try:
-                active_local = local_client()
-                tools = active_local.tools() if active_local else scope_tools
-                print(f"Registering device with Artemis ({len(tools)} tool(s))...", flush=True)
-                session = request("register", {"name": args.name, "tools": tools})["session"]
-                with open_request(device_path + "/events", session=session) as response:
-                    for event, message in interruptible_stream_events(response):
-                        if event == "connected":
-                            print(
-                                f"Connected: {args.name} ({len(tools)} tool(s)). Leave this window "
-                                f"open.",
-                                flush=True,
-                            )
-                            delay = 1
-                        elif event == "ping":
-                            try:
-                                heartbeats.put_nowait(session)
-                            except queue.Full:
-                                pass
-                        elif event == "request":
-                            try:
-                                requests_to_run.put_nowait((message, session))
-                            except queue.Full:
-                                try:
-                                    overload_responses.put_nowait((message, session))
-                                except queue.Full:
-                                    print(
-                                        "Unable to queue busy response; pending call will expire.",
-                                        flush=True,
-                                    )
-                raise ConnectionError("Artemis closed the device connection")
-            except urllib.error.HTTPError as error:
-                endpoint = getattr(error, "artemis_endpoint", "unknown endpoint")
-                try:
-                    body = json.loads(error.read(4096))
-                    detail = (
-                        body.get("error", error.reason) if isinstance(body, dict) else error.reason
-                    )
-                except (ValueError, OSError):
-                    detail = error.reason
-                if error.code == 401:
-                    fingerprint_note = f"; fingerprint: {fingerprint}" if fingerprint else ""
-                    raise SystemExit(
-                        f"HTTP 401 at {endpoint}: {detail}. Token source: "
-                        f"{token_source}{fingerprint_note}. Check that this is the VPS "
-                        f"ARTEMIS_DEVICE_TOKEN."
-                    )
-                if error.code == 403:
-                    raise SystemExit(
-                        f"HTTP 403 at {endpoint}: access blocked ({detail}). This response does "
-                        f"not establish that the device token is wrong."
-                    )
-                print(
-                    f"Artemis returned HTTP {error.code} at {endpoint} ({detail}); reconnecting in "
-                    f"{delay}s.",
-                    flush=True,
-                )
-            except (OSError, ValueError, KeyError, RuntimeError) as error:
-                print(f"Connection failed ({error}); retrying in {delay}s.", flush=True)
-            finally:
-                if session:
-                    try:
-                        request(device_path + "/disconnect", {}, session, timeout=3)
-                    except (OSError, ValueError):
-                        pass
-                    session = None
-            time.sleep(delay)
-            delay = min(delay * 2, 30)
+        session.serve()
     finally:
-        stop_workers.set()
-        local_stack.close()
+        session.close()
 
 
 def main():

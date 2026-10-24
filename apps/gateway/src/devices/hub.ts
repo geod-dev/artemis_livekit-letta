@@ -6,8 +6,8 @@ import {
   parseDeviceTools,
 } from '@artemis/mcp/device-server';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { HttpError } from '../http';
-import { sameSecret } from '../security';
+import { HttpError } from '../http.ts';
+import { sameSecret } from '../security.ts';
 
 /**
  * The one device tool with a file-export flow: the device names a local path and

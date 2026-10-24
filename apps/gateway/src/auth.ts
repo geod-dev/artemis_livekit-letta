@@ -3,8 +3,8 @@ import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createHmac, randomBytes } from 'node:crypto';
-import { bearerToken } from './http';
-import { isLocalOrPrivateAddress, sameSecret } from './security';
+import { bearerToken } from './http.ts';
+import { isLocalOrPrivateAddress, sameSecret } from './security.ts';
 
 const COOKIE = 'artemis_session';
 const TTL = 90 * 24 * 60 * 60;

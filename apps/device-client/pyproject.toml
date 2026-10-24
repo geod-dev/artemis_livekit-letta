@@ -1,0 +1,11 @@
+# Metadata only: the device client has no third-party dependencies and no build backend.
+# Run it from a checkout with `python apps/device-client/artemis-device.py` (or `python -m artemis_device`).
+[project]
+name = "artemis-device"
+version = "0.1.0"
+description = "Outbound Artemis device bridge that exposes selected local scopes to the gateway."
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+artemis-device = "artemis_device.cli:main"

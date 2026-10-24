@@ -1,7 +1,7 @@
 import type { McpServer } from '@artemis/contracts/chat-types';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DeviceSync } from './sync';
+import { DeviceSync } from './sync.ts';
 
 const device = (name: string) =>
   ({ name, transport: 'http', url: `http://gateway.test/${name}` }) as McpServer;

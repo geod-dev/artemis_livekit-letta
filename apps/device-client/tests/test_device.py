@@ -1,4 +1,3 @@
-import hashlib
 import io
 import json
 import os
@@ -8,7 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -477,15 +476,180 @@ class MainLoopTests(unittest.TestCase):
         self.assertIn("reconnecting in 1s", output)
         self.assertIn("Disconnected.", output)
 
-    def test_token_fingerprint_is_only_printed_with_verbose_auth(self):
-        fingerprint = hashlib.sha256(self.TOKEN.encode()).hexdigest()[:12]
+    def test_token_tail_is_only_printed_with_verbose_auth(self):
         server, _ = self._fake_artemis([500])
         routine, _ = self._run_main(server)
-        self.assertNotIn(fingerprint, routine)
+        self.assertNotIn('ends with "', routine)
         self.assertIn("Token source:", routine)
         server, _ = self._fake_artemis([500])
         verbose, _ = self._run_main(server, "--verbose-auth")
-        self.assertIn(f"fingerprint {fingerprint}", verbose)
+        self.assertIn('ends with "alue"', verbose)
+        self.assertNotIn(self.TOKEN, verbose)
+
+
+class ScopeAndEntryPointTests(unittest.TestCase):
+    def test_filesystem_rejects_relative_paths_and_enforces_size_limits(self):
+        from types import SimpleNamespace
+
+        from artemis_device.scopes.filesystem import MAX_FILE_BYTES, register
+
+        with tempfile.TemporaryDirectory() as directory:
+            _, handlers = register(SimpleNamespace(active_folder=directory))
+            with self.assertRaisesRegex(ValueError, "absolute"):
+                handlers["filesystem_read"]({"path": "relative.txt"})
+            with self.assertRaisesRegex(ValueError, "absolute"):
+                handlers["filesystem_write"]({"path": "relative.txt", "content": "x"})
+            large = Path(directory) / "large.txt"
+            large.write_bytes(b"a" * (MAX_FILE_BYTES + 1))
+            with self.assertRaisesRegex(ValueError, "1 MB read limit"):
+                handlers["filesystem_read"]({"path": str(large)})
+            with self.assertRaisesRegex(ValueError, "1 MB write limit"):
+                handlers["filesystem_write"]({"path": str(large), "content": "a" * (MAX_FILE_BYTES + 1)})
+
+    def test_filesystem_read_reports_non_utf8_files_clearly(self):
+        from types import SimpleNamespace
+
+        from artemis_device.scopes.filesystem import register
+
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "binary.dat"
+            binary.write_bytes(b"\xff\xfe\x00bad")
+            _, handlers = register(SimpleNamespace(active_folder=directory))
+            with self.assertRaisesRegex(ValueError, "Only UTF-8 text files"):
+                handlers["filesystem_read"]({"path": str(binary)})
+
+    def test_list_directory_lists_sorted_entries_and_caps_iteration(self):
+        from types import SimpleNamespace
+
+        from artemis_device.scopes import filesystem
+
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "b.txt").write_text("bb", encoding="utf-8")
+            Path(directory, "A.txt").write_text("a", encoding="utf-8")
+            Path(directory, "sub").mkdir()
+            _, handlers = filesystem.register(SimpleNamespace(active_folder=directory))
+            listing = json.loads(
+                handlers["filesystem_list"]({"path": directory})["content"][0]["text"]
+            )
+            self.assertEqual([entry["name"] for entry in listing["entries"]], ["sub", "A.txt", "b.txt"])
+            self.assertEqual(listing["entries"][1]["size"], 1)
+            self.assertFalse(listing["truncated"])
+            with patch.object(filesystem, "MAX_LIST_ENTRIES", 2):
+                capped = json.loads(
+                    handlers["filesystem_list"]({"path": directory})["content"][0]["text"]
+                )
+            self.assertEqual(len(capped["entries"]), 2)
+            self.assertTrue(capped["truncated"])
+
+    def test_screenshot_removes_its_temp_file_when_capture_fails(self):
+        from types import SimpleNamespace
+
+        from artemis_device.scopes import screenshot
+
+        created = []
+        real_mkstemp = tempfile.mkstemp
+
+        def recording_mkstemp(*args, **kwargs):
+            fd, name = real_mkstemp(*args, **kwargs)
+            created.append(name)
+            return fd, name
+
+        _, handlers = screenshot.register(SimpleNamespace(active_folder="."))
+        with (
+            patch.object(screenshot.tempfile, "mkstemp", side_effect=recording_mkstemp),
+            patch.object(screenshot.shutil, "which", return_value=None),
+            self.assertRaises(RuntimeError),
+        ):
+            handlers["screenshot_capture"]({})
+        self.assertEqual(len(created), 1)
+        self.assertFalse(Path(created[0]).exists())
+
+    def test_scope_menu_requires_an_interactive_terminal(self):
+        from artemis_device.menu import select_scopes
+
+        with patch("artemis_device.menu.sys.stdin", io.StringIO("")):
+            with self.assertRaisesRegex(RuntimeError, "--scopes"):
+                select_scopes()
+
+    def test_entry_point_rejects_conflicting_options_before_connecting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            argv = ["artemis-device", "laptop", "--scopes", "browser", "--mcp-command", "python"]
+            with patch.object(sys, "argv", argv), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    device.run()
+            self.assertEqual(caught.exception.code, 2)
+            argv = ["artemis-device", "laptop", "--scopes", "browser", "--active-folder", directory + "-missing"]
+            with patch.object(sys, "argv", argv), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    device.parse_args()
+            self.assertEqual(caught.exception.code, 2)
+
+    def test_parse_args_accepts_an_explicit_argv(self):
+        args = device.parse_args(["laptop", "--scopes", "browser", "--server", "https://example.test"])
+        self.assertEqual(args.name, "laptop")
+        self.assertEqual(args.scopes, ["browser"])
+        self.assertEqual(args.server, "https://example.test")
+
+    def test_default_server_follows_ip_address_like_voice_agent(self):
+        with patch.dict(os.environ, {"IP_ADDRESS": "10.1.2.3"}):
+            os.environ.pop("ARTEMIS_URL", None)
+            self.assertEqual(device.default_server(), "http://10.1.2.3:3000")
+            os.environ["ARTEMIS_URL"] = "https://artemis.example.test"
+            self.assertEqual(device.default_server(), "https://artemis.example.test")
+
+    def test_dotenv_value_reads_one_unquoted_value(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text('export IP_ADDRESS="192.0.2.7"  # lan\nOTHER=1\n', encoding="utf-8")
+            self.assertEqual(device.dotenv_value(path, "IP_ADDRESS"), "192.0.2.7")
+            self.assertIsNone(device.dotenv_value(path, "MISSING"))
+            self.assertIsNone(device.dotenv_value(Path(directory) / "absent.env", "IP_ADDRESS"))
+
+    def test_malformed_requests_are_rejected_and_cannot_stop_execution(self):
+        session = device.DeviceSession(
+            name="laptop",
+            server="http://127.0.0.1",
+            token="test-token-value",
+            token_source="test",
+            token_hint=None,
+            scope_tools=[],
+            scope_handlers={},
+            mcp_command=None,
+        )
+        self.assertFalse(device.is_request("not an object"))
+        self.assertFalse(device.is_request({"method": "tools/call"}))
+        self.assertTrue(device.is_request({"id": 1, "method": "tools/call"}))
+        result = session.execute("not an object", "session")
+        self.assertTrue(result["isError"])
+
+    def test_tool_calls_are_audited_on_stderr(self):
+        from types import SimpleNamespace
+
+        from artemis_device.scopes.filesystem import register
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "note.txt"
+            target.write_text("hello", encoding="utf-8")
+            _, handlers = register(SimpleNamespace(active_folder=directory))
+            session = device.DeviceSession(
+                name="laptop",
+                server="http://127.0.0.1",
+                token="test-token-value",
+                token_source="test",
+                token_hint=None,
+                scope_tools=[],
+                scope_handlers=handlers,
+                mcp_command=None,
+            )
+            errors = io.StringIO()
+            with redirect_stderr(errors):
+                result = session.execute(
+                    {"id": 7, "method": "tools/call", "params": {"name": "filesystem_read", "arguments": {"path": str(target)}}},
+                    "session",
+                )
+            self.assertNotIn("isError", result)
+            self.assertIn("[audit] filesystem_read path=", errors.getvalue())
+            self.assertNotIn("hello", errors.getvalue())
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import { VOICE_DISPATCH_KEYS } from '@artemis/contracts/agent-server';
 import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
 import { randomUUID } from 'node:crypto';
-import type { AppConfig } from '../../config';
+import type { AppConfig } from '../../config.ts';
 
 /** The browser's connection details for a LiveKit room (the route's VoiceToken). */
 interface VoiceToken {

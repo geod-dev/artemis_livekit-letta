@@ -1,15 +1,16 @@
 """Run shell command lines or explicit executable/argument lists on the device."""
 
 import os
-import shutil
 import signal
 import subprocess
 import threading
 from pathlib import Path
 
+from ._powershell import powershell_executable
 from .settings import ScopeSettings
 
 MAX_OUTPUT_BYTES = 64_000
+COMMAND_TIMEOUT_SECONDS = 30
 
 
 def command_line(command, argv):
@@ -17,7 +18,7 @@ def command_line(command, argv):
     if argv or Path(command).is_file():
         return [command, *argv]
     if os.name == "nt":
-        powershell = shutil.which("pwsh") or shutil.which("powershell")
+        powershell = powershell_executable(core_first=True)
         if powershell:
             return [
                 powershell,
@@ -81,7 +82,7 @@ def register(args: ScopeSettings):
         for reader in readers:
             reader.start()
         try:
-            return_code = process.wait(timeout=30)
+            return_code = process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired as error:
             if os.name == "nt":
                 try:
@@ -102,7 +103,9 @@ def register(args: ScopeSettings):
                 except ProcessLookupError:
                     pass
             process.wait()
-            raise TimeoutError("Command exceeded the 30 second limit") from error
+            raise TimeoutError(
+                f"Command exceeded the {COMMAND_TIMEOUT_SECONDS} second limit"
+            ) from error
         finally:
             for reader in readers:
                 reader.join(timeout=1)

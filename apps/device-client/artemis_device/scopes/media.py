@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 
+from ._powershell import run_powershell
 from .settings import ScopeSettings
 
 
@@ -39,9 +40,6 @@ def register(args: ScopeSettings):
             raise ValueError("volume must be a number from 0 to 100")
         if windows:
             if action in ("info", "play", "pause", "play_pause"):
-                powershell = shutil.which("powershell") or shutil.which("pwsh")
-                if not powershell:
-                    raise RuntimeError("PowerShell is required for Windows media controls")
                 script = (
                     "Add-Type -AssemblyName System.Runtime.WindowsRuntime; $null=[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime]; $m=[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync().GetAwaiter().GetResult(); $s=$m.GetCurrentSession(); if($null -eq $s){throw 'No active media session'}; if('"
                     + action
@@ -51,12 +49,10 @@ def register(args: ScopeSettings):
                     + action
                     + "' -eq 'pause'){$s.TryPauseAsync().GetAwaiter().GetResult()} elseif($s.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing'){$s.TryPauseAsync().GetAwaiter().GetResult()} else {$s.TryPlayAsync().GetAwaiter().GetResult()}"
                 )
-                result = subprocess.run(
-                    [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                    check=False,
+                result = run_powershell(
+                    script,
+                    15,
+                    missing_message="PowerShell is required for Windows media controls",
                 )
                 if result.returncode:
                     raise RuntimeError(
@@ -69,20 +65,15 @@ def register(args: ScopeSettings):
                 }
             if action == "volume":
                 # Set an absolute system volume with Windows Core Audio's endpoint API.
-                powershell = shutil.which("powershell") or shutil.which("pwsh")
-                if not powershell:
-                    raise RuntimeError("PowerShell is required to set volume on Windows")
                 script = (
                     'Add-Type -TypeDefinition \'using System; using System.Runtime.InteropServices; [ComImport,Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator{} [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IMMDeviceEnumerator{int EnumAudioEndpoints(int d,int s,out IntPtr p);int GetDefaultAudioEndpoint(int d,int r,out IMMDevice p);} [Guid("D666063F-1587-4E43-81F1-B948E807363F"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IMMDevice{int Activate(ref Guid id,int ctx,IntPtr p,out IAudioEndpointVolume v);} [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IAudioEndpointVolume{int RegisterControlChangeNotify(IntPtr p);int UnregisterControlChangeNotify(IntPtr p);int GetChannelCount(out uint p);int SetMasterVolumeLevel(float v,Guid c);int SetMasterVolumeLevelScalar(float v,Guid c);int GetMasterVolumeLevel(out float v);int GetMasterVolumeLevelScalar(out float v);}\' -ErrorAction Stop; $e=New-Object MMDeviceEnumerator; $d=$null; [void]$e.GetDefaultAudioEndpoint(0,1,[ref]$d); $id=[Guid]\'5CDF2C82-841E-4546-9722-0CF74078229A\'; $v=$null; [void]$d.Activate([ref]$id,23,[IntPtr]::Zero,[ref]$v); [void]$v.SetMasterVolumeLevelScalar('
                     + str(volume / 100)
                     + ",[Guid]::Empty)"
                 )
-                result = subprocess.run(
-                    [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                    check=False,
+                result = run_powershell(
+                    script,
+                    15,
+                    missing_message="PowerShell is required to set volume on Windows",
                 )
                 if result.returncode:
                     raise RuntimeError(result.stderr.strip() or "Unable to set Windows volume")

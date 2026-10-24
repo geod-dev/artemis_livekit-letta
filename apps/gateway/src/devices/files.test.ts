@@ -4,11 +4,11 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { MAX_UPLOAD_BYTES } from '../attachments/limits';
-import { composeWorkspace } from '../compose';
-import { createDeviceRoutes } from './api';
-import { saveDeviceFile } from './files';
-import { DeviceHub } from './hub';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
+import { composeWorkspace } from '../compose.ts';
+import { createDeviceRoutes } from './api.ts';
+import { saveDeviceFile } from './files.ts';
+import { DeviceHub } from './hub.ts';
 
 test('binary export is bound to its pending device call and returns only metadata', async () => {
   const root = await mkdtemp(join(tmpdir(), 'device-export-'));

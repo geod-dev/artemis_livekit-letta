@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { errorResponse } from '../http';
-import type { LinkMetadata } from '../link-preview/link-description';
+import { errorResponse } from '../http.ts';
+import type { LinkMetadata } from '../link-preview/link-description.ts';
 
 /**
  * Title and description of a public page linked in a message. The fetcher is

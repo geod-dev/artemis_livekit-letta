@@ -3,18 +3,24 @@
 import json
 import queue
 import subprocess
+import sys
 import threading
 import time
 
 MAX_MCP_MESSAGES = 128
 MAX_TOOLS = 100
 MAX_TOOL_PAGES = 100
+DEFAULT_RPC_TIMEOUT_SECONDS = 30
+# JSON-RPC code for a server-initiated request this client does not implement. -32601 is reserved
+# for unknown methods on the device's own surface.
+UNSUPPORTED_SERVER_REQUEST_CODE = -32001
+JOIN_TIMEOUT_SECONDS = 2
 
 
 class StdioMcp:
     """Relay tools from any local MCP stdio server using JSON-RPC."""
 
-    def __init__(self, command, timeout=30):
+    def __init__(self, command, timeout=DEFAULT_RPC_TIMEOUT_SECONDS):
         self.command = list(command)
         self.timeout = timeout
         self._rpc_lock = threading.Lock()
@@ -46,8 +52,12 @@ class StdioMcp:
             )
             self.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         except BaseException:
-            self.close()
+            self._close_after_failure()
             raise
+
+    @property
+    def is_closed(self):
+        return self._closed
 
     def read(self):
         try:
@@ -70,28 +80,53 @@ class StdioMcp:
         finally:
             self._reader_done.set()
 
-    def send(self, message):
+    def send(self, message, deadline=None):
+        """Write one message to the child's stdin; the write itself must finish by the deadline."""
         if self._closed or self.process.poll() is not None:
             raise RuntimeError("Local MCP server is not running")
-        try:
-            self.process.stdin.write(json.dumps(message) + "\n")
-            self.process.stdin.flush()
-        except (BrokenPipeError, OSError) as error:
-            raise RuntimeError("Local MCP server exited") from error
+        if deadline is None:
+            deadline = time.monotonic() + self.timeout
+        failures = []
+
+        def write():
+            try:
+                self.process.stdin.write(json.dumps(message) + "\n")
+                self.process.stdin.flush()
+            except Exception as error:
+                failures.append(error)
+
+        # A child that stops reading fills the pipe and blocks a plain write indefinitely.
+        writer = threading.Thread(target=write, daemon=True, name="artemis-mcp-writer")
+        writer.start()
+        writer.join(max(0.0, deadline - time.monotonic()))
+        if writer.is_alive():
+            # Ending the child breaks the pipe, which fails the blocked write and frees the lock.
+            try:
+                self.process.kill()
+            except OSError:
+                pass
+            writer.join(JOIN_TIMEOUT_SECONDS)
+            self._close_after_failure()
+            raise TimeoutError(f"Local MCP stdin write timed out after {self.timeout}s")
+        if failures:
+            raise RuntimeError("Local MCP server exited") from failures[0]
 
     def rpc(self, method, params):
         with self._rpc_lock:
             self.next_id += 1
             ident = self.next_id
-            self.send({"jsonrpc": "2.0", "id": ident, "method": method, "params": params})
             deadline = time.monotonic() + self.timeout
+            self.send(
+                {"jsonrpc": "2.0", "id": ident, "method": method, "params": params},
+                deadline=deadline,
+            )
             while True:
                 with self._response_lock:
                     message = self._responses.pop(ident, None)
                 if message is None:
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
-                        self.close()
+                        self._close_after_failure()
                         raise TimeoutError(
                             f"Local MCP {method} request timed out after {self.timeout}s"
                         )
@@ -104,7 +139,7 @@ class StdioMcp:
                                 message += f": {self._reader_error}"
                             raise RuntimeError(message) from self._reader_error
                         if time.monotonic() >= deadline:
-                            self.close()
+                            self._close_after_failure()
                             raise TimeoutError(
                                 f"Local MCP {method} request timed out after {self.timeout}s"
                             )
@@ -115,7 +150,7 @@ class StdioMcp:
                             "jsonrpc": "2.0",
                             "id": message["id"],
                             "error": {
-                                "code": -32601,
+                                "code": UNSUPPORTED_SERVER_REQUEST_CODE,
                                 "message": "Client capabilities not supported",
                             },
                         }
@@ -127,8 +162,8 @@ class StdioMcp:
                 elif "id" in message:
                     # Keep unrelated replies for their owning request instead of dropping them.
                     with self._response_lock:
-                        if len(self._responses) >= 128:
-                            self.close()
+                        if len(self._responses) >= MAX_MCP_MESSAGES:
+                            self._close_after_failure()
                             raise RuntimeError("Too many unmatched local MCP responses")
                         self._responses[message["id"]] = message
 
@@ -136,8 +171,15 @@ class StdioMcp:
         try:
             return self._list_tools()
         except BaseException:
-            self.close()
+            self._close_after_failure()
             raise
+
+    def _close_after_failure(self):
+        """Clean up after an error without letting a cleanup failure hide the original error."""
+        try:
+            self.close()
+        except Exception as error:
+            print(f"Local MCP cleanup failed: {error}", file=sys.stderr, flush=True)
 
     def _list_tools(self):
         tools, params = [], {}
@@ -187,7 +229,7 @@ class StdioMcp:
                     pass
                 self.process.wait(timeout=2)
         if self._reader_started:
-            self._reader_thread.join(timeout=2)
+            self._reader_thread.join(timeout=JOIN_TIMEOUT_SECONDS)
         if (
             self._reader_thread.is_alive()
             and self.process.stdout
@@ -197,7 +239,7 @@ class StdioMcp:
                 self.process.stdout.close()
             except (OSError, ValueError):
                 pass
-            self._reader_thread.join(timeout=2)
+            self._reader_thread.join(timeout=JOIN_TIMEOUT_SECONDS)
         if self._reader_thread.is_alive():
             raise RuntimeError("Local MCP stdout reader did not stop after process shutdown")
         if self.process.stdout and not self.process.stdout.closed:

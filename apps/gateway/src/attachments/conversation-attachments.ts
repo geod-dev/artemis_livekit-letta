@@ -1,5 +1,5 @@
-import { AttachmentUnavailableError } from './attachment-policy';
-import type { AttachmentRegistry } from './attachment-registry';
+import { AttachmentUnavailableError } from './attachment-policy.ts';
+import type { AttachmentRegistry } from './attachment-registry.ts';
 
 /**
  * The reference bookkeeping between conversations and their uploads. Routes call

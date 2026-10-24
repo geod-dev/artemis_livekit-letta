@@ -3,10 +3,10 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { composeWorkspace } from '../compose';
-import { PayloadTooLargeError } from './attachment-policy';
-import { AttachmentStore } from './attachment-store';
-import { MAX_UPLOAD_BYTES } from './limits';
+import { composeWorkspace } from '../compose.ts';
+import { PayloadTooLargeError } from './attachment-policy.ts';
+import { AttachmentStore } from './attachment-store.ts';
+import { MAX_UPLOAD_BYTES } from './limits.ts';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 

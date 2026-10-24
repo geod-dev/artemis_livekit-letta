@@ -1,7 +1,7 @@
 import { voicePath } from '@artemis/contracts/agent-server';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { AgentServerClient } from '../agent-server/client';
+import type { AgentServerClient } from '../agent-server/client.ts';
 import {
   PROXY_BODY_LIMIT,
   bearerToken,
@@ -10,8 +10,8 @@ import {
   requestLimit,
   routeError,
   withQuery,
-} from '../http';
-import { sameSecret } from '../security';
+} from '../http.ts';
+import { sameSecret } from '../security.ts';
 
 /** The LiveKit token port of the voice routes; the vendor is chosen in compose. */
 export interface VoiceTokenPort {

@@ -1,8 +1,8 @@
 import type { WorkspaceTransport } from '@artemis/workspace';
 import { createHash, randomUUID } from 'node:crypto';
 import { posix, win32 } from 'node:path';
-import { MAX_UPLOAD_BYTES } from '../attachments/limits';
-import { HttpError } from '../http';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
+import { HttpError } from '../http.ts';
 
 /** The metadata a device file upload returns; only this enters the device's MCP result. */
 interface DeviceFileMetadata {

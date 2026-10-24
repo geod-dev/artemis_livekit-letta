@@ -6,10 +6,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { HttpError } from '../http';
-import { createDeviceRoutes } from './api';
-import { DeviceHub } from './hub';
-import { createDeviceMcpRoutes } from './mcp-endpoint';
+import { HttpError } from '../http.ts';
+import { createDeviceRoutes } from './api.ts';
+import { DeviceHub } from './hub.ts';
+import { createDeviceMcpRoutes } from './mcp-endpoint.ts';
 
 const tools = [
   {

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { validateConfig } from './config';
+import { validateConfig } from './config.ts';
 
 const repoRoot = join(import.meta.dirname, '..', '..', '..');
 const appsDir = join(import.meta.dirname, '..', '..');

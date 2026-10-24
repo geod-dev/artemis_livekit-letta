@@ -4,10 +4,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AttachmentStore } from '../attachments/attachment-store';
-import { MAX_UPLOAD_BYTES } from '../attachments/limits';
-import { composeWorkspace } from '../compose';
-import { createAttachmentRoutes } from './attachments';
+import { AttachmentStore } from '../attachments/attachment-store.ts';
+import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
+import { composeWorkspace } from '../compose.ts';
+import { createAttachmentRoutes } from './attachments.ts';
 
 test('upload rejects oversized streamed bodies before multipart parsing without content-length', async () => {
   const root = await mkdtemp(join(tmpdir(), 'artemis-attachments-upload-'));

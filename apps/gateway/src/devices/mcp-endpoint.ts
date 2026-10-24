@@ -1,7 +1,7 @@
 import { handleDeviceMcpRequest } from '@artemis/mcp/device-server';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { DeviceHub } from './hub';
+import type { DeviceHub } from './hub.ts';
 
 /**
  * One authenticated, standard Streamable HTTP MCP endpoint per connected device.

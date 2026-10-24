@@ -1,16 +1,16 @@
 import type { Hono } from 'hono';
-import { createAuth } from './auth';
-import type { GatewayDependencies } from './compose';
-import { createDeviceRoutes } from './devices/api';
-import { createDeviceMcpRoutes } from './devices/mcp-endpoint';
-import { errorResponse } from './http';
-import { createAttachmentRoutes } from './routes/attachments';
-import { createConversationRoutes } from './routes/conversations';
-import { createLinkPreviewRoutes } from './routes/link-previews';
-import { createMcpRoutes } from './routes/mcp-settings';
-import { createTranscriptionRoutes } from './routes/transcription';
-import { createVoiceRoutes } from './routes/voice';
-import { createWorkspaceFileRoutes } from './routes/workspace-files';
+import { createAuth } from './auth.ts';
+import type { GatewayDependencies } from './compose.ts';
+import { createDeviceRoutes } from './devices/api.ts';
+import { createDeviceMcpRoutes } from './devices/mcp-endpoint.ts';
+import { errorResponse } from './http.ts';
+import { createAttachmentRoutes } from './routes/attachments.ts';
+import { createConversationRoutes } from './routes/conversations.ts';
+import { createLinkPreviewRoutes } from './routes/link-previews.ts';
+import { createMcpRoutes } from './routes/mcp-settings.ts';
+import { createTranscriptionRoutes } from './routes/transcription.ts';
+import { createVoiceRoutes } from './routes/voice.ts';
+import { createWorkspaceFileRoutes } from './routes/workspace-files.ts';
 
 /**
  * The gateway's HTTP application from its dependencies. Public liveness and
