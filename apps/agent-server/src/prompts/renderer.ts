@@ -5,8 +5,10 @@ import { join } from 'node:path';
 /**
  * Renders prompt templates from `apps/agent-server/templates/` with
  * `{{name}}`, `{{workspace}}`, `{{conversation_id}}`, `{{timezone}}`,
- * `{{task_id}}`, `{{mcp_tools}}` (subagents only). Templates are read on each
- * render (dev edits apply to NEW conversations only: rendered prompts are frozen).
+ * `{{task_id}}`, `{{mcp_tools}}` (subagents only). The system, title and worker-rule
+ * templates are read on each render (dev edits apply to NEW conversations only: rendered
+ * prompts are frozen). Subagent definitions are loaded once at boot, so edits to
+ * `templates/agents/*.md` need a restart.
  */
 interface RenderedPrompt {
   templateId: string;

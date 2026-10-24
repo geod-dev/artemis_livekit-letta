@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { assertAnthropicKeyForModels, loadConfig } from './config.ts';
 
@@ -46,12 +47,12 @@ describe('loadConfig', () => {
 
   it('refuses the development token in production', () => {
     assert.throws(() => loadConfig({ ...base, NODE_ENV: 'production' }), /AGENT_SERVER_TOKEN/);
-    const config = loadConfig({ ...base, NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret' });
+    const config = loadConfig({ ...base, NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret', WORKSPACE_PATH: '/workspace' });
     assert.equal(config.token, 'real-secret');
   });
 
   it('refuses placeholder database passwords in production', () => {
-    const prod = { NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret' };
+    const prod = { NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret', WORKSPACE_PATH: '/workspace' };
     const placeholderUrl = 'postgresql://artemis:dev-artemis-db-password-change-me@localhost:5432/artemis';
     assert.throws(() => loadConfig({ ...prod, ...base, DATABASE_URL: placeholderUrl }), /DATABASE_URL password/);
     assert.throws(
@@ -60,6 +61,36 @@ describe('loadConfig', () => {
     );
     assert.doesNotThrow(() => loadConfig({ ...prod, ...base }));
     assert.doesNotThrow(() => loadConfig({ ...base, HINDSIGHT_DB_PASSWORD: 'dev-hindsight-db-password-change-me' }));
+  });
+
+  it('accepts only letter-and-digit database passwords in production', () => {
+    const prod = { ...base, NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret', WORKSPACE_PATH: '/workspace' };
+    assert.doesNotThrow(() => loadConfig({ ...prod, DATABASE_URL: 'postgresql://artemis:Abc123@localhost:5432/artemis' }));
+    assert.throws(
+      () => loadConfig({ ...prod, DATABASE_URL: 'postgresql://artemis:ab%40cd@localhost:5432/artemis' }),
+      /DATABASE_URL password must contain only letters and digits/
+    );
+    assert.throws(
+      () => loadConfig({ ...prod, DATABASE_URL: 'postgresql://artemis:ab/cd@localhost:5432/artemis' }),
+      /DATABASE_URL does not parse/
+    );
+    assert.throws(() => loadConfig({ ...prod, ARTEMIS_DB_PASSWORD: 'pass-word' }), /ARTEMIS_DB_PASSWORD must contain only/);
+    assert.throws(() => loadConfig({ ...prod, HINDSIGHT_DB_PASSWORD: 'pass word' }), /HINDSIGHT_DB_PASSWORD must contain only/);
+    assert.doesNotThrow(() => loadConfig({ ...base, ARTEMIS_DB_PASSWORD: 'pass-word' }));
+  });
+
+  it('requires WORKSPACE_PATH in production and keeps the dev default elsewhere', () => {
+    const prod = { ...base, NODE_ENV: 'production', AGENT_SERVER_TOKEN: 'real-secret' };
+    assert.throws(() => loadConfig(prod), /WORKSPACE_PATH is required in production/);
+    assert.equal(loadConfig({ ...prod, WORKSPACE_PATH: '/workspace' }).workspace.root, resolve('/workspace'));
+    assert.doesNotThrow(() => loadConfig(base));
+  });
+
+  it('reads LOG_LEVEL once, defaulting to info and accepting debug only', () => {
+    assert.equal(loadConfig(base).logLevel, 'info');
+    assert.equal(loadConfig({ ...base, LOG_LEVEL: '' }).logLevel, 'info');
+    assert.equal(loadConfig({ ...base, LOG_LEVEL: 'debug' }).logLevel, 'debug');
+    assert.throws(() => loadConfig({ ...base, LOG_LEVEL: 'warn' }), /LOG_LEVEL/);
   });
 
   it('routes the title model to ASSISTANT_TITLE_MODEL when set', () => {

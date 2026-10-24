@@ -34,7 +34,10 @@ function parseSubagentDefinition(source: string, origin = 'definition'): Subagen
   return { name, description, instructions: source.slice(match[0].length).trim() };
 }
 
-/** Every `*.md` file of the directory, sorted by name. Throws on an invalid or duplicate definition. */
+/**
+ * Every `*.md` file of the directory, sorted by name. Throws on an invalid or duplicate definition.
+ * Called once at boot (`buildServices`), so edits to the files apply after a restart.
+ */
 export async function loadSubagentDefinitions(dir: string): Promise<SubagentDefinition[]> {
   const files = (await readdir(dir)).filter((file) => file.endsWith('.md')).sort();
   const definitions: SubagentDefinition[] = [];

@@ -10,7 +10,7 @@ import { isoAt } from '../util/time.ts';
 import type { AgentToolContext } from './index.ts';
 
 /**
- * Memory tools of the agent (docs/architecture.md, "Conversations memory and
+ * Memory tools of the agent (docs/architecture.md, "Conversations, memory, and
  * background work"). Appended to the agent toolset in `TOOL_NAMES` order.
  * - `memory_search {query, budget?}`: on-demand recall through the coordinator's
  *   `recall`, so the budget, timeout, ledger and trace are the automatic ones.

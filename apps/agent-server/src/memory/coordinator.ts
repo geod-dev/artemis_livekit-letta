@@ -1,4 +1,4 @@
-import { type Clock, type Logger, consoleLogger, errorMessage, systemClock, uuid } from '@artemis/core';
+import { type Clock, type Logger, errorMessage, uuid } from '@artemis/core';
 import type { RecalledMemory, Repositories, MemoryRetentionRecord, MessageRecord, RecallTrace, TurnRecord } from '@artemis/storage';
 import {
   recallBudget,
@@ -12,14 +12,16 @@ import type { AgentServerConfig } from '../config.ts';
 import { contentText } from '../util/content.ts';
 import { runWithTimeout } from '../util/async.ts';
 import { isoAt } from '../util/time.ts';
+import { createMemoryOutbox, type MemoryOutbox } from './outbox.ts';
 
 /** The app-state key of the conversation the user wrote to last (swapped on every accepted user message). */
 export const LAST_ACTIVE_CONVERSATION_KEY = 'last_active_conversation_id';
 
 /**
- * Applies the memory rules (docs/architecture.md, "Conversations memory and
+ * Applies the memory rules (docs/architecture.md, "Conversations, memory, and
  * background work"). Talks to long-term memory only through `MemoryStore`;
- * storage holds the outbox and the bookkeeping.
+ * storage holds the outbox and the bookkeeping. Disabled memory is the no-op
+ * store (`NoopMemoryStore`), so these rules run the same way with it.
  * - `conversationActivated(id)` on every accepted user message: swaps
  *   `last_active_conversation_id`; when it changed, flushes the previous
  *   conversation's unanalyzed completed turns.
@@ -29,9 +31,9 @@ export const LAST_ACTIVE_CONVERSATION_KEY = 'last_active_conversation_id';
  *   give no memories; the turn proceeds.
  * - `turnCompleted(turn)`: when the conversation has `retainEvery` unanalyzed
  *   completed user turns, the turns up to the last of them are retained.
- * Retention is an outbox (`memory_retentions`): `start()` pumps it with
- * exponential backoff and a terminal state after `maxAttempts`; the operation
- * id is the row id, so retries are idempotent. Memory failures never fail a turn.
+ * Retention records rows in the outbox (`memory_retentions`); the outbox pump
+ * (`./outbox.ts`) submits them. The operation id is the row id, so retries are
+ * idempotent. Memory failures never fail a turn.
  */
 export interface MemoryCoordinator {
   conversationActivated(conversationId: string): Promise<void>;
@@ -70,8 +72,8 @@ interface MemoryCoordinatorOptions {
   store: MemoryStore;
   storage: MemoryCoordinatorStorage;
   config: Pick<AgentServerConfig, 'assistant' | 'memory'>;
-  clock?: Clock;
-  logger?: Logger;
+  clock: Clock;
+  logger: Logger;
   /** Outbox pump period (default 5 s). */
   pumpIntervalMs?: number;
   /** Submission attempts before a retention is terminal (default 10). */
@@ -80,38 +82,29 @@ interface MemoryCoordinatorOptions {
   retainTimeoutMs?: number;
 }
 
-const PUMP_BATCH = 10;
-const MAX_BACKOFF_MS = 5 * 60_000;
-
 class StoreMemoryCoordinator implements MemoryCoordinator {
   private readonly clock: Clock;
   private readonly logger: Logger;
-  private readonly pumpIntervalMs: number;
-  private readonly maxAttempts: number;
-  private readonly retainTimeoutMs: number;
+  private readonly outbox: MemoryOutbox;
   /** Per-conversation serialization of batch, flush and recall bookkeeping. */
   private readonly chains = new Map<string, Promise<void>>();
-  /** Retention id -> earliest next submission (ms). */
-  private readonly retryAt = new Map<string, number>();
-  private pumping: Promise<void> | null = null;
-  private dirty = false;
-  private stopped = true;
-  private timer: { cancel(): void } | null = null;
 
   constructor(private readonly options: MemoryCoordinatorOptions) {
-    this.clock = options.clock ?? systemClock;
-    this.logger = options.logger ?? consoleLogger('memory');
-    this.pumpIntervalMs = options.pumpIntervalMs ?? 5_000;
-    this.maxAttempts = options.maxAttempts ?? 10;
-    this.retainTimeoutMs = options.retainTimeoutMs ?? 30_000;
-  }
-
-  private get enabled(): boolean {
-    return this.options.config.memory.enabled;
+    this.clock = options.clock;
+    this.logger = options.logger;
+    this.outbox = createMemoryOutbox({
+      storage: options.storage,
+      build: (row) => this.buildRetain(row),
+      retain: (request, signal) => options.store.retain(request, signal),
+      clock: options.clock,
+      logger: options.logger,
+      pumpIntervalMs: options.pumpIntervalMs,
+      maxAttempts: options.maxAttempts,
+      retainTimeoutMs: options.retainTimeoutMs,
+    });
   }
 
   async conversationActivated(conversationId: string): Promise<void> {
-    if (!this.enabled) return;
     try {
       const previous = await this.options.storage.appState.swap<string>(LAST_ACTIVE_CONVERSATION_KEY, conversationId);
       if (typeof previous === 'string' && previous !== conversationId) {
@@ -123,7 +116,6 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
   }
 
   async recallFor(input: RecallInput): Promise<RecalledMemory[]> {
-    if (!this.enabled) return [];
     try {
       return (await this.recall(input)).map(toRecalledMemory);
     } catch (error) {
@@ -182,7 +174,6 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
   }
 
   async turnCompleted(turn: TurnRecord): Promise<void> {
-    if (!this.enabled) return;
     await this.serial(turn.conversationId, async () => {
       const unanalyzed = await this.options.storage.turns.listUnanalyzed(turn.conversationId);
       const userTurns = unanalyzed.filter((row) => row.kind === 'user');
@@ -194,7 +185,6 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
   }
 
   async flush(conversationId: string, reason: 'switch' | 'shutdown'): Promise<void> {
-    if (!this.enabled) return;
     await this.serial(conversationId, async () => {
       const turns = await this.options.storage.turns.listUnanalyzed(conversationId);
       if (turns.length > 0) await this.retain(conversationId, turns, 'flush');
@@ -203,17 +193,11 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
   }
 
   start(): void {
-    if (!this.enabled || this.timer) return;
-    this.stopped = false;
-    this.timer = this.clock.setInterval(() => this.kick(), this.pumpIntervalMs);
-    this.kick();
+    this.outbox.start();
   }
 
   async stop(): Promise<void> {
-    this.stopped = true;
-    this.timer?.cancel();
-    this.timer = null;
-    await this.pumping?.catch(() => undefined);
+    await this.outbox.stop();
   }
 
   /** Records the retention (turns analyzed in the same transaction) and wakes the pump. */
@@ -227,65 +211,7 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
       operationId: id,
       reason,
     });
-    this.kick();
-  }
-
-  private kick(): void {
-    if (this.stopped) return;
-    this.dirty = true;
-    if (this.pumping) return;
-    this.pumping = this.drain().finally(() => {
-      this.pumping = null;
-      if (this.dirty && !this.stopped) this.kick();
-    });
-  }
-
-  private async drain(): Promise<void> {
-    while (this.dirty && !this.stopped) {
-      this.dirty = false;
-      try {
-        await this.submitPending();
-      } catch (error) {
-        this.logger.error('outbox pump failed', { error: errorMessage(error) });
-      }
-    }
-  }
-
-  /**
-   * Scans the outbox oldest first. A row in backoff is skipped, and the scan goes on. Every
-   * backed-off pending row is in `retryAt`, so widening the window by its size keeps at least
-   * `PUMP_BATCH` rows that are not in backoff reachable, even when an outage backs off the oldest ones.
-   */
-  private async submitPending(): Promise<void> {
-    const rows = await this.options.storage.memoryRetentions.listPending(PUMP_BATCH + this.retryAt.size);
-    for (const row of rows) {
-      if (this.stopped) return;
-      if ((this.retryAt.get(row.id) ?? 0) > this.clock.now()) continue;
-      await this.submit(row);
-    }
-  }
-
-  private async submit(row: MemoryRetentionRecord): Promise<void> {
-    try {
-      const request = await this.buildRetain(row);
-      if (request) {
-        await runWithTimeout({ clock: this.clock, timeoutMs: this.retainTimeoutMs }, (signal) =>
-          this.options.store.retain(request, signal)
-        );
-      }
-      await this.options.storage.memoryRetentions.markSubmitted(row.id, this.iso());
-      this.retryAt.delete(row.id);
-    } catch (error) {
-      const message = errorMessage(error);
-      const attempts = row.attempts + 1;
-      const terminal = attempts >= this.maxAttempts;
-      if (terminal) this.retryAt.delete(row.id);
-      else this.retryAt.set(row.id, this.clock.now() + retryDelayMs(attempts));
-      this.logger.warn('memory retention submission failed', { retentionId: row.id, attempts, terminal, error: message });
-      await this.options.storage.memoryRetentions
-        .markAttemptFailed(row.id, message, terminal)
-        .catch((storageError: unknown) => this.logError('retention bookkeeping failed', row.conversationId, storageError));
-    }
+    this.outbox.wake();
   }
 
   private async buildRetain(row: MemoryRetentionRecord): Promise<RetainRequest | null> {
@@ -355,11 +281,6 @@ class StoreMemoryCoordinator implements MemoryCoordinator {
 
 export function createMemoryCoordinator(options: MemoryCoordinatorOptions): MemoryCoordinator {
   return new StoreMemoryCoordinator(options);
-}
-
-/** Exponential backoff: 2 s, 4 s, 8 s ... capped at 5 minutes. */
-function retryDelayMs(attempts: number): number {
-  return Math.min(1_000 * 2 ** attempts, MAX_BACKOFF_MS);
 }
 
 /** The shape automatic recall hands to the turn envelope (the trace keeps the ids only). */

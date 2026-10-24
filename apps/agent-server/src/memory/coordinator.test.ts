@@ -4,6 +4,7 @@ import type { Logger } from '@artemis/core';
 import { EphemeralStorage } from '@artemis/storage/testing';
 import type { AgentServerConfig } from '../config.ts';
 import { createMemoryCoordinator } from './coordinator.ts';
+import { NoopMemoryStore } from './noop-memory-store.ts';
 import { FakeClock } from '@artemis/core/testing';
 import { FakeMemoryStore } from '@artemis/memory/testing';
 import { fact, seedConversation, seedTurn, settle } from '../../test/memory-support.ts';
@@ -34,7 +35,8 @@ function setup(options: { enabled?: boolean; maxAttempts?: number } = {}) {
     },
   };
   const coordinator = createMemoryCoordinator({
-    store,
+    // Disabled memory is the no-op store; the coordinator runs the same rules over it.
+    store: options.enabled === false ? new NoopMemoryStore() : store,
     storage,
     config,
     clock,
@@ -205,7 +207,7 @@ test('recall budget and token cap follow the modality and effort', async () => {
   }
 });
 
-test('disabled memory neither recalls nor retains', async () => {
+test('disabled memory (the no-op store) recalls nothing, never reaches a store and drains its outbox', async () => {
   const { storage, store, coordinator } = setup({ enabled: false });
   await seedConversation(storage, 'c1');
   const turn = await seedTurn(storage, { id: 't1', conversationId: 'c1', text: 'hi', reply: 'hello' });
@@ -213,9 +215,11 @@ test('disabled memory neither recalls nor retains', async () => {
   await coordinator.conversationActivated('c1');
   await coordinator.turnCompleted(turn);
   await coordinator.flush('c1', 'switch');
+  await settle();
   assert.deepEqual(await coordinator.recallFor({ conversationId: 'c1', turnId: 't1', modality: 'text', query: 'q' }), []);
   assert.equal(store.recalls.length, 0);
   assert.equal(store.retains.length, 0);
+  assert.deepEqual(await storage.memoryRetentions.listPending(10), []);
   await coordinator.stop();
 });
 

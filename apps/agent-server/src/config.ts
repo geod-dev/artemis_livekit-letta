@@ -8,6 +8,8 @@ export interface AgentServerConfig {
   port: number;
   /** Bearer token the gateway presents (`AGENT_SERVER_TOKEN`). */
   token: string;
+  /** Console log level (`LOG_LEVEL`: `debug` or `info`, default `info`). */
+  logLevel: 'debug' | 'info';
   databaseUrl: string;
   assistant: {
     name: string;
@@ -73,7 +75,7 @@ const DEFAULT_TASK_MODEL = 'openai-compatible/zai-org/GLM-5.3-Flash';
 export const MAX_PENDING_TURNS = 32;
 const MAX_SUBAGENTS = 4;
 /** Workspace-relative data area: written by the server, read-only for agent tools. */
-export const DATA_DIR = 'data';
+const DATA_DIR = 'data';
 /** Subpaths of `DATA_DIR` (workspace-relative). */
 export const DATA_SUBDIRS = { tasks: `${DATA_DIR}/tasks`, artifacts: `${DATA_DIR}/artifacts` } as const;
 /** The workspace root as the model sees it, wherever the server runs. */
@@ -110,14 +112,30 @@ function integer(env: NodeJS.ProcessEnv, name: string, fallback: number, min: nu
   return parsed;
 }
 
-/** The password embedded in a postgres URL, or undefined when absent or unparseable. */
+/**
+ * The password embedded in a postgres URL, or undefined when the URL has none. A URL that
+ * does not parse and carries an `@` has a password that breaks the URL (an unencoded special
+ * character), so it is refused rather than checked.
+ */
 function urlPassword(url: string): string | undefined {
   try {
     const { password } = new URL(url);
     return password ? decodeURIComponent(password) : undefined;
   } catch {
+    if (url.includes('@')) throw new Error('DATABASE_URL does not parse: its password must contain only letters and digits');
     return undefined;
   }
+}
+
+/** Production database passwords are spliced into connection URLs unencoded, so they are letters and digits only. */
+const PLAIN_SECRET = /^[A-Za-z0-9]+$/;
+
+/** `LOG_LEVEL`: `debug` or `info`; unset or empty is `info`. The only reader of the variable. */
+function logLevel(env: NodeJS.ProcessEnv): 'debug' | 'info' {
+  const raw = text(env, 'LOG_LEVEL');
+  if (raw === undefined || raw === 'info') return 'info';
+  if (raw === 'debug') return 'debug';
+  throw new Error('LOG_LEVEL must be "debug" or "info"');
 }
 
 function modelHandle(env: NodeJS.ProcessEnv, name: string, fallback: string): string {
@@ -156,8 +174,9 @@ export function assertAnthropicKeyForModels(config: Pick<AgentServerConfig, 'mod
 }
 
 /**
- * Loads the repository-root `.env` for host runs (Docker passes it through `env_file`).
- * Variables already set in the process win over the file.
+ * Loads the repository-root `.env` for host runs only. The agent-server container gets an
+ * explicit environment list from compose, not this file. Variables already set in the
+ * process win over the file.
  */
 export function loadRootEnv(): void {
   const file = fileURLToPath(new URL('../../../.env', import.meta.url));
@@ -183,8 +202,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
       ['ARTEMIS_DB_PASSWORD', text(env, 'ARTEMIS_DB_PASSWORD')],
       ['HINDSIGHT_DB_PASSWORD', text(env, 'HINDSIGHT_DB_PASSWORD')],
     ] as const) {
-      if (configured !== undefined && DEV_DB_PASSWORDS.includes(configured)) {
+      if (configured === undefined) continue;
+      if (DEV_DB_PASSWORDS.includes(configured)) {
         throw new Error(`${name} must be explicitly set to a non-development secret in production`);
+      }
+      if (!PLAIN_SECRET.test(configured)) {
+        throw new Error(`${name} must contain only letters and digits in production`);
       }
     }
   }
@@ -215,14 +238,18 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
   requireConfiguredProvider('ASSISTANT_TITLE_MODEL', models.title, openAiCompatible !== undefined);
 
   const hindsightUrl = text(env, 'HINDSIGHT_URL') ?? '';
+  const workspacePath = text(env, 'WORKSPACE_PATH');
+  // The dev default resolves inside the source tree; the image never creates that path.
+  if (production && workspacePath === undefined) throw new Error('WORKSPACE_PATH is required in production');
   const workspaceRoot = resolve(
-    text(env, 'WORKSPACE_PATH') ?? fileURLToPath(new URL('../../../data/workspace', import.meta.url))
+    workspacePath ?? fileURLToPath(new URL('../../../data/workspace', import.meta.url))
   );
   const runAs = parseRunAs(text(env, 'WORKSPACE_RUN_AS'));
 
   return {
     port: integer(env, 'AGENT_SERVER_PORT', 4000, 1),
     token,
+    logLevel: logLevel(env),
     databaseUrl,
     assistant: {
       name: text(env, 'ASSISTANT_NAME') ?? 'Artemis',
