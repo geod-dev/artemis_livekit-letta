@@ -1,11 +1,8 @@
+import { type PresentValidation, validatePresentTree } from '@artemis/contracts/present-validation';
 import {
   type GenerativeUIAction,
   defaultGenerativeUILibrary,
 } from '@assistant-ui/react-generative-ui';
-import {
-  type PresentValidation,
-  validatePresentTree,
-} from '@artemis/contracts/present-validation';
 
 /**
  * Generative UI rendering: the assistant calls the `present` tool with a JSON

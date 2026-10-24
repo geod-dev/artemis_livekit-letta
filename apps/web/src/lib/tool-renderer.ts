@@ -1,6 +1,6 @@
 import type { ToolDisplay } from '@artemis/contracts/chat-types';
-import { type ToolCall, webSearchQuery } from './tool-display.ts';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
+import { type ToolCall, webSearchQuery } from './tool-display.ts';
 import { readToolOutput } from './tool-output.ts';
 import { type WebSearchOutput, parseWebSearchResult } from './web-search.ts';
 
