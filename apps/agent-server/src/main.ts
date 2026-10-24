@@ -3,8 +3,9 @@
  * migrate -> buildApp (memory, MCP registry, recovery, workers) -> serve (Hono on
  * AGENT_SERVER_PORT) -> MCP catalog refresh. /ready reports mcp=false until that first refresh
  * completes. Memory is non-blocking: its bank check runs in the background.
- * SIGTERM/SIGINT: stop accepting, then `buildApp`'s close (tasks end `failed: interrupted`,
- * the last active conversation's memory is flushed, storage closes).
+ * SIGTERM/SIGINT: stop accepting, then `buildApp`'s close (running tasks end `cancelled`,
+ * the last active conversation's memory is flushed, storage closes). A failed shutdown step
+ * is logged and the process exits with code 1.
  */
 import { serve } from '@hono/node-server';
 import { consoleLogger, errorMessage } from '@artemis/core';
@@ -16,7 +17,7 @@ import { migrate } from './migrate.ts';
 export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const config = loadConfig(env);
   assertAnthropicKeyForModels(config);
-  const logger = consoleLogger('agent-server');
+  const logger = consoleLogger('agent-server', { level: config.logLevel });
 
   await migrate(config);
   const booted = await buildApp(config, { logger });
@@ -31,8 +32,13 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
     shuttingDown = true;
     logger.info('shutting down', { signal });
     server.close();
-    await booted.close();
-    process.exit(0);
+    try {
+      await booted.close();
+      process.exit(0);
+    } catch (error) {
+      logger.error('shutdown failed', { signal, error: errorMessage(error) });
+      process.exit(1);
+    }
   };
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
   process.once('SIGINT', () => void shutdown('SIGINT'));

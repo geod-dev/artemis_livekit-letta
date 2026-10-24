@@ -1,4 +1,4 @@
-import { AppError, NotFoundError } from '@artemis/core';
+import { AppError, isRecord, NotFoundError } from '@artemis/core';
 import { jsonObject } from '@artemis/http';
 import {
   type ChatAttachment,
@@ -7,7 +7,6 @@ import {
   type TextEffort,
 } from '@artemis/contracts/chat-types';
 import type { Context, Next } from 'hono';
-import { isRecord } from '../util/content.ts';
 
 /** Request validation: body, query and path checks shared by the route modules. Each failure is a 4xx AppError. */
 
@@ -17,7 +16,7 @@ const CALL_ID_PATTERN = /^call_[0-9a-f]{32}$/;
 const ATTACHMENT_KINDS: readonly ChatAttachment['kind'][] = ['image', 'file'];
 /** Voice completions: the messages list and the text of one message. */
 export const MAX_VOICE_MESSAGES = 100;
-export const MAX_VOICE_CONTENT = 100_000;
+const MAX_VOICE_CONTENT = 100_000;
 /** Background update ids accepted by one read request. */
 export const MAX_UPDATE_IDS = 500;
 
@@ -25,7 +24,7 @@ export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
 
-export function isCallId(value: string): boolean {
+function isCallId(value: string): boolean {
   return CALL_ID_PATTERN.test(value);
 }
 

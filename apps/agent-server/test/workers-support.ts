@@ -13,9 +13,9 @@ import {
   type ModelRoute,
   type StopReason,
 } from '@artemis/llm';
-import { compose } from '../src/compose.ts';
 import { EphemeralStorage } from '@artemis/storage/testing';
-import type { AgentServerConfig } from '../src/config.ts';
+import { FilesystemWorkspaceTransport } from '@artemis/workspace/filesystem';
+import { type AgentServerConfig, WORKSPACE_RIPGREP } from '../src/config.ts';
 import { createCallSessions } from '../src/calls/call-sessions.ts';
 import { ConversationEventHub } from '../src/events/hub.ts';
 import type { MemoryCoordinator } from '../src/memory/coordinator.ts';
@@ -23,6 +23,22 @@ import type { ModelRouter, RouteKind } from '../src/models/routing.ts';
 import { PromptRenderer } from '../src/prompts/renderer.ts';
 import type { TitleService } from '../src/titles/title-service.ts';
 import { type AgentRuntime, createAgentRuntime } from '../src/workers/wiring.ts';
+import type { WorkerSupervisor } from '../src/workers/supervisor.ts';
+
+/** Resolves once every background task end, delivery and wake started so far has finished. */
+export async function settled(supervisor: WorkerSupervisor): Promise<void> {
+  while (supervisor.inFlight().length > 0) await Promise.allSettled([...supervisor.inFlight()]);
+}
+
+/** The filesystem workspace of a test config, built without opening storage or the MCP client. */
+export function testWorkspace(config: AgentServerConfig): FilesystemWorkspaceTransport {
+  return new FilesystemWorkspaceTransport({
+    root: config.workspace.root,
+    displayRoot: config.workspace.displayRoot,
+    runAs: config.workspace.runAs,
+    ripgrep: WORKSPACE_RIPGREP,
+  });
+}
 
 /** Test clock: `advance` moves time; timers are real (their delays are short in tests). */
 export class ManualClock implements Clock {
@@ -192,6 +208,7 @@ export function testConfig(workspaceRoot: string, overrides: Partial<AgentServer
     port: 0,
     token: 'test',
     databaseUrl: '',
+    logLevel: 'info',
     assistant: { name: 'Test', timezone: 'Europe/Paris', presentTool: false },
     models: { assistant: 'anthropic/test-model', task: 'anthropic/test-model', title: 'anthropic/test-model' },
     providers: {},
@@ -245,7 +262,7 @@ export async function createHarness(
     memory: new NoMemory(),
     calls: createCallSessions(clock),
     titles: new NoTitles(),
-    workspace: compose(config).workspace,
+    workspace: testWorkspace(config),
     catalog,
     mcp: new NoMcp(),
     memoryTools: [],

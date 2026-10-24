@@ -1,4 +1,4 @@
-import { NotFoundError } from '@artemis/core';
+import { errorMessage, type Logger, NotFoundError } from '@artemis/core';
 import type { TurnMode } from '@artemis/contracts/chat-types';
 import type { ConversationService, TurnHandle, TurnOutcome } from '../conversations/service.ts';
 import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
@@ -42,6 +42,7 @@ export interface VoiceServiceDeps {
   conversations: Pick<ConversationService, 'submitVoiceTurn' | 'submitUpdateTurn'>;
   calls: CallSessions;
   delivery: Pick<BackgroundDeliveryService, 'claimQueued' | 'complete' | 'rollback'>;
+  logger: Logger;
 }
 
 /** Mode of a voice response: the call's mode (no call counts as short), and a fresh end request. */
@@ -50,7 +51,7 @@ function voiceTurnMode(calls: CallSessions, conversationId: string): TurnMode {
 }
 
 export function createVoiceService(deps: VoiceServiceDeps): VoiceService {
-  const { conversations, calls, delivery } = deps;
+  const { conversations, calls, delivery, logger } = deps;
 
   return {
     async complete(conversationId, input) {
@@ -110,7 +111,13 @@ export function createVoiceService(deps: VoiceServiceDeps): VoiceService {
           return outcome;
         })
         .catch(async (error: unknown) => {
-          await delivery.rollback(conversationId, token).catch(() => undefined);
+          await delivery.rollback(conversationId, token).catch((rollbackError: unknown) => {
+            logger.error('rolling back a spoken update failed', {
+              conversationId,
+              updateId,
+              error: errorMessage(rollbackError),
+            });
+          });
           throw error;
         });
       return { finished };

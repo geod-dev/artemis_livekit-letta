@@ -30,7 +30,7 @@ export function createApp(deps: ApiDependencies): Hono {
   });
 
   const v1 = new Hono();
-  v1.use('*', requireBearer(deps.config.token));
+  v1.use('*', requireBearer(deps.token));
   v1.route('/', conversationRoutes({ conversations: deps.conversations, tasks: deps.tasks, delivery: deps.delivery, events: deps.events }));
   v1.route('/', mcpRoutes({ mcp: deps.mcp }));
   v1.route(

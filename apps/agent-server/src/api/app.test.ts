@@ -7,7 +7,6 @@ import type { TextTurnRequest } from '@artemis/contracts/agent-server';
 import type { BackgroundDeliveryService } from '../tasks/delivery.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
 import { createVoiceService } from '../calls/voice-service.ts';
-import type { AgentServerConfig } from '../config.ts';
 import type { ConversationService, TurnOutcome } from '../conversations/service.ts';
 import type { ConversationEventHub } from '../events/hub.ts';
 import type { TaskPort } from '../tools/task-port.ts';
@@ -54,12 +53,12 @@ function harness(options: { memory?: boolean } = {}) {
   const calls = createCallSessions(clock);
   const delivery = fake<BackgroundDeliveryService>({});
   const deps: ApiDependencies = {
-    config: fake<AgentServerConfig>({ token: TOKEN }),
+    token: TOKEN,
     conversations,
     tasks: fake<TaskPort>({}),
     delivery,
     calls,
-    voice: createVoiceService({ conversations, calls, delivery }),
+    voice: createVoiceService({ conversations, calls, delivery, logger: consoleLogger('test', { level: 'error' }) }),
     events: fake<ConversationEventHub>({}),
     mcp,
     clock,

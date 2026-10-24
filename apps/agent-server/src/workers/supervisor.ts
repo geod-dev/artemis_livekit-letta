@@ -9,14 +9,12 @@ import { isoAt } from '../util/time.ts';
 import { CommandTaskWorker, type CommandTaskInput } from './command-task-worker.ts';
 import type { WorkerBase, WorkerEnv } from './env.ts';
 import { MainAgentWorker } from './main-agent-worker.ts';
+import { RESTART_FAILURE } from './restart.ts';
 import { recoverAfterRestart } from './recovery.ts';
 import { KeyedRegistry } from './registry.ts';
 import { SubagentTaskWorker } from './subagent-task-worker.ts';
 import type { TaskWorker } from './task-worker.ts';
 import type { SubagentStartMode } from './types.ts';
-
-/** The reason a task is failed with when the server restarts under it. */
-const RESTART_FAILURE = 'Interrupted by a server restart';
 
 /** Reaper period of the main agent workers. */
 const REAPER_PERIOD_MS = 15_000;
@@ -198,11 +196,11 @@ export class WorkerSupervisor implements TaskWorkers {
   }
 
   /**
-   * Resolves once every task end, delivery and wake started so far has finished (a wake
-   * settles with its turn). Tests wait on this instead of a fixed delay.
+   * Background work started so far (task ends, delivery, wakes). The test helper
+   * `settled` in `test/workers-support.ts` awaits it; production code does not.
    */
-  async settled(): Promise<void> {
-    while (this.pending.size > 0) await Promise.allSettled([...this.pending]);
+  inFlight(): readonly Promise<void>[] {
+    return [...this.pending];
   }
 
   /** Stops task workers, then the main workers (their turns are aborted). */

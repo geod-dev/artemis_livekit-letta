@@ -75,12 +75,12 @@ function harness() {
   });
 
   const deps: ApiDependencies = {
-    config: fake<ApiDependencies['config']>({ token: TOKEN }),
+    token: TOKEN,
     conversations,
     tasks: fake<TaskPort>({}),
     delivery,
     calls,
-    voice: createVoiceService({ conversations, calls, delivery }),
+    voice: createVoiceService({ conversations, calls, delivery, logger: consoleLogger('test', { level: 'error' }) }),
     events: fake<ConversationEventHub>({}),
     mcp: fake<ApiDependencies['mcp']>({}),
     clock,

@@ -6,12 +6,13 @@
  *
  * - `compose(config)` makes every vendor-or-no-op choice and returns the port set.
  * - `buildServices(ports, ...)` builds the whole service graph over those ports. It is the only
- *   place the graph is constructed; `buildApp` and the test harnesses both use it.
+ *   place the app's graph is constructed. The worker runtime inside it is built by
+ *   `createAgentRuntime` (workers/wiring.ts), which tests also call directly over their own ports.
  * - `buildApp(config)` runs the boot sequence (memory, MCP registry, recovery, workers) and
  *   returns the Hono app with a `close()` that shuts everything down in order.
  *
  * `main.ts` only adds the process lifecycle (signals, serving, exit); every other module
- * receives its collaborators by parameter.
+ * receives its collaborators by parameter. Only `buildApp` and its types are exported.
  */
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +22,7 @@ import { AnthropicLlmProvider } from '@artemis/llm/anthropic';
 import { OpenAiCompatibleLlmProvider } from '@artemis/llm/openai-compatible';
 import type { MemoryStore } from '@artemis/memory';
 import { HindsightMemoryStore } from '@artemis/memory/hindsight';
-import { McpCatalog, McpServerRegistry, type McpSettingsStore, mcpRevision } from '@artemis/mcp';
+import { McpCatalog, type McpClient, McpServerRegistry, type McpSettingsStore, mcpRevision } from '@artemis/mcp';
 import { SdkMcpClient } from '@artemis/mcp/sdk';
 import type { Storage } from '@artemis/storage';
 import { PostgresStorage } from '@artemis/storage/postgres';
@@ -46,28 +47,31 @@ import { type AgentRuntime, createAgentRuntime } from './workers/wiring.ts';
 
 const PROMPTS_DIR = fileURLToPath(new URL('../templates', import.meta.url));
 
+/** The MCP client name sent to MCP servers in the client info. */
+const MCP_CLIENT_NAME = 'artemis-agent-server';
+
 /** Every implementation the service runs on; the service graph receives these, never a vendor type. */
-export interface ComposedPorts {
+interface ComposedPorts {
   storage: Storage;
   router: ModelRouter;
   memoryStore: MemoryStore;
   workspace: WorkspaceTransport;
-  mcpClient: SdkMcpClient;
+  mcpClient: McpClient;
   catalog: McpCatalog;
   registry: McpServerRegistry;
 }
 
-export interface ComposeOptions {
+interface ComposeOptions {
   /** Overrides the Anthropic API base URL (the integration tests point it at a closed port). */
   anthropicBaseUrl?: string;
 }
 
-/** A storage handle only: what `migrate` needs. `compose` uses the same factory. */
-export function openStorage(config: AgentServerConfig): Storage {
+/** A storage handle over the configured database: what `migrate` and the tests need, with no graph. */
+export function openStorage(config: Pick<AgentServerConfig, 'databaseUrl'>): Storage {
   return new PostgresStorage({ connectionString: config.databaseUrl });
 }
 
-export function compose(config: AgentServerConfig, options: ComposeOptions = {}): ComposedPorts {
+function compose(config: AgentServerConfig, options: ComposeOptions = {}): ComposedPorts {
   const storage = openStorage(config);
   const router = createModelRouter(config, createProviders(config, options));
 
@@ -91,6 +95,7 @@ export function compose(config: AgentServerConfig, options: ComposeOptions = {})
   const mcpClient = new SdkMcpClient({
     artifacts: workspaceArtifactSink(workspace),
     stdio: { cwd: config.workspace.root },
+    clientName: MCP_CLIENT_NAME,
   });
   const { catalog, registry } = wireMcp(storage, mcpClient);
 
@@ -148,7 +153,7 @@ function mcpSettingsStore(storage: Storage): McpSettingsStore {
 }
 
 /** The service graph: every service the HTTP app and the workers use, built over the ports. */
-export interface Services {
+interface Services {
   prompts: PromptRenderer;
   memory: MemoryCoordinator;
   events: ConversationEventHub;
@@ -160,7 +165,7 @@ export interface Services {
 }
 
 /** Builds the whole service graph. The only construction site: no caller wires services itself. */
-export async function buildServices(
+async function buildServices(
   ports: ComposedPorts,
   config: AgentServerConfig,
   clock: Clock,
@@ -193,7 +198,9 @@ export async function buildServices(
     logger: logger.child('agent'),
   });
   calls.onEnded((conversationId, pending) => {
-    void runtime.delivery.callEnded(conversationId, pending);
+    runtime.delivery.callEnded(conversationId, pending).catch((error: unknown) => {
+      logger.error('call end delivery failed', { conversationId, error: errorMessage(error) });
+    });
   });
 
   const conversations = createConversationService({
@@ -207,7 +214,7 @@ export async function buildServices(
     pendingRows: (conversationId) => runtime.delivery.eventRows(conversationId),
     onArchived: (conversationId) => runtime.supervisor.stopConversation(conversationId),
   });
-  const voice = createVoiceService({ conversations, calls, delivery: runtime.delivery });
+  const voice = createVoiceService({ conversations, calls, delivery: runtime.delivery, logger: logger.child('voice') });
 
   return { prompts, memory, events, titles, calls, runtime, conversations, voice };
 }
@@ -217,11 +224,16 @@ export interface BuiltApp {
   services: Services;
   /** Loads the MCP catalog. `main` calls it after serving starts; the tests await it. */
   refreshCatalog(): Promise<void>;
-  /** Shutdown in order: workers (tasks end `failed: interrupted`), last-active memory flush, then storage. */
+  /**
+   * Shutdown in order: workers (running tasks end `cancelled`), last-active memory flush,
+   * memory and titles, events, storage. Every step runs even when an earlier one failed;
+   * the failures are logged per step and rejoined in one error at the end.
+   */
   close(): Promise<void>;
 }
 
 export interface BuildAppOptions extends ComposeOptions {
+  /** Defaults to a console logger at `config.logLevel`. */
   logger?: Logger;
 }
 
@@ -231,7 +243,7 @@ export interface BuildAppOptions extends ComposeOptions {
  * non-blocking: its readiness check runs in the background.
  */
 export async function buildApp(config: AgentServerConfig, options: BuildAppOptions = {}): Promise<BuiltApp> {
-  const logger = options.logger ?? consoleLogger('agent-server');
+  const logger = options.logger ?? consoleLogger('agent-server', { level: config.logLevel });
   const clock = systemClock;
   const ports = compose(config, options);
   const { storage, memoryStore, catalog, registry } = ports;
@@ -247,7 +259,7 @@ export async function buildApp(config: AgentServerConfig, options: BuildAppOptio
   runtime.supervisor.start();
 
   const app = createApp({
-    config,
+    token: config.token,
     conversations: services.conversations,
     tasks: runtime.tasks,
     delivery: runtime.delivery,
@@ -271,13 +283,29 @@ export async function buildApp(config: AgentServerConfig, options: BuildAppOptio
       await catalog.refresh();
     },
     close: async () => {
-      await runtime.supervisor.shutdown();
-      const lastActive = await storage.appState.get<string>(LAST_ACTIVE_CONVERSATION_KEY).catch(() => null);
-      if (lastActive) await memory.flush(lastActive, 'shutdown').catch(() => undefined);
-      await memory.stop();
-      await titles.stop();
-      events.close();
-      await storage.close();
+      const failures: unknown[] = [];
+      const step = async (name: string, run: () => unknown): Promise<void> => {
+        try {
+          await run();
+        } catch (error) {
+          failures.push(error);
+          logger.error('shutdown step failed', { step: name, error: errorMessage(error) });
+        }
+      };
+      await step('workers', () => runtime.supervisor.shutdown());
+      await step('memory flush', async () => {
+        const lastActive = await storage.appState.get<string>(LAST_ACTIVE_CONVERSATION_KEY);
+        if (!lastActive) return;
+        await memory.flush(lastActive, 'shutdown').catch((error: unknown) => {
+          logger.error('memory flush at shutdown failed', { conversationId: lastActive, error: errorMessage(error) });
+          throw error;
+        });
+      });
+      await step('memory', () => memory.stop());
+      await step('titles', () => titles.stop());
+      await step('events', () => events.close());
+      await step('storage', () => storage.close());
+      if (failures.length > 0) throw new AggregateError(failures, `${failures.length} shutdown step(s) failed`);
     },
   };
 }

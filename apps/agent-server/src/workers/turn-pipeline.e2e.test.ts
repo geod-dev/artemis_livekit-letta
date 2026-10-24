@@ -10,11 +10,11 @@ import type { LlmRequest } from '@artemis/llm';
 import { McpCatalog } from '@artemis/mcp';
 import type { Storage } from '@artemis/storage';
 import { createTestDatabase, dropTestDatabase, type TestDatabase } from '@artemis/storage/postgres/testing';
-import { compose } from '../compose.ts';
+import { openStorage } from '../compose.ts';
 import type { AgentServerConfig } from '../config.ts';
 import { createCallSessions } from '../calls/call-sessions.ts';
 import { PromptRenderer } from '../prompts/renderer.ts';
-import { FixedRouter, ManualClock, NoMcp, NoMemory, NoTitles, RecordingHub, ScriptedProvider, silentLogger, type Step, testConfig, until } from '../../test/workers-support.ts';
+import { FixedRouter, ManualClock, NoMcp, NoMemory, NoTitles, RecordingHub, ScriptedProvider, silentLogger, type Step, testConfig, testWorkspace, until } from '../../test/workers-support.ts';
 import { type AgentRuntime, createAgentRuntime } from './wiring.ts';
 import type { TurnSubmission } from './types.ts';
 import { integrationDatabaseUrl } from '../../test/integration-env.ts';
@@ -89,7 +89,7 @@ async function buildRig(storage: Storage, provider: ScriptedProvider, overrides:
     memory: new NoMemory(),
     calls: createCallSessions(clock),
     titles: new NoTitles(),
-    workspace: compose(config).workspace,
+    workspace: testWorkspace(config),
     catalog,
     mcp: new NoMcp(),
     memoryTools: [],
@@ -128,7 +128,7 @@ describe('turn pipeline over Postgres', { skip }, () => {
 
   before(async () => {
     database = await createTestDatabase(serverUrl ?? '');
-    storage = compose({ ...testConfig(tmpdir()), databaseUrl: database.url }).storage;
+    storage = openStorage({ databaseUrl: database.url });
     await storage.migrate();
   });
 

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { LlmRequest } from '@artemis/llm';
 import { EphemeralStorage } from '@artemis/storage/testing';
 import type { SubagentSpec, TurnSubmission } from './types.ts';
-import { createHarness, seedConversation, until, type Harness, type Step } from '../../test/workers-support.ts';
+import { createHarness, seedConversation, settled, until, type Harness, type Step } from '../../test/workers-support.ts';
 
 const textTurn = (text: string): TurnSubmission => ({ kind: 'user', modality: 'text', mode: 'text', effort: 'medium', text });
 
@@ -100,7 +100,7 @@ test('a task cancelled by archive creates no update and does not respawn the mai
   await h.runtime.supervisor.stopConversation('c1');
   await until(async () => (await h.storage.tasks.listByConversation('c1'))[0]?.status === 'cancelled');
   await until(() => h.hub.events.some(({ event }) => event.type === 'task' && event.status === 'finished'));
-  await h.runtime.supervisor.settled();
+  await settled(h.runtime.supervisor);
 
   assert.deepEqual(await h.storage.updates.listByConversation('c1'), []);
   assert.equal(h.runtime.supervisor.peekMainAgent('c1'), undefined);
@@ -179,7 +179,7 @@ test('a successful voice-short task stays held and does not wake the conversatio
     endedAt: new Date().toISOString(),
   });
   const update = await h.runtime.delivery.taskFinished(finished!);
-  await h.runtime.supervisor.settled();
+  await settled(h.runtime.supervisor);
   assert.ok(update);
   assert.equal(update.delivery, 'held');
   assert.equal(h.provider.requests.length, 0);
@@ -224,7 +224,7 @@ test('tasks at depth > 0 never wake the conversation, failures of depth 0 always
     return h.runtime.delivery.taskFinished(record!);
   };
   await make('task_nested', 'failed', 1);
-  await h.runtime.supervisor.settled();
+  await settled(h.runtime.supervisor);
   assert.equal(h.provider.requests.length, 0);
 
   await make('task_root', 'failed', 0);
