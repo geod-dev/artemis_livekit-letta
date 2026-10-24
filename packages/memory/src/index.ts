@@ -1,3 +1,10 @@
 export * from './budget.ts';
-export * from './render.ts';
-export * from './store.ts';
+export { renderRecalledMemories } from './render.ts';
+export {
+  MemoryStore,
+  type MemoryFact,
+  type RecallBudget,
+  type RecallResult,
+  type RetainRequest,
+  type TranscriptTurn,
+} from './store.ts';

@@ -1,7 +1,7 @@
 import type { WorkspaceProcess } from '@artemis/workspace';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { FakeWorkspace, ScriptedProcess, testContext } from '../test-support/fake-workspace.ts';
+import { FakeWorkspace, ScriptedProcess, testContext } from '../testing/fake-workspace.ts';
 import { BashTool } from './bash.ts';
 import type { CommandHandoff } from './types.ts';
 

@@ -1,10 +1,14 @@
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
-import { imageType, isTextContent } from '@artemis/workspace';
+import { imageType, isTextContent, sniffMedia } from '@artemis/workspace';
 import { basename } from 'node:path';
 import type { ToolContext } from '../context.ts';
 import { type ToolResult, capText, errorResult, textResult } from '../result.ts';
 import { Tool } from '../tool.ts';
-import { describeBinary } from './media.ts';
+
+/** A short human label for a binary file (e.g. `PDF document`); the workspace sniffer decides the type. */
+export function describeBinary(bytes: Uint8Array): string {
+  return sniffMedia(bytes).label;
+}
 
 const MAX_READ_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;

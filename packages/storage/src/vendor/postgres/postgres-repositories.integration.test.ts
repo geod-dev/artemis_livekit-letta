@@ -9,33 +9,16 @@ import type {
   TaskRecord,
   TurnRecord,
 } from '../../domain.ts';
-import type { Storage } from '../../repositories.ts';
+import type { BackgroundUpdateRepository, Storage } from '../../repositories.ts';
 import { PostgresStorage } from './index.ts';
-import { createTestDatabase, dropTestDatabase } from './testing.ts';
+import { baseUrl, createTempDatabase, skip, TABLES } from './integration-setup.ts';
 
 /**
  * Behaviour only a real Postgres shows: uuid versus text column types, foreign-key actions, unique and check
  * constraints, rollback after a database error and concurrent sequence allocation. Basic CRUD semantics are
- * already covered by the shared storage contract (postgres-storage.test.ts), so they are not repeated here.
- * Runs when TEST_DATABASE_URL is set, e.g. postgres://user:pass@localhost:5432/postgres; skips otherwise.
- * TEST_DATABASE_URL is a server-level admin URL: the suite creates and drops its own database on that server.
+ * already covered by the shared storage contract (postgres-storage.integration.test.ts), so they are not repeated here.
+ * Gate and setup: integration-setup.ts (TEST_DATABASE_URL).
  */
-const baseUrl = process.env.TEST_DATABASE_URL;
-const skip = baseUrl === undefined ? 'set TEST_DATABASE_URL to run Postgres tests' : false;
-
-const TABLES = [
-  'conversation_recalls',
-  'memory_retentions',
-  'app_state',
-  'mcp_settings',
-  'background_updates',
-  'tool_calls',
-  'messages',
-  'tasks',
-  'turns',
-  'prompt_snapshots',
-  'conversations',
-];
 
 type TurnInput = Parameters<Storage['turns']['create']>[0];
 type TaskInput = Parameters<Storage['tasks']['create']>[0];
@@ -60,11 +43,6 @@ function pgError(code: string, message?: RegExp): (error: unknown) => boolean {
 }
 
 const UUID_SYNTAX = /invalid input syntax for type uuid/;
-
-async function createTempDatabase(serverUrl: string): Promise<{ url: string; drop(): Promise<void> }> {
-  const database = await createTestDatabase(serverUrl);
-  return { url: database.url, drop: () => dropTestDatabase(serverUrl, database.name) };
-}
 
 describe('PostgresStorage repositories against real Postgres', { skip }, () => {
   let database: { url: string; drop(): Promise<void> };
@@ -437,6 +415,32 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
         { memory_id: 'mem_a', turn_id: turn.id },
         { memory_id: 'mem_b', turn_id: turn.id },
       ]);
+    });
+  });
+
+  describe('unread counts', () => {
+    test('counts unread updates per conversation in one grouped query', async () => {
+      const busy = await newConversation();
+      const read = await newConversation();
+      const empty = await newConversation();
+      const busyTask = await newTask(busy);
+      const readTask = await newTask(read);
+      await newUpdate(busy, busyTask.id);
+      await newUpdate(busy, busyTask.id);
+      const readUpdate = await newUpdate(read, readTask.id);
+      await storage.updates.markRead(read, [readUpdate.id], ts(5));
+
+      // The batch method is not on the abstract BackgroundUpdateRepository yet (see FY-02 handoff).
+      const updates = storage.updates as BackgroundUpdateRepository & {
+        unreadCounts(ids: string[]): Promise<Map<string, number>>;
+      };
+      const counts = await updates.unreadCounts([busy, read, empty]);
+      assert.deepEqual([...counts.entries()], [
+        [busy, 2],
+        [read, 0],
+        [empty, 0],
+      ]);
+      assert.deepEqual([...(await updates.unreadCounts([])).entries()], []);
     });
   });
 

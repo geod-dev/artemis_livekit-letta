@@ -7,21 +7,11 @@
  * unchanged, so the provider's prompt-cache prefix and preserved-thinking
  * checks stay valid. History is append-only.
  */
-import type { ImageMediaType } from '@artemis/core';
+import type { ImageBlock, JsonSchema, TextBlock, ToolDefinition } from '@artemis/core';
 
-export type JsonSchema = Record<string, unknown>;
-
-export interface TextBlock {
-  type: 'text';
-  text: string;
-}
-
-export interface ImageBlock {
-  type: 'image';
-  mediaType: ImageMediaType;
-  /** Base64 data, no `data:` prefix. */
-  data: string;
-}
+// The content and tool definition shapes live in @artemis/core so the tools package
+// does not depend on this package; they are re-exported here for existing imports.
+export type { ImageBlock, JsonSchema, TextBlock, ToolDefinition } from '@artemis/core';
 
 /** Model reasoning. `signature` / `redacted` must be replayed verbatim to the same provider. */
 export interface ReasoningBlock {
@@ -61,12 +51,6 @@ export type AssistantContent = TextBlock | ReasoningBlock | ToolUseBlock | Provi
 
 export type LlmMessage =
   { role: 'user'; content: UserContent[] } | { role: 'assistant'; content: AssistantContent[] };
-
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  inputSchema: JsonSchema;
-}
 
 /** `adaptive`: the model decides when and how much to think; `disabled`: never. */
 export type ThinkingMode = 'adaptive' | 'disabled';

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { describeBinary } from './media.ts';
+import { describeBinary } from './files.ts';
 
 const bytes = (text: string, prefix: number[] = []) =>
   new Uint8Array([...prefix, ...Buffer.from(text, 'latin1')]);

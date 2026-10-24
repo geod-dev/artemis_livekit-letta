@@ -754,6 +754,18 @@ class PgBackgroundUpdateRepository extends BackgroundUpdateRepository {
     );
     return rows[0]?.count ?? 0;
   }
+
+  /** Unread counts of many conversations in one query. Conversations without unread updates map to 0. */
+  async unreadCounts(conversationIds: string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>(conversationIds.map((id) => [id, 0]));
+    if (conversationIds.length === 0) return counts;
+    const { rows } = await this.session.query<{ conversation_id: string; count: number }>(
+      'SELECT conversation_id, count(*)::int AS count FROM background_updates WHERE conversation_id = ANY($1) AND unread GROUP BY conversation_id',
+      [conversationIds]
+    );
+    for (const row of rows) counts.set(row.conversation_id, row.count);
+    return counts;
+  }
 }
 
 class PgMcpSettingsRepository extends McpSettingsRepository {

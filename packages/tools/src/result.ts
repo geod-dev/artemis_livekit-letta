@@ -1,5 +1,5 @@
 import type { ToolDisplay, ToolTaskRef } from '@artemis/contracts/chat-types';
-import type { ImageBlock, TextBlock } from '@artemis/llm';
+import type { ImageBlock, TextBlock } from '@artemis/core';
 
 /** Model-facing text cap per tool result (a continuation hint is appended when cut). */
 export const MAX_TOOL_TEXT = 30_000;

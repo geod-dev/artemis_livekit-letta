@@ -1,5 +1,5 @@
 import type { ToolContext } from '../context.ts';
-import { DEFAULT_BACKGROUND_AFTER_MS } from '../names.ts';
+import { DEFAULT_BACKGROUND_AFTER_MS } from '../bash-limits.ts';
 import type { AnyTool } from '../tool.ts';
 import { BashTool } from './bash.ts';
 import {
@@ -22,7 +22,6 @@ export {
   SearchFilesTool,
   WriteFileTool,
 } from './files.ts';
-export { describeBinary } from './media.ts';
 
 /**
  * The default workspace tools, in `TOOL_NAMES` order:

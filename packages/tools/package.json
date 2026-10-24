@@ -15,7 +15,6 @@
   "dependencies": {
     "@artemis/core": "workspace:*",
     "@artemis/contracts": "workspace:*",
-    "@artemis/llm": "workspace:*",
     "@artemis/workspace": "workspace:*",
     "ajv": "^8.20.0"
   },

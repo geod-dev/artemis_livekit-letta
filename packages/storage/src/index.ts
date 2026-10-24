@@ -1,2 +1,2 @@
 export * from './domain.ts';
-export * from './repositories.ts';
+export { type Repositories, Storage } from './repositories.ts';

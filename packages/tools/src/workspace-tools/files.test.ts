@@ -1,7 +1,7 @@
 import { WorkspacePathError } from '@artemis/workspace';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { FakeWorkspace, testContext } from '../test-support/fake-workspace.ts';
+import { FakeWorkspace, testContext } from '../testing/fake-workspace.ts';
 import { EditFileTool, ReadFileTool, WriteFileTool } from './files.ts';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);

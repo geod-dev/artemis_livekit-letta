@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { AppError } from '@artemis/core';
 import type { McpServer, McpTransport } from '@artemis/contracts/chat-types';
 
-export type { McpServer, McpTransport };
 
 /** A payload we refuse to store. Surfaced to callers as a 400. */
 export class InvalidMcpServersError extends AppError {

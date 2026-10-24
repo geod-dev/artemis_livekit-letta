@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PRESENT_LIMITS, validatePresentTree } from './present-validation.ts';
+import { validatePresentTree } from './present-validation.ts';
+
+// The limits of present-validation.ts (not exported; the test pins them).
+const PRESENT_LIMITS = { maxDepth: 32, maxNodes: 256, maxStringBytes: 32 * 1024 } as const;
 
 const acceptAll = () => true;
 const knownTypes = (type: string) => type === 'Card' || type === 'Text' || type === 'Stack';

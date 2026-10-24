@@ -398,9 +398,6 @@ importers:
       '@artemis/core':
         specifier: workspace:*
         version: link:../core
-      '@artemis/llm':
-        specifier: workspace:*
-        version: link:../llm
       '@artemis/workspace':
         specifier: workspace:*
         version: link:../workspace

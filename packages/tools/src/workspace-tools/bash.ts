@@ -1,7 +1,7 @@
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import type { ProcessExit, WorkspaceProcess } from '@artemis/workspace';
 import type { ToolContext } from '../context.ts';
-import { DEFAULT_BASH_TIMEOUT_MS, MAX_BASH_TIMEOUT_MS } from '../names.ts';
+import { DEFAULT_BASH_TIMEOUT_MS, MAX_BASH_TIMEOUT_MS } from '../bash-limits.ts';
 import { MAX_TOOL_TEXT, type ToolResult, errorResult } from '../result.ts';
 import { Tool } from '../tool.ts';
 import type { CommandHandoff } from './types.ts';

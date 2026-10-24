@@ -8,6 +8,7 @@
     "./chat-types": "./src/chat-types.ts",
     "./chat-http": "./src/chat-http.ts",
     "./tool-names": "./src/tool-names.ts",
+    "./tool-schemas": "./src/tool-schemas.ts",
     "./agent-server": "./src/agent-server.ts",
     "./present-validation": "./src/present-validation.ts",
     "./present-tool.json": "./generated/present-tool.json",
@@ -16,7 +17,7 @@
   "dependencies": {},
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test --experimental-strip-types --no-warnings \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

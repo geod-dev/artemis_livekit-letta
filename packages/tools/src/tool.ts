@@ -1,5 +1,4 @@
-import { AppError } from '@artemis/core';
-import type { JsonSchema, ToolDefinition } from '@artemis/llm';
+import { AppError, type JsonSchema, type ToolDefinition } from '@artemis/core';
 import Ajv from 'ajv';
 import type { ToolContext } from './context.ts';
 import type { ToolResult } from './result.ts';
@@ -49,5 +48,8 @@ export abstract class Tool<I = Record<string, unknown>, C extends ToolContext = 
   abstract execute(input: I, context: C): Promise<ToolResult>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyTool<C extends ToolContext = ToolContext> = Tool<any, C>;
+/**
+ * Any tool, whatever its input type. `unknown` is the top input type: method parameters are checked
+ * bivariantly, so every `Tool<I, C>` is assignable to it without a cast.
+ */
+export type AnyTool<C extends ToolContext = ToolContext> = Tool<unknown, C>;

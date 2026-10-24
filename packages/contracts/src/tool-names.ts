@@ -30,5 +30,3 @@ export const TOOL_NAMES = {
   memorySearch: 'memory_search',
   memoryRemember: 'memory_remember',
 } as const;
-
-export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];

@@ -4,48 +4,7 @@ import { Pool } from 'pg';
 import { type StorageFixture, storageContract } from '../../../test/storage-contract.ts';
 import { PostgresStorage } from './index.ts';
 import { migrationChecksum } from './migrator.ts';
-import { createTestDatabase, dropTestDatabase } from './testing.ts';
-
-/**
- * Runs against a real Postgres when TEST_DATABASE_URL is set, e.g. postgres://user:pass@localhost:5432/postgres.
- * TEST_DATABASE_URL is a server-level admin URL, not a database the tests reuse: every suite creates its own
- * database on that server and drops it afterwards.
- */
-const baseUrl = process.env.TEST_DATABASE_URL;
-const skip = baseUrl === undefined ? 'set TEST_DATABASE_URL to run Postgres tests' : false;
-
-const TABLES = [
-  'conversation_recalls',
-  'memory_retentions',
-  'app_state',
-  'mcp_settings',
-  'background_updates',
-  'tool_calls',
-  'messages',
-  'tasks',
-  'turns',
-  'prompt_snapshots',
-  'conversations',
-];
-
-interface TempDatabase {
-  url: string;
-  drop(): Promise<void>;
-}
-
-async function createTempDatabase(serverUrl: string): Promise<TempDatabase> {
-  const database = await createTestDatabase(serverUrl);
-  return { url: database.url, drop: () => dropTestDatabase(serverUrl, database.name) };
-}
-
-async function withTempDatabase(serverUrl: string, run: (url: string) => Promise<void>): Promise<void> {
-  const database = await createTempDatabase(serverUrl);
-  try {
-    await run(database.url);
-  } finally {
-    await database.drop();
-  }
-}
+import { baseUrl, createTempDatabase, skip, TABLES, withTempDatabase } from './integration-setup.ts';
 
 test('PostgresStorage migrations', { skip }, async (t) => {
   const server = baseUrl ?? '';
@@ -100,7 +59,7 @@ if (baseUrl === undefined) {
   test('PostgresStorage contract', { skip }, () => {});
 } else {
   storageContract('PostgresStorage', async (): Promise<StorageFixture> => {
-    const database = await createTempDatabase(baseUrl);
+    const database = await createTempDatabase(baseUrl ?? '');
     const storage = new PostgresStorage({ connectionString: database.url });
     await storage.migrate();
     const direct = new Pool({ connectionString: database.url });

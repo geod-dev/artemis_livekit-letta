@@ -26,6 +26,8 @@ export const DEFAULT_CONVERSATION_TITLE = 'New chat';
 export const MAX_TURN_TEXT_LENGTH = 100_000;
 /** Largest number of attachments on one turn. The agent-server enforces it. */
 export const MAX_TURN_ATTACHMENTS = 20;
+/** Largest size of one attachment (and of one voice recording), in bytes. The agent-server enforces it. */
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 /** Context size of the last model request of the conversation (from provider usage). */
 export interface ConversationContextUsage {
@@ -267,10 +269,6 @@ export interface McpSettingsResponse {
   sync?: {
     saved: true;
     catalog: 'synced' | 'failed' | 'pending';
-    /** @deprecated Never sent by the agent-server and not shown in the UI; removed with the contract cleanup. */
-    skill?: 'synced' | 'failed' | 'pending';
-    /** @deprecated Never sent by the agent-server and not shown in the UI; removed with the contract cleanup. */
-    mod?: 'synced' | 'failed' | 'pending';
     retryableRevision: string;
   };
   bridge: {

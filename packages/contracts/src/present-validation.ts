@@ -1,5 +1,5 @@
 /** Shared limits and wire checks for model-authored `present` trees. */
-export const PRESENT_LIMITS = {
+const PRESENT_LIMITS = {
   maxDepth: 32,
   maxNodes: 256,
   maxTotalBytes: 256 * 1024,
