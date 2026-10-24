@@ -2,14 +2,41 @@
 
 Use `docker-compose.coolify.yml` as the application's Compose file and set the
 production environment values in Coolify. The application needs unique secrets and
-these persistent host folders, all owned by uid 1001 (`chown -R 1001:1001`):
+these persistent host folders (ownership is in the host setup below):
 
-- `/data/artemis/workspace`: the agent workspace. Uploads and device files live in its `data/` folder.
+- `/data/artemis/workspace`: the agent workspace. Its `data/` folder holds the uploads and device files.
 - `/data/artemis/data/gateway`: gateway state only (attachment and retention records).
 
 It also uses the Compose-managed `postgres-pg18` volume. Set the Coolify domain to the
 `web` service on port 8080. See [deployment](../../docs/deployment.md) for storage and
 recovery instructions.
+
+## Workspace ownership
+
+Two uids share the workspace on purpose:
+
+- uid 1001 is the server (agent-server and gateway). It owns `data/`, so agent commands
+  cannot write uploads, attachment records or device files.
+- uid 1002 runs agent shell commands (`WORKSPACE_RUN_AS=1002:1001`). It is in group 1001,
+  which can write the workspace root, so agents can create and edit workspace files.
+
+The server's umask is 0002, so files it creates are group-writable and the agent can edit them.
+Changing these owners breaks either the agent's writes or the read-only `data/` guarantee.
+
+## Secrets and databases
+
+- Database passwords (`POSTGRES_PASSWORD`, `ARTEMIS_DB_PASSWORD`, `HINDSIGHT_DB_PASSWORD`) are
+  spliced into connection URLs without encoding. Use only letters and digits (hex is recommended):
+  `@ : / ? #` and other URL-reserved characters break the URL. Nothing checks this.
+- Role passwords for `artemis` and `hindsight` are re-applied on every Postgres start, so a
+  changed value takes effect after a restart. The database volume is not reset.
+
+## Network
+
+The Compose network is pinned to `172.29.250.0/24`. The web nginx trusts only loopback and this
+subnet for `X-Forwarded-For`. If Coolify's proxy reaches `web` from another network, the login
+limiter sees the proxy address for every client. Put the proxy on the application's network, or
+change the subnet in both `docker-compose*.yml` files and in `apps/web/nginx.conf` together.
 
 ## Differences from docker-compose.yml
 
@@ -31,9 +58,14 @@ sudo useradd --system --home-dir /var/lib/artemis-deploy --shell /usr/sbin/nolog
 sudo install -d -o artemis-deploy -g artemis-deploy -m 0700 /var/lib/artemis-deploy
 sudo install -d -o artemis-deploy -g artemis-deploy -m 0750 /etc/artemis
 sudo install -d -m 0755 /usr/local/lib/artemis
-sudo install -d -m 0750 /data/artemis/workspace /data/artemis/data/gateway
-sudo chown -R 1001:1001 /data/artemis/workspace /data/artemis/data/gateway
+sudo install -d -o 1001 -g 1001 -m 0775 /data/artemis/workspace
+sudo install -d -o 1001 -g 1001 -m 0755 /data/artemis/workspace/data
+sudo install -d -o 1001 -g 1001 -m 0750 /data/artemis/data/gateway
 ```
+
+The workspace root is 1001:1001 with mode 0775 (group 1001 is the agent's group). `data/` is
+1001:1001 with mode 0755, so the agent cannot write it. Do not `chown -R` the workspace: that would
+give the agent ownership of `data/`.
 
 Install the scripts and units. The units expect these paths:
 

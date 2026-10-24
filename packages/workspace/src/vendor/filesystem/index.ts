@@ -40,7 +40,7 @@ export interface FilesystemWorkspaceOptions {
   root: string;
   /** Shown to the model, e.g. `/workspace`. Defaults to `root`. */
   displayRoot?: string;
-  /** Run commands as this uid/gid (the container's unprivileged `workspace` user). POSIX only. */
+  /** Run commands as this uid/gid: the container's agent user (uid 1002, `WORKSPACE_RUN_AS`), not the server's uid. POSIX only. */
   runAs?: { uid: number; gid: number };
   /** Shell used for `spawn` (`-lc`). Default `/bin/bash` on POSIX, `bash` (from PATH, e.g. Git Bash) on Windows. */
   shell?: string;

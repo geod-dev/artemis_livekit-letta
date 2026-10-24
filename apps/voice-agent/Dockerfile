@@ -1,4 +1,5 @@
-FROM ghcr.io/astral-sh/uv:0.7-python3.13-bookworm-slim
+# Pinned to the same uv patch release as CI (.github/workflows/ci.yml); bump both together.
+FROM ghcr.io/astral-sh/uv:0.7.22-python3.13-bookworm-slim
 
 WORKDIR /app
 COPY apps/voice-agent/pyproject.toml apps/voice-agent/uv.lock ./

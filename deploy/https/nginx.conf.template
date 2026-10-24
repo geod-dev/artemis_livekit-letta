@@ -3,7 +3,6 @@
 
 server {
   listen 80;
-  listen 8080;
   server_name @IP@;
 
   location /.well-known/acme-challenge/ {

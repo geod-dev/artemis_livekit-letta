@@ -30,7 +30,11 @@ FROM node:24.19-alpine AS runtime
 WORKDIR /app/apps/gateway
 COPY --from=build /repo/node_modules /app/node_modules
 COPY --from=build /repo/packages /app/packages
-COPY --from=build /repo/apps/gateway /app/apps/gateway
+COPY --from=build /repo/apps/gateway/package.json /app/apps/gateway/package.json
+COPY --from=build /repo/apps/gateway/node_modules /app/apps/gateway/node_modules
+COPY --from=build /repo/apps/gateway/src /app/apps/gateway/src
+# Test files are removed from the copy (packages and the app); the image carries no lint or format config.
+RUN find /app/packages /app/apps/gateway/src -type f -name '*.test.ts' -exec rm -f {} +
 # Gateway-only state and the shared workspace are mounted here; the runtime user owns both directories.
 RUN mkdir -p /data/gateway /workspace && chown 1001:1001 /data/gateway /workspace
 USER 1001:1001

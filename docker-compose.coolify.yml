@@ -6,9 +6,9 @@
 # and proxies /api and /livekit/ to the internal services. LiveKit's signal port (7880) is not
 # published; it is reached only through that proxy.
 #
-# Host folders (create before the first deploy, owned by uid 1001):
-#   /data/artemis/workspace       agent workspace; uploads and device files under data/
-#   /data/artemis/data/gateway    gateway state only (attachment and retention records)
+# Host folders (create before the first deploy; deploy/coolify/README.md has the owners and modes):
+#   /data/artemis/workspace       agent workspace (agent shell uid 1002, group 1001); data/ is uid 1001, read-only to the agent
+#   /data/artemis/data/gateway    gateway state only (attachment and retention records), uid 1001
 name: artemis
 
 services:
@@ -56,23 +56,41 @@ services:
     build:
       context: .
       dockerfile: apps/agent-server/Dockerfile
-    env_file:
-      - path: .env
-        required: false
+    # Explicit list, not env_file: the server gets only the variables it reads (apps/agent-server/src/config.ts).
+    # Agent shell commands run as uid 1002, so they cannot read this process's environment.
     environment:
       NODE_ENV: production
       AGENT_SERVER_PORT: 4000
-      DATABASE_URL: postgresql://artemis:${ARTEMIS_DB_PASSWORD:?set ARTEMIS_DB_PASSWORD in .env}@postgres:5432/artemis
+      AGENT_SERVER_TOKEN: ${AGENT_SERVER_TOKEN:?set AGENT_SERVER_TOKEN in Coolify}
+      DATABASE_URL: postgresql://artemis:${ARTEMIS_DB_PASSWORD:?set ARTEMIS_DB_PASSWORD in Coolify}@postgres:5432/artemis
+      ARTEMIS_DB_PASSWORD: ${ARTEMIS_DB_PASSWORD:?set ARTEMIS_DB_PASSWORD in Coolify}
+      HINDSIGHT_DB_PASSWORD: ${HINDSIGHT_DB_PASSWORD:?set HINDSIGHT_DB_PASSWORD in Coolify}
       HINDSIGHT_URL: http://hindsight:8888
-      MCP_DEVICE_BASE_URL: http://gateway:3000
+      HINDSIGHT_API_KEY: ${HINDSIGHT_API_KEY:-}
+      HINDSIGHT_BANK_ID: ${HINDSIGHT_BANK_ID:-}
+      MEMORY_RETAIN_EVERY: ${MEMORY_RETAIN_EVERY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in Coolify}
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
+      ASSISTANT_NAME: ${ASSISTANT_NAME:-}
+      ASSISTANT_TIMEZONE: ${ASSISTANT_TIMEZONE:-}
+      ASSISTANT_MODEL: ${ASSISTANT_MODEL:-}
+      ASSISTANT_TASK_MODEL: ${ASSISTANT_TASK_MODEL:-}
+      ASSISTANT_TITLE_MODEL: ${ASSISTANT_TITLE_MODEL:-}
+      ASSISTANT_PRESENT_TOOL: ${ASSISTANT_PRESENT_TOOL:-}
+      WORKER_IDLE_TIMEOUT_MS: ${WORKER_IDLE_TIMEOUT_MS:-}
+      BASH_BACKGROUND_AFTER_MS: ${BASH_BACKGROUND_AFTER_MS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-}
       WORKSPACE_PATH: /workspace
-      WORKSPACE_RUN_AS: "1001:1001"
+      # Agent shell commands: uid 1002, sharing the server's group 1001 (see apps/agent-server/Dockerfile).
+      WORKSPACE_RUN_AS: "1002:1001"
     depends_on:
       postgres:
         condition: service_healthy
       hindsight:
         condition: service_healthy
     volumes:
+      # data/ inside this folder must be owned by uid 1001 with mode 0755 (deploy/coolify/README.md).
       - /data/artemis/workspace:/workspace
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -99,16 +117,26 @@ services:
     build:
       context: .
       dockerfile: apps/gateway/Dockerfile
-    env_file:
-      - path: .env
-        required: false
+    # Explicit list, not env_file: the gateway is the public-facing service and gets only the
+    # variables it reads (apps/gateway/src/config.ts). Provider keys stay out of its environment.
     environment:
       NODE_ENV: production
       GATEWAY_PORT: 3000
       GATEWAY_HOST: 0.0.0.0
       MCP_DEVICE_BASE_URL: http://gateway:3000
       AGENT_SERVER_URL: http://agent-server:4000
-      LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:?set IP_ADDRESS in .env}:7880}
+      AGENT_SERVER_TOKEN: ${AGENT_SERVER_TOKEN:?set AGENT_SERVER_TOKEN in Coolify}
+      ARTEMIS_PASSWORD: ${ARTEMIS_PASSWORD:?set ARTEMIS_PASSWORD in Coolify}
+      ARTEMIS_DEVICE_TOKEN: ${ARTEMIS_DEVICE_TOKEN:?set ARTEMIS_DEVICE_TOKEN in Coolify}
+      VOICE_GATEWAY_TOKEN: ${VOICE_GATEWAY_TOKEN:?set VOICE_GATEWAY_TOKEN in Coolify}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in Coolify}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in Coolify}
+      LIVEKIT_AGENT_NAME: ${LIVEKIT_AGENT_NAME:-}
+      # Browsers reach LiveKit through the web proxy (/livekit/); set LIVEKIT_PUBLIC_URL to the public wss:// URL.
+      LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:?set IP_ADDRESS in Coolify}:${WEB_PORT:-5180}/livekit}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      ASSISTANT_TRANSCRIPTION_MODEL: ${ASSISTANT_TRANSCRIPTION_MODEL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-}
       WORKSPACE_PATH: /workspace
       ARTEMIS_DATA_DIR: /data/gateway
     depends_on:
@@ -137,8 +165,12 @@ services:
     depends_on:
       gateway:
         condition: service_healthy
+      # nginx resolves livekit when it proxies /livekit/; the dependency keeps the start order explicit.
+      livekit:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
+      # Local nginx check only: /health proxies to the gateway, so it would mark web unhealthy when the gateway is down.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/nginx-health"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -160,6 +192,14 @@ services:
       livekit:
         condition: service_started
     restart: unless-stopped
+
+networks:
+  default:
+    # Pinned subnet: apps/web/nginx.conf trusts this range (and loopback) for X-Forwarded-For.
+    # Keep the two in sync. Also set in docker-compose.yml.
+    ipam:
+      config:
+        - subnet: 172.29.250.0/24
 
 volumes:
   # Same name as docker-compose.yml. Existing Coolify data stays in this volume.
