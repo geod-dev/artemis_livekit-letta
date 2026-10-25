@@ -1,0 +1,11 @@
+export default {
+  singleQuote: true,
+  trailingComma: 'es5',
+  semi: true,
+  tabWidth: 2,
+  printWidth: 100,
+  importOrder: ['^react', '<THIRD_PARTY_MODULES>', '^@[^/](.*)$', '^@/(.*)$', '^[./]'],
+  importOrderSeparation: false,
+  importOrderSortSpecifiers: true,
+  plugins: ['@trivago/prettier-plugin-sort-imports', 'prettier-plugin-tailwindcss'],
+};

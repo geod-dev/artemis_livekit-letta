@@ -15,15 +15,23 @@
  *   rule-4  only apps/<app>/src/compose.ts imports a vendor implementation.
  *   rule-5  apps/web imports only @artemis/contracts among workspace packages;
  *           apps/web/src imports no Node built-in and no server-only SDK.
- *   rule-6  every bare import is declared in the importing package.json.
+ *   rule-6  every bare import is declared in the importing package.json. Shipped
+ *           code (non-test files under a package's src/) may use only dependencies
+ *           and peerDependencies; devDependencies count for test files, package-root
+ *           config files and the root tooling under scripts/, none of which ships.
  *   rule-7  the workspace package graph (workspace:/link: references) is acyclic.
- *   rule-8  a vendor SDK (VENDOR_NPM_PACKAGES) is imported only from src/vendor
- *           and from apps/<app>/src/compose.ts.
+ *   rule-8  a vendor SDK (VENDOR_NPM_PACKAGES, derived from the dependencies of
+ *           the packages that hold a src/vendor folder) is imported only from
+ *           src/vendor and from apps/<app>/src/compose.ts.
+ *   rule-9  non-test code imports no testing module (`*\/testing` subpaths).
+ *   rule-10 scripts/ (tooling) imports only the files named in TOOLING_IMPORTS,
+ *           a package's src/index.ts, or a package subpath export.
  *
- * Test code (`*.test.*` files and anything under a `test/` directory) is
- * exempt from rule-4, rule-8 and the apps/web/src half of rule-5: tests build
- * fixtures from the vendor testing subpaths and fake servers, and web tests run
- * under node itself. Reviewed exceptions live in ALLOWLIST.
+ * Test code (`*.test.*` files and anything under a `test/` or `testing/`
+ * directory) is exempt from rule-4, rule-8, rule-9 and the apps/web/src half of
+ * rule-5: tests build fixtures from the vendor testing subpaths and fake
+ * servers, and web tests run under node itself. Reviewed exceptions live in
+ * ALLOWLIST; it is empty.
  *
  * `--self-test` runs the checker on small synthetic fixtures, one per rule,
  * and exits 1 if any rule fails to fire or the clean fixture is flagged.
@@ -51,6 +59,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.mjs', '.cjs', '.js', '.jsx']);
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', '.git']);
 const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
+/** The fields a shipped package installs at runtime. */
+const RUNTIME_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'];
 const BUILTIN_MODULES = new Set(builtinModules);
 const CONTRACTS_NAME = '@artemis/contracts';
 const WEB_DIRECTORY = 'apps/web';
@@ -58,47 +68,34 @@ const CONTRACTS_DIRECTORY = 'packages/contracts';
 const COMPOSE_FILE = /^apps\/[^/]+\/src\/compose\.ts$/;
 
 /**
- * npm packages that wrap an external service SDK. Production code imports them
- * only from a vendor directory or a composition root, and apps/web/src not at
- * all. A generic validator such as `ajv` is not a service SDK and is not listed.
+ * Reviewed exceptions to rule-10 (tooling imports). Each entry names the
+ * importing file and the one file it may reach that is not an index or a
+ * subpath export. The schema generator reads the web component library: the
+ * generator is the only code outside apps/web that may import it (decision 14).
  */
-const VENDOR_NPM_PACKAGES = new Set([
-  '@anthropic-ai/sdk',
-  '@modelcontextprotocol/sdk',
-  '@vectorize-io/hindsight-client',
-  'livekit-server-sdk',
-  'openai',
-  'pg',
-]);
+const TOOLING_IMPORTS = [
+  {
+    from: 'scripts/generate-present-tool.ts',
+    target: 'apps/web/src/lib/present-library.ts',
+    reason: 'the schema generator reads the web component library (decision 1)',
+  },
+];
 
 /**
  * Reviewed exceptions. Each entry names the file (posix path from the repo
  * root), the rule, the exact specifier, and the reason. Keep this list empty
  * unless a violation is genuinely intended.
  */
-const ALLOWLIST = [
-  {
-    file: 'apps/gateway/src/devices/hub.ts',
-    rule: 'rule-4',
-    specifier: '@artemis/mcp/device-server',
-    reason: 'the device MCP endpoint is served directly by the gateway; there is no second implementation to select in compose.ts',
-  },
-  {
-    file: 'apps/gateway/src/devices/mcp-endpoint.ts',
-    rule: 'rule-4',
-    specifier: '@artemis/mcp/device-server',
-    reason: 'the device MCP endpoint is served directly by the gateway; there is no second implementation to select in compose.ts',
-  },
-];
+const ALLOWLIST = [];
 
-/** `src/vendor/**` anywhere in the tree (a package's or an app's vendor code). */
+/** `src/vendor/**` in a package: the only place a vendor implementation lives (apps have none). */
 function isVendorFile(rel) {
-  return /(^|\/)src\/vendor\//.test(rel);
+  return /^packages\/[^/]+\/src\/vendor\//.test(rel);
 }
 
-/** `*.test.*` files and anything under a `test/` directory. */
+/** `*.test.*` files, and anything under a `test/` or `testing/` directory. */
 function isTestFile(rel) {
-  return /\.test\.[cm]?[jt]sx?$/.test(rel) || /(^|\/)test\//.test(rel);
+  return /\.test\.[cm]?[jt]sx?$/.test(rel) || /(^|\/)(test|testing)\//.test(rel);
 }
 
 function posixRelative(root, path) {
@@ -265,9 +262,9 @@ function aliasTarget(pkg, specifier, aliases) {
   return undefined;
 }
 
-function declaredNames(json) {
+function declaredNames(json, fields = DEPENDENCY_FIELDS) {
   const names = new Set();
-  for (const field of DEPENDENCY_FIELDS) {
+  for (const field of fields) {
     for (const name of Object.keys(json[field] ?? {})) names.add(name);
   }
   return names;
@@ -279,6 +276,22 @@ function checkTree(root) {
   const violations = [];
   let allowed = 0;
   let filesChecked = 0;
+
+  // The root manifest declares the tooling's packages. scripts/ is tooling, not a package.
+  const tooling = {
+    directory: join(root, 'scripts'),
+    rel: 'scripts',
+    kind: 'tooling',
+    json: existsSync(join(root, 'package.json')) ? readJson(join(root, 'package.json')) : {},
+  };
+
+  // rule-8's SDK list: the external dependencies of every package that holds a vendor folder.
+  const VENDOR_NPM_PACKAGES = new Set(
+    packages
+      .filter((pkg) => pkg.kind === 'packages' && existsSync(join(pkg.directory, 'src', 'vendor')))
+      .flatMap((pkg) => Object.keys({ ...pkg.json.dependencies, ...pkg.json.peerDependencies }))
+      .filter((name) => !packagesByName.has(name))
+  );
 
   const report = (file, line, rule, message, specifier) => {
     const entry = ALLOWLIST.find(
@@ -293,32 +306,50 @@ function checkTree(root) {
 
   const packageOf = (path) => packages.find((pkg) => isInside(pkg.directory, path));
 
-  // The vendor implementation a path belongs to: everything up to its `vendor` directory.
+  // The vendor implementation a path belongs to: packages/<name>/src/vendor.
   const vendorDirectoryOf = (path) => {
-    const segments = posixRelative(root, path).split('/');
-    const index = segments.indexOf('vendor');
-    if (index < 0) return undefined;
-    return join(root, ...segments.slice(0, index + 1));
+    const rel = posixRelative(root, path);
+    if (!isVendorFile(rel)) return undefined;
+    return join(root, ...rel.split('/').slice(0, 4));
   };
 
   for (const pkg of packages) {
     if (pkg.rel === CONTRACTS_DIRECTORY) {
-      const runtime = Object.keys(pkg.json.dependencies ?? {});
+      const runtime = Object.keys({ ...pkg.json.dependencies, ...pkg.json.peerDependencies, ...pkg.json.optionalDependencies });
       if (runtime.length > 0) {
         report(posixRelative(root, pkg.manifest), 1, 'rule-1', `contracts declares runtime dependencies: ${runtime.join(', ')}`, '');
       }
     }
+    // No package depends on an app, in any dependency field.
+    if (pkg.kind === 'packages') {
+      for (const field of DEPENDENCY_FIELDS) {
+        for (const name of Object.keys(pkg.json[field] ?? {})) {
+          if (packagesByName.get(name)?.kind === 'apps') {
+            report(posixRelative(root, pkg.manifest), 1, 'rule-1', `packages must not depend on apps (${field}: "${name}")`, name);
+          }
+        }
+      }
+    }
   }
 
-  for (const pkg of packages) {
-    const declared = declaredNames(pkg.json);
-    const aliases = pathAliases(pkg);
-    for (const file of listSourceFiles(pkg.directory)) {
+  for (const owner of [...packages, ...(existsSync(tooling.directory) ? [tooling] : [])]) {
+    const aliases = pathAliases(owner);
+    for (const file of listSourceFiles(owner.directory)) {
       const rel = posixRelative(root, file);
-      const owner = packageOf(file);
-      if (!owner) continue;
       filesChecked += 1;
       const text = readFileSync(file, 'utf8');
+
+      // rule-4: vendor code lives only in packages/<name>/src/vendor.
+      if (/(^|\/)vendor\//.test(rel) && !isVendorFile(rel)) {
+        report(rel, 1, 'rule-4', 'vendor code must live in packages/<name>/src/vendor', '');
+      }
+
+      // Shipped code (non-test files under a package's src/) checks only runtime dependencies. Test
+      // files, config files at a package root (vite, eslint) and scripts/ are tooling and may use devDependencies.
+      const shipped = owner.kind === 'packages' || owner.kind === 'apps'
+        ? rel.startsWith(`${owner.rel}/src/`) && !isTestFile(rel)
+        : false;
+      const declared = declaredNames(owner.json, shipped ? RUNTIME_FIELDS : DEPENDENCY_FIELDS);
 
       // Browser code under apps/web/src: no Node built-ins, no server-only SDKs (rule-5).
       // Web tests run under node itself, so they are excepted.
@@ -363,12 +394,28 @@ function checkTree(root) {
           }
         }
 
+        // rule-9: non-test code never imports a testing module (a fixture or test double).
+        if (!isTestFile(rel) && /(^|\/)testing(\/|$)/.test(specifier)) {
+          report(rel, line, 'rule-9', `non-test code must not import a testing module ("${specifier}")`, specifier);
+        }
+
         const leavesOwner = absoluteTarget !== undefined && !isInside(owner.directory, absoluteTarget);
         const crossesOwner = (targetPackage !== undefined && targetPackage !== owner) || leavesOwner;
 
         // rule-1: contracts imports nothing outside itself.
         if (owner.rel === CONTRACTS_DIRECTORY && crossesOwner) {
           report(rel, line, 'rule-1', `contracts must not import outside itself ("${specifier}")`, specifier);
+        }
+
+        // rule-10: tooling reaches into apps and packages only through a named file, an index, or a subpath export.
+        if (owner.kind === 'tooling' && absoluteTarget !== undefined && !bare) {
+          const reachesWorkspace = targetPackage !== undefined || isInside(join(root, 'apps'), absoluteTarget) || isInside(join(root, 'packages'), absoluteTarget);
+          const targetRel = posixRelative(root, absoluteTarget);
+          const named = TOOLING_IMPORTS.some((entry) => entry.from === rel && entry.target === targetRel);
+          const packageIndex = targetPackage !== undefined && targetRel === `${targetPackage.rel}/src/index.ts`;
+          if (reachesWorkspace && !named && !packageIndex) {
+            report(rel, line, 'rule-10', `tooling may import only a named file, a package src/index.ts, or a subpath export ("${specifier}")`, specifier);
+          }
         }
 
         // rule-2: packages never import apps, and never reach across their own root by path.
@@ -475,6 +522,14 @@ function baselineFixture() {
       "import { compose } from './compose.ts';\nimport { contract } from '@artemis/contracts';\nexport const server = [compose, contract];\n",
     'apps/gateway/src/server.test.ts':
       "import { anthropic } from '@artemis/llm/anthropic';\nexport const testing = anthropic;\n",
+    // A file under testing/ is test code: it may reach a vendor testing subpath.
+    'apps/gateway/src/testing/fixtures.ts':
+      "import { anthropic } from '@artemis/llm/anthropic';\nexport const fixtures = anthropic;\n",
+    'packages/storage/package.json': manifest('@artemis/storage', { pg: '^8.16.0' }, { '.': './src/index.ts' }),
+    'packages/storage/src/index.ts': 'export const storage = 1;\n',
+    'packages/storage/src/vendor/pg/index.ts': "import 'pg';\nexport const pg = 1;\n",
+    'scripts/index-import.ts':
+      "import { core } from '../packages/core/src/index.ts';\nexport const tool = core;\n",
     'apps/web/package.json': manifest('@artemis/web', {
       '@artemis/contracts': 'link:../../packages/contracts',
       '@artemis/core': 'link:../../packages/core',
@@ -568,6 +623,56 @@ const FIXTURES = [
     rule: 'rule-7',
     files: {
       'packages/core/package.json': manifest('@artemis/core', { '@artemis/llm': 'workspace:*' }),
+    },
+  },
+  {
+    name: 'rule-1-app-dependency',
+    rule: 'rule-1',
+    files: {
+      'packages/core/package.json': manifest('@artemis/core', {}, undefined, { '@artemis/gateway': 'workspace:*' }),
+    },
+  },
+  {
+    name: 'rule-6-dev-dependency',
+    rule: 'rule-6',
+    files: {
+      'packages/core/package.json': manifest('@artemis/core', {}, undefined, { typescript: '^5.9.3' }),
+      'packages/core/src/bad-dev.ts': "import ts from 'typescript';\nexport const bad = ts;\n",
+    },
+  },
+  {
+    name: 'rule-4-app-vendor',
+    rule: 'rule-4',
+    files: {
+      'apps/gateway/src/vendor/bad.ts': 'export const bad = 1;\n',
+    },
+  },
+  {
+    name: 'rule-4-device-server',
+    rule: 'rule-4',
+    files: {
+      'packages/mcp/package.json': manifest('@artemis/mcp', {}, { './device-server': './src/vendor/sdk/device-server.ts' }),
+      'packages/mcp/src/vendor/sdk/device-server.ts': 'export const serve = 1;\n',
+      'apps/gateway/package.json': manifest('@artemis/gateway', {
+        '@artemis/contracts': 'workspace:*',
+        '@artemis/llm': 'workspace:*',
+        '@artemis/mcp': 'workspace:*',
+      }),
+      'apps/gateway/src/bad.ts': "import { serve } from '@artemis/mcp/device-server';\nexport const bad = serve;\n",
+    },
+  },
+  {
+    name: 'rule-9',
+    rule: 'rule-9',
+    files: {
+      'apps/gateway/src/bad-testing.ts': "import { FakeProvider } from '@artemis/llm/testing';\nexport const bad = FakeProvider;\n",
+    },
+  },
+  {
+    name: 'rule-10',
+    rule: 'rule-10',
+    files: {
+      'scripts/bad-tooling.ts': "import { core } from '../packages/core/src/internal.ts';\nexport const bad = core;\n",
     },
   },
 ];

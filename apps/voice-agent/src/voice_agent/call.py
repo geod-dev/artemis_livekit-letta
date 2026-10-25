@@ -43,6 +43,7 @@ def _retry_delay(attempt: int) -> float:
     """Capped exponential delay before retry number `attempt` (1 is the first retry)."""
     return min(UPDATE_RETRY_BASE_SECONDS * (2 ** (attempt - 1)), UPDATE_RETRY_MAX_SECONDS)
 
+
 type EventHandlerRegistration = (
     tuple[Literal["speech_created"], Callable[[SpeechCreatedEvent], None]]
     | tuple[

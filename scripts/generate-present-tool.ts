@@ -8,14 +8,18 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import {
-  presentComponentSchemas,
-  presentLibrary,
-  presentToolSchema,
-} from '../apps/web/src/lib/present-library.ts';
-import { PRESENT_COMPONENT_NAMES } from '../packages/contracts/src/present-components.ts';
+import { PRESENT_COMPONENT_NAMES } from '@artemis/contracts/present-components';
+import { toJSONSchema } from 'zod';
+import { presentLibrary, presentToolSchema } from '../apps/web/src/lib/present-library.ts';
 
 const generatedDirectory = new URL('../packages/contracts/generated/', import.meta.url);
+
+/** The JSON Schema of each component's props, keyed by component name (the generated component protocol). */
+function presentComponentSchemas(library: ReturnType<typeof presentLibrary>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(library).map(([name, component]) => [name, toJSONSchema(component.properties)])
+  );
+}
 
 const library = presentLibrary(() => null);
 const libraryNames = Object.keys(library);

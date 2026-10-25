@@ -87,7 +87,10 @@ async function checkLinkedFixture(): Promise<void> {
   assert.equal(plan.headers['Content-Disposition'], "inline; filename*=UTF-8''report.txt");
 }
 
-test('a linked workspace file is described and served under its target name (no symlink privilege needed)', checkLinkedFixture);
+test(
+  'a linked workspace file is described and served under its target name (no symlink privilege needed)',
+  checkLinkedFixture
+);
 
 test('workspace response planning bounds ranges and preserves HEAD semantics', () => {
   const file = { path: 'images/chart.png', size: 16, contentType: 'image/png', viewable: true };

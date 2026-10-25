@@ -1,4 +1,3 @@
-import { toJSONSchema } from 'zod';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
 import {
   type GenerativeUIComponent,
@@ -12,7 +11,7 @@ import {
  * agent-server registers the tool from `packages/contracts/generated/present-tool.json`,
  * generated from this module by `pnpm generate:present-tool` (scripts/generate-present-tool.ts);
  * the component names it must implement are declared in `@artemis/contracts/present-components`.
- * The web app's test fails when the generated files differ.
+ * `pnpm check:schema` fails when the generated files differ.
  */
 export const PRESENT_TOOL = TOOL_NAMES.present;
 
@@ -78,11 +77,4 @@ export function presentToolSchema(library: GenerativeUILibrary, { warnings = tru
       .replaceAll('$key', 'componentKey')
       .replaceAll('$action', 'action')
   ) as { name: string; description: string; parameters: Record<string, unknown> };
-}
-
-/** The JSON Schema of each component's props, keyed by component name (the generated component protocol). */
-export function presentComponentSchemas(library: GenerativeUILibrary): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(library).map(([name, component]) => [name, toJSONSchema(component.properties)])
-  );
 }

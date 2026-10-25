@@ -19,7 +19,11 @@ const accepted: Responder = () => Response.json({});
 /** A fake agent-server that records each relayed request, and a fake attachment store that records its bookkeeping. */
 function harness(respond: Responder = accepted) {
   const relayed: Relayed[] = [];
-  const bookkeeping = { reserved: [] as string[], released: [] as string[], replaced: [] as string[] };
+  const bookkeeping = {
+    reserved: [] as string[],
+    released: [] as string[],
+    replaced: [] as string[],
+  };
   const agent = {
     relay: async (request: Request, path: string, body?: string) => {
       const entry = { method: request.method, path, body };

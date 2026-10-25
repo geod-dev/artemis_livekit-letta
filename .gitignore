@@ -5,12 +5,6 @@
 *.log
 *.log.*
 *.keystore
-*.jks
-apps/mobile/.signing/
-apps/mobile/app/build/
-apps/mobile/.gradle/
-apps/mobile/local.properties
-apps/mobile/build/
 node_modules/
 .venv/
 __pycache__/
@@ -27,5 +21,5 @@ coverage/
 **/.pytest_cache/
 **/.ruff_cache/
 /data/
-# Per-developer Claude Code permissions; the shared settings file is tracked.
+# Per-developer Claude Code permissions.
 .claude/settings.local.json

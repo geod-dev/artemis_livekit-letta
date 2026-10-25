@@ -50,10 +50,9 @@ test('discarding an upload refuses an oversized path and reports a failed remova
     },
   } as unknown as AttachmentStore;
   const app = new Hono().route('/api', createAttachmentRoutes(store));
-  const oversized = await app.request(
-    `http://localhost/api/attachments?path=${'a'.repeat(501)}`,
-    { method: 'DELETE' }
-  );
+  const oversized = await app.request(`http://localhost/api/attachments?path=${'a'.repeat(501)}`, {
+    method: 'DELETE',
+  });
   assert.equal(oversized.status, 400);
   const discarded = await app.request('http://localhost/api/attachments?path=uploads%2Fok', {
     method: 'DELETE',

@@ -24,9 +24,7 @@ SETTINGS_VARIABLES = (
 
 
 @pytest.fixture(autouse=True)
-def isolated_settings(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> Iterator[Path]:
+def isolated_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
     for name in SETTINGS_VARIABLES:
         monkeypatch.delenv(name, raising=False)
     # Point the env file at a path that does not exist, so no `.env` is read.
