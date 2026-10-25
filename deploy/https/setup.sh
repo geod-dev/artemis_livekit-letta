@@ -21,7 +21,7 @@ for octet do
   fi
 done
 
-repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+repo=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$repo"
 test -f .env
 
