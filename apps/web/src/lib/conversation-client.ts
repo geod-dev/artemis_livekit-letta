@@ -1,3 +1,4 @@
+import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import type {
   ChatAttachment,
   ChatMessage,
@@ -72,7 +73,7 @@ export function openConversationStream(
   id: string,
   handlers: ConversationStreamHandlers
 ): () => void {
-  const source = openEventSource(conversationRoute(id, '/events'));
+  const source = openEventSource(conversationRoute(id, CHAT_HTTP.conversationEvents));
   source.addEventListener('open', () => handlers.onOpen());
   source.onerror = () => handlers.onError();
   source.onmessage = (e) => {

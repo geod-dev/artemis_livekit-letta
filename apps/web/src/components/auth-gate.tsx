@@ -53,6 +53,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
+      // The app words these two outcomes itself rather than showing the server's text.
+      if (response.status === 401) throw new Error('Incorrect password.');
+      if (response.status === 429) throw new Error('Too many attempts. Try again later.');
       const body = await responseJson(
         response,
         (value): value is { authenticated: boolean } =>

@@ -60,7 +60,7 @@ export function useConversations() {
 
   // Unread background results change without the list being refetched.
   useEffect(() => {
-    const source = openEventSource(`${CHAT_HTTP.conversations}/events`);
+    const source = openEventSource(`${CHAT_HTTP.conversations}${CHAT_HTTP.conversationEvents}`);
     source.onmessage = (e) => {
       let event: unknown;
       try {
