@@ -1,7 +1,8 @@
 import { type RefObject, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useAuiState } from '@assistant-ui/react';
 import { useAgent, useTrackVolume } from '@livekit/components-react';
-import { MascotElementContext, useChatThread } from '@/components/chat/context';
+import { MascotElementContext } from '@/components/chat/context';
+import { useChatThread } from '@/hooks/use-chat-thread';
 import { turnAtmosphere } from '@/lib/conversation-atmosphere';
 
 const DESKTOP = '(min-width: 1024px) and (hover: hover) and (pointer: fine)';

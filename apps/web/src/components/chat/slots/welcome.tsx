@@ -1,7 +1,8 @@
 import { useContext, useEffect, useState } from 'react';
 import { ArrowUpRightIcon } from 'lucide-react';
-import { EasterEggContext, useChatThread } from '@/components/chat/context';
+import { EasterEggContext } from '@/components/chat/context';
 import { greetingsFor, pickGreeting } from '@/content/greetings';
+import { useChatThread } from '@/hooks/use-chat-thread';
 import { cn } from '@/lib/shadcn/utils';
 
 /**

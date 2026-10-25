@@ -1,6 +1,6 @@
 import { Loader2Icon, SquareIcon } from 'lucide-react';
-import { useActivity } from '@/components/chat/context';
 import { IconButton } from '@/components/ui/icon-button';
+import { useAppActivity } from '@/hooks/use-app-activity';
 import type { AgentRun } from '@/lib/agent-runs';
 
 /** Stops a running task, or every running run of a grouped task. */
@@ -13,7 +13,7 @@ export function TaskStopButton({
   className?: string;
   showSpinner?: boolean;
 }) {
-  const { stopTask, stopping } = useActivity();
+  const { stopTask, stopping } = useAppActivity();
   if (task.status !== 'running' || task.id.startsWith('launch:')) return null;
   const running = task.runs?.filter((run) => run.status === 'running') ?? [task];
   const pending = running.some((run) => stopping.has(run.id));

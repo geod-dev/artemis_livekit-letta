@@ -1,9 +1,9 @@
 import { type CSSProperties, useEffect, useState } from 'react';
 import { Popover } from 'radix-ui';
 import { TEXT_EFFORTS, type TextEffort } from '@artemis/contracts/chat-types';
-import { useChatThread } from '@/components/chat/context';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useChatThread } from '@/hooks/use-chat-thread';
 
 const EFFORT_VALUES: readonly TextEffort[] = TEXT_EFFORTS;
 const EFFORT_LABELS: Record<TextEffort, string> = {

@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { TokenSource } from 'livekit-client';
 import { MessageCirclePlusIcon, PanelRightIcon } from 'lucide-react';
-import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import type { ConversationSummary, TextEffort } from '@artemis/contracts/chat-types';
 import { AssistantRuntimeProvider, AuiConfig, Tools } from '@assistant-ui/react';
-import { RoomAudioRenderer, SessionProvider, useSession } from '@livekit/components-react';
+import { RoomAudioRenderer, SessionProvider } from '@livekit/components-react';
 import { Thread } from '@/components/chat-primitives/chat/thread';
 import { generativeUIToolkit } from '@/components/chat-primitives/tools/generative-ui';
 import {
-  ActivityContext,
+  AppActivityContext,
   ChatThreadContext,
   type ChatThreadState,
   MascotElementContext,
-  ToolActivityContext,
+  ToolRunActivityContext,
 } from '@/components/chat/context';
 import { LoadingBar } from '@/components/chat/loading-bar';
 import { Sidebar } from '@/components/chat/sidebar';
@@ -30,57 +28,20 @@ import { Toaster } from '@/components/ui/sonner';
 import { CallBar } from '@/components/voice/call-bar';
 import { StartAudioButton } from '@/components/voice/start-audio-button';
 import { useActivityTasks } from '@/hooks/use-activity';
+import { useAppViewport } from '@/hooks/use-app-viewport';
 import { useChatRuntime } from '@/hooks/use-chat-runtime';
 import { useContextUsage } from '@/hooks/use-context-usage';
 import { useConversation } from '@/hooks/use-conversation';
 import { useConversations } from '@/hooks/use-conversations';
+import { useSelectedConversation } from '@/hooks/use-selected-conversation';
+import { useVoiceCall } from '@/hooks/use-voice-call';
 import type { AgentRun } from '@/lib/agent-runs';
-import { apiFetch } from '@/lib/api';
 
 /** UI for the tools the agent runs (generative UI). */
 const AUI_CONFIG = AuiConfig({ tools: Tools({ toolkit: generativeUIToolkit }) });
 
-/** Keep the selected conversation in `?c=<id>` without remounting anything. */
-function useSelectedConversation() {
-  const [id, setId] = useState<string | null>(null);
-  useEffect(() => {
-    setId(new URLSearchParams(window.location.search).get('c'));
-    const onPop = () => setId(new URLSearchParams(window.location.search).get('c'));
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-  const select = useCallback((next: string | null) => {
-    setId(next);
-    const url = next ? `?c=${encodeURIComponent(next)}` : window.location.pathname;
-    window.history.pushState(null, '', url);
-  }, []);
-  return [id, select] as const;
-}
-
 export function ChatApp({ assistantName }: { assistantName: string }) {
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    const resize = () => {
-      document.documentElement.style.setProperty(
-        '--app-height',
-        `${viewport?.height ?? window.innerHeight}px`
-      );
-      // Mobile browsers can pan the visual viewport to reveal a focused input.
-      // Keep the app's top edge visible while its height follows the keyboard.
-      document.documentElement.style.setProperty('--app-top', `${viewport?.offsetTop ?? 0}px`);
-    };
-    resize();
-    viewport?.addEventListener('resize', resize);
-    viewport?.addEventListener('scroll', resize);
-    window.addEventListener('resize', resize);
-    return () => {
-      viewport?.removeEventListener('resize', resize);
-      viewport?.removeEventListener('scroll', resize);
-      window.removeEventListener('resize', resize);
-      document.documentElement.style.removeProperty('--app-height');
-      document.documentElement.style.removeProperty('--app-top');
-    };
-  }, []);
+  useAppViewport();
   const list = useConversations();
   const { upsert, create } = list;
   const [activeId, select] = useSelectedConversation();
@@ -163,69 +124,12 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
     return () => window.removeEventListener('keydown', onShortcut);
   }, [select]);
 
-  // --- Voice call -----------------------------------------------------------
-  // A literal token source is re-fetched on every start, so every call gets a
-  // fresh room (and a fresh agent dispatch). LiveKit also fetches tokens on
-  // its own (on mount to warm up, and after each call); those fetches carry no
-  // call target and get a warm-up token with no side effects.
-  const callTarget = useRef<string | null>(null);
-  const [callConversationId, setCallConversationId] = useState<string | null>(null);
-  const tokenSource = useMemo(
-    () =>
-      TokenSource.literal(async () => {
-        const conversationId = callTarget.current;
-        callTarget.current = null;
-        const res = await apiFetch(CHAT_HTTP.voiceToken, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // Calls from the web app are conversations: they stay open until ended.
-          body: JSON.stringify({ conversationId: conversationId ?? undefined, mode: 'long' }),
-        });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body?.error ?? 'Could not start the call');
-        const target = body.conversation as ConversationSummary | null;
-        if (target) {
-          upsert(target);
-          setCallConversationId(target.id);
-        }
-        return {
-          serverUrl: body.serverUrl,
-          participantToken: body.participantToken,
-          participantName: body.participantName,
-          roomName: body.roomName,
-        };
-      }),
-    [upsert]
-  );
-  const session = useSession(tokenSource, { agentConnectTimeoutMilliseconds: 30_000 });
-  const inCall = session.connectionState !== 'disconnected';
-
-  const startCall = useCallback(async () => {
-    try {
-      // A call from "new chat" starts the conversation, like a first message does.
-      let id = activeId;
-      if (!id) {
-        id = (await create()).id;
-        expectNew(id);
-        select(id);
-      }
-      callTarget.current = id;
-      await session.start({ tracks: { microphone: { enabled: true } } });
-    } catch (error) {
-      console.error(error);
-      setError(error instanceof Error ? error.message : 'Could not start the call');
-      setCallConversationId(null);
-    }
-  }, [activeId, create, expectNew, select, session, setError]);
-
-  const endCall = useCallback(async () => {
-    await session.end();
-    setCallConversationId(null);
-  }, [session]);
-
-  useEffect(() => {
-    if (!inCall) setCallConversationId(null);
-  }, [inCall]);
+  const { session, inCall, callConversationId, startCall, endCall } = useVoiceCall({
+    activeId,
+    list,
+    conversation,
+    select,
+  });
 
   // --- Text -----------------------------------------------------------------
   const runtime = useChatRuntime({
@@ -331,8 +235,8 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
             onSettings={openSettings}
           />
           <ChatThreadContext.Provider value={threadState}>
-            <ActivityContext.Provider value={{ ...activity, openTask }}>
-              <ToolActivityContext.Provider value={{ tasks: activity.tasks, openTask }}>
+            <AppActivityContext.Provider value={{ ...activity, openTask }}>
+              <ToolRunActivityContext.Provider value={{ tasks: activity.tasks, openTask }}>
                 <MascotElementContext.Provider value={mascotRef}>
                   <WorkspaceFilePanelContext.Provider value={setOpenFile}>
                     <main className="app-main flex min-w-0 flex-1 flex-col">
@@ -413,8 +317,8 @@ export function ChatApp({ assistantName }: { assistantName: string }) {
                     )}
                   </WorkspaceFilePanelContext.Provider>
                 </MascotElementContext.Provider>
-              </ToolActivityContext.Provider>
-            </ActivityContext.Provider>
+              </ToolRunActivityContext.Provider>
+            </AppActivityContext.Provider>
           </ChatThreadContext.Provider>
         </div>
         <SettingsDialog

@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ToolDisplay, ToolTaskRef } from '@artemis/contracts/chat-types';
+import { toolCall, webSearchQuery } from '@/lib/tool-display';
 import {
   commandIsBackground,
   getToolGroupDisplay,
   getToolGroupLabel,
-  toolCall,
   toolCallLabel,
-  webSearchQuery,
 } from './tool-display.ts';
 
 const bridge = (toolName: string, args: unknown, ui = {}) =>

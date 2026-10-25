@@ -18,7 +18,7 @@ import {
   WrenchIcon,
 } from 'lucide-react';
 import { TOOL_NAMES } from '@artemis/contracts/tool-names';
-import { stripLeadingEmoji } from '../../../lib/agent-runs.ts';
+import { stripLeadingEmoji } from '@/lib/agent-runs';
 import {
   BRIDGE_CALLS,
   type ToolCall,
@@ -27,19 +27,15 @@ import {
   mcpTool,
   mcpToolCall,
   nonEmptyString,
-  toolCall,
-  webSearchQuery,
-} from '../../../lib/tool-display.ts';
+} from '@/lib/tool-display';
 
 /**
  * How tool calls look in the thread: the one place that knows tools. A call
  * shows the first presentation that matches it, or the default one. Calls are
  * matched by the agent-server's tool names, and labelled from the structured
- * `display` and `task` the server sends with them.
+ * `display` and `task` the server sends with them. The pure parts (matching,
+ * arguments) live in `@/lib/tool-display`; this module adds the icons and labels.
  */
-
-export type { ToolCall, ToolCallUi };
-export { toolCall, webSearchQuery };
 
 /** A titled card in a call's details. */
 type ToolCard = { title: string; content: unknown };

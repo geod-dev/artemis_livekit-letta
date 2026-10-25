@@ -1,4 +1,4 @@
-import { type RefObject, createContext, useContext } from 'react';
+import { type RefObject, createContext } from 'react';
 import type {
   ConversationContextUsage,
   ConversationSummary,
@@ -40,14 +40,8 @@ export interface ChatThreadState {
 
 export const ChatThreadContext = createContext<ChatThreadState | null>(null);
 
-export function useChatThread() {
-  const state = useContext(ChatThreadContext);
-  if (!state) throw new Error('ChatThreadContext is missing');
-  return state;
-}
-
 /** The background tasks of the app, and how to open or stop one. */
-export type ActivityState = {
+type AppActivityState = {
   tasks: AgentRun[];
   openTask: (task: AgentRun) => void;
   stopTask: (id: string) => Promise<void>;
@@ -55,16 +49,10 @@ export type ActivityState = {
   error: string | null;
 };
 
-export const ActivityContext = createContext<ActivityState | null>(null);
-
-export function useActivity() {
-  const context = useContext(ActivityContext);
-  if (!context) throw new Error('ActivityContext is missing');
-  return context;
-}
+export const AppActivityContext = createContext<AppActivityState | null>(null);
 
 /** The background runs a thread's tool calls show, and how to open one. */
-export const ToolActivityContext = createContext<{
+export const ToolRunActivityContext = createContext<{
   tasks: AgentRun[];
   openTask: (task: AgentRun) => void;
 } | null>(null);

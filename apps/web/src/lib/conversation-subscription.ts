@@ -25,10 +25,10 @@ import {
 } from './turn-state.ts';
 
 /** A state update as React's setters take it: a value, or a function of the previous one. */
-export type StateUpdate<T> = T | ((previous: T) => T);
+type StateUpdate<T> = T | ((previous: T) => T);
 
 /** Resolves once the event stream of a conversation has opened (see createReadyGate). */
-export interface ReadyGate {
+interface ReadyGate {
   readonly promise: Promise<void>;
   resolve(): void;
   readonly settled: boolean;
@@ -215,7 +215,7 @@ export function createConversationEventRouter(
 }
 
 /** What a subscription reads and writes: the event state, its connection holder, and the client calls. */
-export interface SubscriptionDeps extends Omit<ConversationEventDeps, 'reconcileHistory'> {
+interface SubscriptionDeps extends Omit<ConversationEventDeps, 'reconcileHistory'> {
   /** The stream the sends wait for; updated as the subscription opens, reconnects and closes. */
   readonly connected: { current: StreamConnection & { id: string | null } };
   setStopped(update: StateUpdate<ReadonlySet<string>>): void;

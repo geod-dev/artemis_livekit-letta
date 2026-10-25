@@ -1,16 +1,17 @@
 import { XIcon } from 'lucide-react';
 import { ComposerPrimitive, QueueItemPrimitive, useAuiState } from '@assistant-ui/react';
-import { useActivity, useChatThread } from '@/components/chat/context';
 import { TaskLabel } from '@/components/tasks/task-label';
 import { TaskStopButton } from '@/components/tasks/task-stop-button';
 import { IconButton } from '@/components/ui/icon-button';
+import { useAppActivity } from '@/hooks/use-app-activity';
+import { useChatThread } from '@/hooks/use-chat-thread';
 import { cn } from '@/lib/shadcn/utils';
 import { formatTaskDuration, taskStatusLabel } from '@/lib/task-status';
 
 /** Running background tasks, the last turn's error, and queued messages. */
 export function BeforeComposer() {
   const { error } = useChatThread();
-  const { tasks: allTasks, openTask, error: activityError } = useActivity();
+  const { tasks: allTasks, openTask, error: activityError } = useAppActivity();
   const tasks = allTasks.filter((task) => task.status === 'running');
   const queued = useAuiState((s) => s.composer.queue.length);
   if (tasks.length === 0 && !error && !activityError && queued === 0) return null;

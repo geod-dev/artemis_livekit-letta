@@ -22,7 +22,7 @@ export const nonEmptyString = (value: unknown) =>
   typeof value === 'string' && value.trim() ? value : undefined;
 
 /** The arguments of a call as an object; {} while they are not (yet) a JSON object. */
-export function parseToolArgs(argsText: string | undefined): Record<string, unknown> {
+function parseToolArgs(argsText: string | undefined): Record<string, unknown> {
   if (!argsText) return {};
   try {
     const args: unknown = JSON.parse(argsText);

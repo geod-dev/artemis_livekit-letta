@@ -94,7 +94,7 @@ export function findSpot(
 }
 
 /** The box of the last visible character in an element (skipping buttons and screen-reader text). */
-export function lastCharacterRect(element: Element): DOMRect | null {
+function lastCharacterRect(element: Element): DOMRect | null {
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
       const parent = node.parentElement;

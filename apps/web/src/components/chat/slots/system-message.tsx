@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { MessagePrimitive, useAuiState } from '@assistant-ui/react';
-import { useActivity, useChatThread } from '@/components/chat/context';
 import { TaskLabel } from '@/components/tasks/task-label';
+import { useAppActivity } from '@/hooks/use-app-activity';
+import { useChatThread } from '@/hooks/use-chat-thread';
 import { type AgentRun, stripLeadingEmoji } from '@/lib/agent-runs';
 import { taskDurationLabel, taskStatusLabel } from '@/lib/task-status';
 
@@ -62,7 +63,7 @@ export function SystemMessage() {
     unread?: boolean;
   };
   const ref = useReadWhenSeen(custom.updateId, custom.unread === true);
-  const { tasks, openTask } = useActivity();
+  const { tasks, openTask } = useAppActivity();
   const text = useAuiState((s) =>
     s.message.content
       .filter((part) => part.type === 'text')

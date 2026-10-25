@@ -1,0 +1,51 @@
+@media (max-height: 700px) {
+  .thread-column-empty {
+    justify-content: flex-start;
+    padding-top: 16px;
+  }
+  .welcome-character {
+    height: 90px;
+    margin-bottom: 12px;
+  }
+  .welcome-mascot-anchor {
+    width: 64px;
+    height: 64px;
+  }
+  .character-orbit {
+    width: 112px;
+    height: 78px;
+  }
+  .artemis-welcome {
+    margin-bottom: 20px;
+  }
+}
+@media (hover: none) {
+  button,
+  [role='menuitem'],
+  [data-slot='aui_thread-list-item-trigger'] {
+    min-height: 44px;
+  }
+  .aui-root button {
+    min-width: 44px;
+  }
+  .aui-md [data-streamdown='code-block-actions'] button {
+    min-width: 0;
+    min-height: 0;
+  }
+  .aui-composer-action-wrapper button,
+  .aui-composer-voice-root button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .aui-composer-action-wrapper .aui-composer-effort-trigger {
+    width: auto;
+  }
+  [data-slot='aui_thread-list-item'] button {
+    opacity: 1;
+  }
+  [data-slot='aui_thread-list-item-trigger'] {
+    padding-inline-end: 56px;
+  }
+}

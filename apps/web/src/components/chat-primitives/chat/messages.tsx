@@ -25,10 +25,8 @@ import {
   defaultGroupBy,
 } from '@/components/chat-primitives/chat/thread-context';
 import {
-  type ToolCall,
   getToolGroupDisplay,
   getToolGroupLabel,
-  toolCall,
   toolCallUi,
 } from '@/components/chat-primitives/tools/tool-display';
 import { ToolFallback } from '@/components/chat-primitives/tools/tool-fallback';
@@ -45,6 +43,7 @@ import { MarkdownText, MessageLinkPreviews } from '@/components/media/markdown/m
 import { field, mono } from '@/components/ui/surfaces';
 import { dayKey, dayLabel, timeLabel } from '@/lib/message-days';
 import { cn } from '@/lib/shadcn/utils';
+import { type ToolCall, toolCall } from '@/lib/tool-display';
 
 const reasoningDuration = (timing: ThreadGroupPart['timing']) =>
   timing?.completedAt === undefined

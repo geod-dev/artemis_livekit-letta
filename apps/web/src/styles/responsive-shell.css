@@ -1,0 +1,79 @@
+/* Responsive shells and shared touch behavior. Component styling stays in its owner file. */
+.mobile-chat-trigger {
+  top: calc(max(env(safe-area-inset-top), 6px) + 2px);
+  left: calc(env(safe-area-inset-left) + 8px);
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 50%;
+}
+.app-sidebar.mobile-chat-drawer {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  width: min(18rem, 85vw);
+  height: var(--app-height, 100dvh);
+  color: var(--foreground);
+  background: var(--surface-base);
+  background-image: none;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  /* Animate both Slide's transform and the finger offset when a drag ends. */
+  transition-property: transform, translate !important;
+  transition-duration: 240ms !important;
+}
+.app-sidebar.mobile-chat-drawer.is-dragging {
+  transition-duration: 0ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar.mobile-chat-drawer {
+    transition-duration: 0ms !important;
+  }
+}
+@media (max-width: 1023px) {
+  .app-shell {
+    position: fixed;
+    top: var(--app-top, 0px);
+    right: 0;
+    left: 0;
+    gap: 0;
+    padding: max(env(safe-area-inset-top), 6px) max(env(safe-area-inset-right), 6px)
+      max(env(safe-area-inset-bottom), 6px) max(env(safe-area-inset-left), 6px);
+  }
+  .app-main {
+    margin: 0;
+    border-radius: 0;
+  }
+  .app-topbar {
+    height: 54px;
+    min-height: 54px;
+    padding: 0 18px 6px 56px;
+  }
+  .mobile-new-chat-trigger {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+  .app-sidebar.mobile-chat-drawer {
+    position: fixed;
+    z-index: 50;
+  }
+}
+@media (min-width: 1024px) {
+  .app-sidebar.mobile-chat-drawer {
+    display: none;
+  }
+}
+@media (max-width: 1279px) {
+  .mobile-file-panel {
+    height: var(--app-height, 100dvh);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
+}

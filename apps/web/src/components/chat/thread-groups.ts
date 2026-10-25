@@ -3,9 +3,9 @@
  * grouping can be tested without rendering.
  */
 
-export type ThreadListItemLike = { id: string; title?: string; lastMessageAt?: Date };
+type ThreadListItemLike = { id: string; title?: string; lastMessageAt?: Date };
 
-export type ThreadListGroup = { label: string; indices: number[] };
+type ThreadListGroup = { label: string; indices: number[] };
 
 export const startOfLocalDay = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();

@@ -2,7 +2,7 @@
 export const SESSION_UNREACHABLE =
   'Unable to connect to the server. Check your connection and try again.';
 
-export type SessionFailure = {
+type SessionFailure = {
   /** The gate shows the sign-in form. */
   signOut: boolean;
   error: string;

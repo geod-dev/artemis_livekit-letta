@@ -8,7 +8,10 @@
 @import './welcome.css';
 @import './controls.css';
 @import './interactions.css';
-@import './responsive.css';
+@import './responsive-shell.css';
+@import './responsive-phone.css';
+@import './responsive-touch.css';
+@import './responsive-chrome.css';
 @import './generative-ui/text-and-facts.css';
 @import './generative-ui/actions.css';
 @import './generative-ui/form-controls.css';

@@ -1,0 +1,49 @@
+.settings-page {
+  height: var(--app-height, 100dvh);
+  max-height: none;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+.app-shell > aside.mobile-file-panel {
+  margin: 0;
+  overflow: hidden;
+  border-radius: 0;
+}
+.app-shell ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.app-shell ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 22%, transparent);
+  background-clip: padding-box;
+}
+@media (hover: none) and (pointer: coarse) {
+  .mobile-menu-motion[data-state='open'] {
+    animation: mobile-menu-in 130ms var(--ease-out-soft) both;
+  }
+  .mobile-menu-motion[data-state='closed'] {
+    animation: mobile-menu-out 100ms ease-in both;
+  }
+}
+@keyframes mobile-menu-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0;
+  }
+}
+@keyframes mobile-menu-out {
+  from {
+    opacity: 1;
+    translate: 0;
+  }
+  to {
+    opacity: 0;
+    translate: 0 2px;
+  }
+}

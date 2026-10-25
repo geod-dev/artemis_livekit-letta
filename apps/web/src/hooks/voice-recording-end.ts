@@ -1,5 +1,5 @@
 /** How a finished recording is handled: the decision the voice recorder's stop makes. */
-export type RecordingEnd = 'too-large' | 'too-long' | 'empty' | 'transcribe';
+type RecordingEnd = 'too-large' | 'too-long' | 'empty' | 'transcribe';
 
 /**
  * Decides what a finished recording becomes. The limits win over emptiness, and

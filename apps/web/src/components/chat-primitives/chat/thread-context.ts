@@ -11,7 +11,7 @@ import type { RecordingStatus } from '@/hooks/use-voice-recorder';
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
 /** Props of the overlay slot, drawn over the thread by the app. */
-export type ThreadOverlayProps = {
+type ThreadOverlayProps = {
   viewportRef: RefObject<HTMLDivElement | null>;
   easterEggEnabled: boolean;
   recordingStatus: RecordingStatus;
