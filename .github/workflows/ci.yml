@@ -17,8 +17,8 @@ jobs:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
     services:
       postgres:
-        # Same tag as deploy/postgres/Dockerfile, so the suites run against the deployed image.
-        image: pgvector/pgvector:0.8.7-pg18-bookworm
+        # Same image as deploy/postgres/Dockerfile (tag and digest), so the suites run against the deployed image.
+        image: pgvector/pgvector:0.8.7-pg18-bookworm@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -29,11 +29,12 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
+      # Actions are pinned to commit SHAs; the tag is in the comment. Dependabot updates them.
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node.js from .node-version
-        uses: actions/setup-node@v7.1.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
 
@@ -45,7 +46,7 @@ jobs:
           pnpm --version
 
       - name: Set up uv (same patch release as the voice-agent image) and Python from .python-version
-        uses: astral-sh/setup-uv@v10.3.2
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: "0.7.22"
 
@@ -53,7 +54,7 @@ jobs:
         run: echo "UV_PYTHON=$(cat apps/voice-agent/.python-version)" >> "$GITHUB_ENV"
 
       - name: Set up Java 17 for the mobile group
-        uses: actions/setup-java@v6.1.0
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "17"
@@ -65,24 +66,31 @@ jobs:
         run: pnpm check
 
   compose:
-    name: docker compose config and build
+    name: compose, images and deploy configs
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Placeholders only, so Compose can interpolate required variables. CI writes no .env file.
+    # Every `:?` variable in the four compose files needs a value here; keep this list in step with them.
     env:
       POSTGRES_PASSWORD: ci-placeholder
       ARTEMIS_DB_PASSWORD: ci-placeholder
       HINDSIGHT_DB_PASSWORD: ci-placeholder
+      HINDSIGHT_API_KEY: ci-placeholder
       ANTHROPIC_API_KEY: ci-placeholder
+      AGENT_SERVER_TOKEN: ci-placeholder
+      ARTEMIS_PASSWORD: ci-placeholder
+      ARTEMIS_DEVICE_TOKEN: ci-placeholder
+      VOICE_GATEWAY_TOKEN: ci-placeholder
       LIVEKIT_API_KEY: ci-placeholder
       LIVEKIT_API_SECRET: ci-placeholder
       IP_ADDRESS: 127.0.0.1
+      LIVEKIT_PUBLIC_URL: wss://ci-placeholder.invalid/livekit
       # Production overlay paths: placeholders, must be absolute and separate.
       WORKSPACE_PATH: /ci/workspace
       ARTEMIS_DATA_DIR: /ci/gateway-data
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate compose files
         run: |
@@ -90,6 +98,9 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.dev.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
           docker compose -f docker-compose.coolify.yml config -q
+
+      - name: Check host roots and base versus Coolify parity
+        run: node scripts/check-compose.mjs
 
       - name: Build images
         run: docker compose -f docker-compose.yml build gateway agent-server web voice-agent
@@ -103,3 +114,32 @@ jobs:
 
       - name: Build the Coolify Postgres image
         run: docker build -t artemis-postgres deploy/postgres
+
+      - name: Test the standalone HTTPS nginx template
+        # setup.sh replaces @IP@ and writes the certificate paths. Here the address is a documentation
+        # address and the certificate is throwaway, so nginx -t can load the file without a real host.
+        run: |
+          dir="$RUNNER_TEMP/https-nginx-test"
+          mkdir -p "$dir" && chmod 755 "$dir"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=192.0.2.1" \
+            -keyout "$dir/key.pem" -out "$dir/cert.pem"
+          sed -e 's/@IP@/192.0.2.1/g' \
+            -e 's#/etc/letsencrypt/live/192.0.2.1/fullchain.pem#/etc/nginx/test/cert.pem#' \
+            -e 's#/etc/letsencrypt/live/192.0.2.1/privkey.pem#/etc/nginx/test/key.pem#' \
+            deploy/https/nginx.conf.template > "$dir/default.conf"
+          chmod 644 "$dir/key.pem" "$dir/cert.pem" "$dir/default.conf"
+          docker run --rm --entrypoint nginx \
+            -v "$dir:/etc/nginx/test:ro" \
+            -v "$dir/default.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginxinc/nginx-unprivileged@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0 -t
+
+      - name: Lint the shell scripts
+        run: shellcheck --severity=warning $(git ls-files '*.sh')
+
+      - name: Lint the Dockerfiles
+        # DL3008 (unpinned apt package versions) is ignored: the images take the current Debian packages.
+        run: |
+          for file in $(git ls-files '*Dockerfile'); do
+            docker run --rm -i hadolint/hadolint@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e \
+              hadolint --ignore DL3008 - < "$file"
+          done

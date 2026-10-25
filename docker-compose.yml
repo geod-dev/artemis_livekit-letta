@@ -1,7 +1,14 @@
 # The full application stack. Host-facing URLs use IP_ADDRESS; containers use
 # Compose service names for traffic that stays inside the Docker network.
-# `env_file: .env` is optional, so this file validates on a fresh clone. The `:?`
-# variables below must still be set (in .env or the shell) before the stack starts.
+#
+# Environment rule, for every service: no service uses `env_file`. Each one lists in `environment:`
+# exactly the variables its code reads, so a provider key reaches only the container that uses it.
+# Compose reads .env only to interpolate ${VAR} in this file, so the file validates on a fresh clone.
+# The `:?` variables below must still be set (in .env or the shell) before the stack starts.
+#
+# Networks: `edge` carries the browser path and the LiveKit media path. `data` is internal (no route
+# out of the host) and carries Postgres, Hindsight and the agent server. `egress` is the only network
+# with a route out, so Hindsight can call its LLM provider; no other service joins it.
 name: artemis
 
 services:
@@ -16,6 +23,8 @@ services:
       HINDSIGHT_DB_PASSWORD: ${HINDSIGHT_DB_PASSWORD:?set HINDSIGHT_DB_PASSWORD in .env}
     volumes:
       - postgres-pg18:/var/lib/postgresql   # PG18 image VOLUME is /var/lib/postgresql
+    networks:
+      - data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
@@ -24,7 +33,8 @@ services:
     restart: unless-stopped
 
   hindsight:
-    image: ghcr.io/vectorize-io/hindsight:1.1.0
+    # Pinned by digest; the tag is in the comment. Needs `egress` to reach its LLM provider.
+    image: ghcr.io/vectorize-io/hindsight@sha256:50311d02b4d5d2b7c5242bd336edf8735df8374eaad496a92f49c83b37d2aa06 # tag 1.1.0
     hostname: hindsight
     shm_size: 1g
     environment:
@@ -36,6 +46,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - data
+      - egress
     healthcheck:
       test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8888/health/ready', timeout=3).status == 200 else 1)"]
       interval: 10s
@@ -48,6 +61,14 @@ services:
     build:
       context: .
       dockerfile: apps/agent-server/Dockerfile
+    # Starts as root only so that docker-entrypoint.sh can run the server as uid 1001 and keep SETUID and
+    # SETGID for the agent shells (uid 1002). Do not add `user:`. Those two capabilities are the only ones granted.
+    init: true
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: 4g
     # Explicit list, not env_file: the server gets only the variables it reads (apps/agent-server/src/config.ts).
     # Agent shell commands run as uid 1002, so they cannot read this process's environment.
     environment:
@@ -60,7 +81,8 @@ services:
       # Literal on purpose: containers always use the in-network Hindsight service. HINDSIGHT_URL
       # in .env is for host runs and must not leak into the containers through interpolation.
       HINDSIGHT_URL: http://hindsight:8888
-      HINDSIGHT_API_KEY: ${HINDSIGHT_API_KEY:-}
+      # Required. Agent shells share the data network with Hindsight, so the key must be set.
+      HINDSIGHT_API_KEY: ${HINDSIGHT_API_KEY:?set HINDSIGHT_API_KEY in .env}
       HINDSIGHT_BANK_ID: ${HINDSIGHT_BANK_ID:-}
       MEMORY_RETAIN_EVERY: ${MEMORY_RETAIN_EVERY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
@@ -84,9 +106,14 @@ services:
       hindsight:
         condition: service_healthy
     volumes:
-      # The workspace holds the agent's files and, under data/, the uploads and device files.
-      # data/ must be owned by uid 1001 with mode 0755 on the host (deploy/coolify/README.md).
+      # The workspace holds the agent's files. data/ is mounted again below, so it is a mount point that
+      # the agent cannot rename or remove. data/ must be owned by uid 1001 with mode 0755 on the host
+      # (deploy/coolify/README.md).
       - ${WORKSPACE_PATH:-./data/workspace}:/workspace
+      - ${WORKSPACE_PATH:-./data/workspace}/data:/workspace/data
+    networks:
+      - edge
+      - data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -96,7 +123,8 @@ services:
     restart: unless-stopped
 
   livekit:
-    image: livekit/livekit-server:v1.13.7
+    # Pinned by digest; the tag is in the comment.
+    image: livekit/livekit-server@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3 # tag v1.13.7
     # Production leaves signal routing to the reverse proxy and publishes media
     # only. A loopback signal port remains available for the standalone HTTPS host.
     command: --bind 0.0.0.0 --node-ip ${IP_ADDRESS:?set IP_ADDRESS in .env} --udp-port 7882
@@ -107,6 +135,8 @@ services:
       # WebRTC media: 7881/tcp and 7882/udp are published on all interfaces on purpose.
       - "7881:7881"
       - "7882:7882/udp"
+    networks:
+      - edge
     restart: unless-stopped
 
   gateway:
@@ -133,7 +163,6 @@ services:
       LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL:-ws://${IP_ADDRESS:?set IP_ADDRESS in .env}:${WEB_PORT:-5180}/livekit}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       ASSISTANT_TRANSCRIPTION_MODEL: ${ASSISTANT_TRANSCRIPTION_MODEL:-}
-      LOG_LEVEL: ${LOG_LEVEL:-}
       WORKSPACE_PATH: /workspace
       ARTEMIS_DATA_DIR: /data/gateway
     depends_on:
@@ -143,6 +172,8 @@ services:
       - ${WORKSPACE_PATH:-./data/workspace}:/workspace
       # Gateway state only (attachment and retention records). Not visible to the agent.
       - ${ARTEMIS_DATA_DIR:-./data/gateway}:/data/gateway
+    networks:
+      - edge
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -166,6 +197,8 @@ services:
         condition: service_started
     ports:
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-5180}:8080"
+    networks:
+      - edge
     healthcheck:
       # Local nginx check only: /health proxies to the gateway, so it would mark web unhealthy when the gateway is down.
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/nginx-health"]
@@ -178,28 +211,51 @@ services:
     build:
       context: .
       dockerfile: apps/voice-agent/Dockerfile
-    env_file:
-      - path: .env
-        required: false
+    # Explicit list, not env_file. It is the set of variables apps/voice-agent reads
+    # (src/voice_agent/config.py, plus the LiveKit SDK's LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET).
+    # The defaults after `:-` match config.py. Empty values are not passed for the VOICE_* and GROQ_BASE_URL
+    # settings, because config.py reads an empty string as a value, not as unset.
     environment:
-      LIVEKIT_URL: ws://livekit:7880
+      VOICE_GATEWAY_TOKEN: ${VOICE_GATEWAY_TOKEN:?set VOICE_GATEWAY_TOKEN in .env}
       GATEWAY_URL: http://gateway:3000
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}
+      LIVEKIT_AGENT_NAME: ${LIVEKIT_AGENT_NAME:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      VOICE_STT: ${VOICE_STT:-groq/whisper-large-v3-turbo}
+      VOICE_TTS: ${VOICE_TTS:-deepgram/flux-hannah-en}
+      VOICE_LANGUAGE: ${VOICE_LANGUAGE:-en}
+      VOICE_GREETING: "${VOICE_GREETING:-Hi, I'm listening.}"
     depends_on:
       gateway:
         condition: service_healthy
       livekit:
         condition: service_started
+    networks:
+      - edge
     restart: unless-stopped
 
 networks:
-  default:
+  edge:
     # Pinned subnet: apps/web/nginx.conf trusts this range (and loopback) for X-Forwarded-For.
-    # Keep the two in sync. Also set in docker-compose.coolify.yml.
+    # Keep the two in sync. Also set in docker-compose.coolify.yml, where the Coolify proxy must join this network.
     ipam:
       config:
         - subnet: 172.29.250.0/24
+  data:
+    # Internal: no route out of the host. Postgres and Hindsight are reachable only from here.
+    # docker-compose.dev.yml lifts internal for host-run development so the published ports work.
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.29.251.0/24
+  egress:
+    # Routed network for Hindsight's outbound calls. Only Hindsight joins it.
 
 volumes:
-  # Same name as docker-compose.coolify.yml. It was renamed from postgres-data so that a
-  # volume initialized before the init script ran (no artemis or hindsight roles) is not reused.
+  # Same name as docker-compose.coolify.yml, so both stacks use one volume. A volume initialized without
+  # the init script (no artemis or hindsight roles) must not be reused; give it a new name instead.
   postgres-pg18:

@@ -1,9 +1,12 @@
-# Production requirements layered over the shared service definition. Both host roots are
-# required and must be separate absolute paths outside apps/ (the gateway checks this at start).
+# Production requirements layered over the shared service definition. Both host roots are required:
+# Compose stops without WORKSPACE_PATH and ARTEMIS_DATA_DIR. When they are set, scripts/check-compose.mjs
+# checks that each is an absolute path outside apps/ and that the two do not overlap; CI runs it, and
+# pnpm check:deploy runs it too. The gateway checks only the container paths (/workspace, /data/gateway).
 services:
   agent-server:
     volumes:
       - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}:/workspace
+      - ${WORKSPACE_PATH:?set WORKSPACE_PATH in the production environment}/data:/workspace/data
 
   gateway:
     volumes:
