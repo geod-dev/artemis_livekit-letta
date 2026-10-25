@@ -426,7 +426,7 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       const busyTask = await newTask(busy);
       const readTask = await newTask(read);
       await newUpdate(busy, busyTask.id);
-      await newUpdate(busy, busyTask.id);
+      await newUpdate(busy, (await newTask(busy)).id);
       const readUpdate = await newUpdate(read, readTask.id);
       await storage.updates.markRead(read, [readUpdate.id], ts(5));
 
