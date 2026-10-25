@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import urllib.request
 from pathlib import Path
@@ -16,7 +17,11 @@ def console(code):
         ['docker', 'exec', 'coolify', 'php', 'artisan', 'tinker', '--execute=' + code],
         check=True, capture_output=True, text=True, timeout=60,
     )
-    return json.loads(result.stdout.strip())
+    # Tinker may print warnings before the result; the JSON result is the last non-empty line.
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
+        raise ValueError('Coolify console printed no result')
+    return json.loads(lines[-1])
 
 
 def rotate(config, run_console=console, open_url=urllib.request.urlopen):
@@ -62,12 +67,20 @@ def rotate(config, run_console=console, open_url=urllib.request.urlopen):
 
     previous = [int(previous_id) for previous_id in issued.get('previous', [])]
     if previous:
-        run_console('''
-            $n=App\\Models\\User::findOrFail(0)->tokens()
-                ->where("team_id",0)->where("name","Artemis automatic deployment")
-                ->whereIn("id",''' + json.dumps(previous) + ''')->delete();
-            echo json_encode(["revoked"=>$n]);
-        ''')
+        try:
+            run_console('''
+                $n=App\\Models\\User::findOrFail(0)->tokens()
+                    ->where("team_id",0)->where("name","Artemis automatic deployment")
+                    ->whereIn("id",''' + json.dumps(previous) + ''')->delete();
+                echo json_encode(["revoked"=>$n]);
+            ''')
+        except Exception:
+            # The new token is already installed, so the old ones are still valid until revoked.
+            # Report them for the operator and fail the unit so the failure is visible.
+            print('Local token renewed, but revocation of previous token ids was not confirmed. '
+                  'Still live unless revoked: ' + ', '.join(str(previous_id) for previous_id in previous)
+                  + '. Revoke them in Coolify; the next monthly run also revokes them.', file=sys.stderr)
+            raise SystemExit(1)
     print('Local read/deploy token renewed for 90 days; previous tokens revoked.')
 
 

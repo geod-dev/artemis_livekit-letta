@@ -20,7 +20,10 @@ until pg_isready -q -h 127.0.0.1 -p 5432 -U postgres; do
   sleep 1
 done
 
-PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d postgres \
+# Connect over the Unix socket. The image's local connections are trusted (initdb's default), so no
+# superuser password is needed here. POSTGRES_PASSWORD is read only by the stock entrypoint at initdb,
+# so a changed value never reaches a running database; see deploy/postgres/README.md.
+psql -v ON_ERROR_STOP=1 -h /var/run/postgresql -p 5432 -U postgres -d postgres \
   -v artemis_pw="$ARTEMIS_DB_PASSWORD" -v hindsight_pw="$HINDSIGHT_DB_PASSWORD" <<'EOSQL'
 ALTER ROLE artemis PASSWORD :'artemis_pw';
 ALTER ROLE hindsight PASSWORD :'hindsight_pw';

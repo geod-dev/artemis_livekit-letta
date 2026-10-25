@@ -121,7 +121,7 @@ fi
 # Atomically update the host settings; the EXIT handler restores the prior file
 # if Compose, nginx validation, or post-start health checks fail.
 env_new=$(mktemp .env.https.XXXXXX)
-awk '!/^FRONTEND_BIND=/ && !/^FRONTEND_PORT=/ && !/^WEB_BIND=/ && !/^WEB_PORT=/ && !/^LIVEKIT_PUBLIC_URL=/' .env > "$env_new"
+awk '!/^WEB_BIND=/ && !/^WEB_PORT=/ && !/^LIVEKIT_PUBLIC_URL=/' .env > "$env_new"
 printf '\nWEB_BIND=127.0.0.1\nWEB_PORT=5180\nLIVEKIT_PUBLIC_URL=wss://%s/livekit\n' "$ip" >> "$env_new"
 chmod --reference=.env "$env_new"
 mv "$env_new" .env

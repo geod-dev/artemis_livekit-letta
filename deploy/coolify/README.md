@@ -27,16 +27,21 @@ Changing these owners breaks either the agent's writes or the read-only `data/` 
 
 - Database passwords (`POSTGRES_PASSWORD`, `ARTEMIS_DB_PASSWORD`, `HINDSIGHT_DB_PASSWORD`) are
   spliced into connection URLs without encoding. Use only letters and digits (hex is recommended):
-  `@ : / ? #` and other URL-reserved characters break the URL. Nothing checks this.
+  `@ : / ? #` and other URL-reserved characters break the URL. The agent server rejects a
+  non-alphanumeric `ARTEMIS_DB_PASSWORD` or `HINDSIGHT_DB_PASSWORD` in production; `POSTGRES_PASSWORD`
+  is not checked.
 - Role passwords for `artemis` and `hindsight` are re-applied on every Postgres start, so a
   changed value takes effect after a restart. The database volume is not reset.
+- `POSTGRES_PASSWORD` (the superuser) is set only when the database volume is first initialized.
+  Changing it in Coolify does not change the database. To rotate it, run `ALTER USER postgres
+  PASSWORD` inside the database and then update the stored value. See `deploy/postgres/README.md`.
 
 ## Network
 
-The Compose network is pinned to `172.29.250.0/24`. The web nginx trusts only loopback and this
-subnet for `X-Forwarded-For`. If Coolify's proxy reaches `web` from another network, the login
-limiter sees the proxy address for every client. Put the proxy on the application's network, or
-change the subnet in both `docker-compose*.yml` files and in `apps/web/nginx.conf` together.
+The Compose network is pinned to `172.29.250.0/24`. The Coolify proxy must be on this subnet. The web
+nginx trusts only loopback and this subnet for `X-Forwarded-For`. If the proxy reaches `web` from
+another network, the login limiter sees the proxy address for every client. Change the subnet in both
+`docker-compose*.yml` files and in `apps/web/nginx.conf` together if the network must move.
 
 ## Differences from docker-compose.yml
 
@@ -48,6 +53,8 @@ Everything else matches the base file. The intentional differences are:
 - LiveKit publishes only the media ports (7881/tcp, 7882/udp). Signaling on 7880 is reached
   through the web service's `/livekit/` proxy, not published.
 - The web service has no published port; Coolify routes the domain to its port 8080.
+- `LIVEKIT_PUBLIC_URL` must be set in Coolify to `wss://<domain>/livekit`. Its default points at
+  the web port (5180), which Coolify does not publish, so the default does not work here.
 
 ## Host setup
 
@@ -60,7 +67,7 @@ sudo install -d -o artemis-deploy -g artemis-deploy -m 0750 /etc/artemis
 sudo install -d -m 0755 /usr/local/lib/artemis
 sudo install -d -o 1001 -g 1001 -m 0775 /data/artemis/workspace
 sudo install -d -o 1001 -g 1001 -m 0755 /data/artemis/workspace/data
-sudo install -d -o 1001 -g 1001 -m 0750 /data/artemis/data/gateway
+sudo install -d -o 1001 -g 1001 -m 0755 /data/artemis/data/gateway
 ```
 
 The workspace root is 1001:1001 with mode 0775 (group 1001 is the agent's group). `data/` is
@@ -98,6 +105,10 @@ revision manually in Coolify.
 against the configured application, then atomically replaces the local token
 file and revokes previous tokens. Validation failure revokes only the newly
 issued token and leaves the prior token file unchanged.
+
+If the new token is installed but revoking the previous tokens cannot be confirmed, the script
+prints the previous token ids to stderr and exits non-zero. Those tokens stay valid until they are
+revoked in Coolify or the next monthly run revokes them. The unit then shows as failed, which is the alert.
 
 These local tests use fake API responses and do not need Coolify credentials. They run
 as part of `pnpm check:deploy`, or on their own from the repository root:

@@ -25,6 +25,8 @@
 # Runtime data (created by Compose bind mounts and the apps at run time), never image content.
 /data
 
-# Build outputs that the image rebuilds itself.
-apps/mobile/build
-apps/mobile/app/build
+# Local tooling, documentation and the Android app: no image builds from them.
+.claude
+docs
+apps/mobile
+**/*.log
