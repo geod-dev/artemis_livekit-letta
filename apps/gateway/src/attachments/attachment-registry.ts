@@ -180,13 +180,15 @@ export class AttachmentRegistry {
 
   /**
    * Runs one change to the retention state after every earlier change, then
-   * persists it. A failed change is not persisted.
+   * persists it. The change runs on a copy, and the cached state moves to the copy
+   * only after the save succeeds, so a failed change or save leaves no trace in memory.
    */
   private update<T>(change: (state: RetentionState) => T | Promise<T>): Promise<T> {
     return this.serialize(async () => {
-      const state = await this.load();
-      const result = await change(state);
-      await this.save(state);
+      const next = structuredClone(await this.load());
+      const result = await change(next);
+      await this.save(next);
+      this.state = next;
       return result;
     });
   }

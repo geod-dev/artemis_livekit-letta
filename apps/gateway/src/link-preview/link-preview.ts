@@ -14,9 +14,12 @@ export interface PreviewNetwork {
   dial?: (address: LookupAddress) => LookupAddress;
   /** Ports a preview may come from. */
   ports?: readonly number[];
+  /** Time allowed for one whole preview, in milliseconds. Production uses 5 s. */
+  budget?: number;
 }
 
 const DEFAULT_PORTS = [80, 443];
+const DEFAULT_BUDGET_MS = 5000;
 
 const blocked = new BlockList();
 for (const [ip, prefix] of [
@@ -39,6 +42,16 @@ blocked.addSubnet('2001::', 23, 'ipv6');
 blocked.addSubnet('2002::', 16, 'ipv6');
 blocked.addSubnet('3fff::', 20, 'ipv6');
 
+/** Settles with `work`, or rejects with the signal's reason as soon as the signal aborts. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    if (signal.aborted) return onAbort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 function isPublic(address: string): boolean {
   const family = isIP(address);
   if (family === 4) return !blocked.check(address, 'ipv4');
@@ -59,7 +72,8 @@ async function readPage(
   )
     throw new Error('Unsupported URL');
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
-  const addresses = await network.lookup(hostname);
+  // The resolver is not trusted to finish within the budget: a hung lookup rejects with the signal.
+  const addresses = await untilAborted(network.lookup(hostname), signal);
   if (!addresses.length || addresses.some(({ address }) => !isPublic(address)))
     throw new Error('Private destination');
   signal.throwIfAborted();
@@ -141,8 +155,10 @@ export async function linkPreview(
       lookup: network.lookup ?? ((hostname) => lookup(hostname, { all: true })),
       dial: network.dial ?? ((address) => address),
       ports: network.ports ?? DEFAULT_PORTS,
+      budget: network.budget ?? DEFAULT_BUDGET_MS,
     };
-    return linkMetadata(await readPage(new URL(href), AbortSignal.timeout(5000), resolved));
+    const signal = AbortSignal.timeout(network.budget ?? DEFAULT_BUDGET_MS);
+    return linkMetadata(await readPage(new URL(href), signal, resolved));
   } finally {
     previewsInFlight -= 1;
   }

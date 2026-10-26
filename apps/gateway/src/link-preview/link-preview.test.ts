@@ -27,6 +27,23 @@ test('link previews beyond the concurrency cap fail before any connection', asyn
   await assert.rejects(linkPreview('http://127.0.0.1/', held), /Private destination/);
 });
 
+test('a DNS lookup that never settles is cut off by the budget and frees its slot', async () => {
+  const hung: PreviewNetwork = {
+    budget: 50,
+    lookup: () => new Promise<never>(() => {}),
+  };
+  // Every slot is held by a hung lookup; each must give up at the budget, not hold its slot.
+  const started = Date.now();
+  const hungPreviews = Array.from({ length: MAX_CONCURRENT_PREVIEWS }, () =>
+    linkPreview('http://example.test/', hung)
+  );
+  for (const preview of hungPreviews) await assert.rejects(preview, { name: 'TimeoutError' });
+  assert.ok(Date.now() - started < 5000, 'the hung lookups were bounded by the short budget');
+
+  // With the slots free again, a new preview is refused for its address, not for the cap.
+  await assert.rejects(linkPreview('http://127.0.0.1/'), /Private destination/);
+});
+
 // The refusals below happen before any connection, and IP literals resolve without DNS.
 // The redirect, redirect-limit and size tests run against a loopback page server: the
 // injected network resolves every host name to a public address (or a private one, to

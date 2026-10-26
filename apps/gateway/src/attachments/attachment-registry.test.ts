@@ -109,6 +109,31 @@ test('reserving an unknown or removed upload keeps nothing and answers unavailab
   }
 });
 
+test('a failed save leaves the cached retention state unchanged', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-save-fail-'));
+  const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-save-fail-state-'));
+  try {
+    const registry = new AttachmentStore(composeWorkspace(root), state).registry;
+    const upload = attachmentPath(randomUUID(), 'reserved.png');
+    await registry.register(upload, IMAGE);
+
+    // The first save fails once; later saves go through the real implementation.
+    const internals = registry as unknown as { save: (next: unknown) => Promise<void> };
+    const save = internals.save.bind(registry);
+    internals.save = async () => {
+      internals.save = save;
+      throw new Error('disk full');
+    };
+    await assert.rejects(registry.reserveReferences('conversation-a', [upload]), /disk full/);
+
+    // The refused reservation must not remain in memory, so the upload is still unreferenced.
+    assert.equal(await registry.removeUnused(upload), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  }
+});
+
 test('an invalid retention record is a load error and is never dropped on save', async () => {
   const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-invalid-'));
   const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-invalid-state-'));
