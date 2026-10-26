@@ -140,18 +140,27 @@ export class ConversationEventHub {
     return turn.events.reduce((total, item, index) => (index === skipIndex ? total : total + eventTextSize(item)), 0);
   }
 
+  /**
+   * Ages out idle state. A conversation with a live task or an open turn keeps its state
+   * however long it is quiet; the cap evicts idle conversations first, and the oldest live
+   * one only when every tracked conversation is live (the bound on memory still holds).
+   */
   private touch(conversationId: string): void {
     const now = this.clock.now();
     this.touched.delete(conversationId);
     this.touched.set(conversationId, now);
     for (const [id, time] of this.touched) {
-      if (now - time > MAX_STATE_AGE_MS) this.clearState(id);
+      if (now - time > MAX_STATE_AGE_MS && !this.isLive(id)) this.clearState(id);
     }
     while (this.touched.size > MAX_STATES) {
-      const oldest = firstKey(this.touched);
+      const oldest = firstKeyWhere(this.touched.keys(), (id) => !this.isLive(id)) ?? firstKey(this.touched);
       if (oldest === undefined) break;
       this.clearState(oldest);
     }
+  }
+
+  private isLive(conversationId: string): boolean {
+    return this.activeTurns.has(conversationId) || this.liveTasks.has(conversationId);
   }
 
   private clearState(conversationId: string): void {
@@ -163,6 +172,12 @@ export class ConversationEventHub {
 
 function firstKey<K, V>(map: Map<K, V>): K {
   return map.keys().next().value as K;
+}
+
+/** The oldest key that passes `accept`, or undefined when none does. */
+function firstKeyWhere<K>(keys: Iterable<K>, accept: (key: K) => boolean): K | undefined {
+  for (const key of keys) if (accept(key)) return key;
+  return undefined;
 }
 
 function eventTextSize(event: ActiveEvent): number {

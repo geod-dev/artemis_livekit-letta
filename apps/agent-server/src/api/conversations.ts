@@ -21,6 +21,13 @@ import {
   requireUuidParam,
 } from './validation.ts';
 
+/** An optional uuid cursor query value (empty counts as absent), or 400 `invalid_cursor`. */
+function uuidCursor(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (!isUuid(value)) throw new AppError('invalid_cursor', 'Cursor must be a uuid', 400);
+  return value;
+}
+
 /** The ports the conversation routes use. */
 export interface ConversationRouteDeps {
   conversations: ConversationService;
@@ -39,9 +46,10 @@ export function conversationRoutes(deps: ConversationRouteDeps): Hono {
   api.use('/conversations/:id/*', requireConversationId);
 
   api.get('/conversations', async (c) => {
+    const after = uuidCursor(c.req.query('after'));
     const page = await deps.conversations.list({
       limit: parseLimit(c.req.query('limit'), 50, 200),
-      ...(c.req.query('after') ? { after: c.req.query('after') } : {}),
+      ...(after ? { after } : {}),
     });
     return pageResponse(page.items, page.nextCursor);
   });
@@ -80,9 +88,10 @@ export function conversationRoutes(deps: ConversationRouteDeps): Hono {
 
   api.get('/conversations/:id/messages', async (c) => {
     const id = c.req.param('id');
+    const before = uuidCursor(c.req.query('before'));
     const page = await deps.conversations.messages(id, {
       limit: parseLimit(c.req.query('limit'), 50, 200),
-      ...(c.req.query('before') ? { before: c.req.query('before') } : {}),
+      ...(before ? { before } : {}),
     });
     return pageResponse(page.rows, page.nextCursor);
   });

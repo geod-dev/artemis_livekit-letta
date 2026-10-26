@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { type LlmRequest, LlmProvider, type LlmStreamEvent, type ModelInfo, ProviderRegistry, type ToolDefinition } from '@artemis/llm';
-import { NotFoundError } from '@artemis/core';
+import { AppError, NotFoundError } from '@artemis/core';
+import type { ConversationEvent } from '@artemis/contracts/chat-types';
 import { EphemeralStorage } from '@artemis/storage/testing';
 import { loadConfig } from '../config.ts';
 import { ConversationEventHub } from '../events/hub.ts';
@@ -52,9 +53,10 @@ function fake<T>(members: Partial<T>): T {
 }
 
 /** A main agent that records the submissions it receives and completes each one at once. */
-function recordingSupervisor(submitted: TurnSubmission[]): MainAgentPort {
+function recordingSupervisor(submitted: TurnSubmission[], busy = false): MainAgentPort {
   const outcome: TurnOutcome = { turnId: 'turn_test', status: 'completed', text: '' };
   const worker = fake<MainAgentHandle>({
+    busy,
     submit(submission: TurnSubmission) {
       submitted.push(submission);
       return { turnId: outcome.turnId, done: Promise.resolve(outcome) };
@@ -64,7 +66,7 @@ function recordingSupervisor(submitted: TurnSubmission[]): MainAgentPort {
   return { mainAgent: async () => worker, peekMainAgent: () => worker };
 }
 
-function service(events = new ConversationEventHub(), submitted: TurnSubmission[] = []) {
+function service(events = new ConversationEventHub(), submitted: TurnSubmission[] = [], busy = false) {
   storage = new EphemeralStorage();
   const config = loadConfig({
     DATABASE_URL: 'postgresql://x',
@@ -82,7 +84,7 @@ function service(events = new ConversationEventHub(), submitted: TurnSubmission[
       router,
       events,
       config,
-      supervisor: recordingSupervisor(submitted),
+      supervisor: recordingSupervisor(submitted, busy),
       toolDefinitions: () => TOOLS,
     }),
   };
@@ -190,6 +192,31 @@ describe('ConversationService', () => {
     assert.equal(renamed.unread, 1);
     const listed = await conversations.list({ limit: 10 });
     assert.equal(listed.items.find((item) => item.id === created.id)?.unread, renamed.unread);
+  });
+
+  it('rewind returns 409 while the main agent is busy', async () => {
+    const { conversations } = service(undefined, [], true);
+    const created = await conversations.create({});
+    await assert.rejects(conversations.rewind(created.id, 'msg_unknown'), (error: unknown) => {
+      assert.ok(error instanceof AppError);
+      assert.equal(error.code, 'turn_in_progress');
+      assert.equal(error.status, 409);
+      return true;
+    });
+  });
+
+  it('rename of an archived conversation is refused and publishes nothing', async () => {
+    const events = new ConversationEventHub();
+    const { conversations } = service(events);
+    const created = await conversations.create({});
+    const received: ConversationEvent[] = [];
+    events.subscribe(created.id, (event) => received.push(event));
+    await conversations.archive(created.id);
+
+    await assert.rejects(conversations.rename(created.id, 'Renamed'), NotFoundError);
+    assert.equal(received.some((event) => event.type === 'conversation_updated'), false);
+    const record = await storage.conversations.get(created.id, { includeArchived: true });
+    assert.notEqual(record?.title, 'Renamed');
   });
 
   it('archives and then reports the conversation as not found', async () => {

@@ -103,14 +103,27 @@ describe('ConversationEventHub', () => {
     assert.equal(conversation.received.length, 1);
   });
 
-  it('drops retained state of conversations idle for 30 minutes', () => {
+  it('hub keeps live task state past the idle window', () => {
     const clock = fakeClock();
     const hub = new ConversationEventHub(clock);
-    hub.publish('c1', { type: 'turn_start', turnId: 't1', modality: 'text' });
+    hub.publish('c1', { type: 'task', taskId: 'task_1', status: 'running', title: 'Research' });
+    hub.publish('c1', { type: 'turn_start', turnId: 't1', modality: 'voice' });
     clock.advance(31 * 60_000);
     hub.publish('c2', { type: 'updates_changed' });
     const snapshot = collect(hub, 'c1').received[0];
     assert.ok(snapshot?.type === 'snapshot');
-    assert.deepEqual(snapshot.turns, []);
+    assert.deepEqual(snapshot.tasks, [{ taskId: 'task_1', status: 'running', title: 'Research' }]);
+    assert.deepEqual(snapshot.turns, [{ turnId: 't1', modality: 'voice' }]);
+  });
+
+  it('keeps live state when idle conversations are evicted at the cap', () => {
+    const hub = new ConversationEventHub(fakeClock());
+    hub.publish('live', { type: 'task', taskId: 'task_1', status: 'running', title: 'Build' });
+    for (let index = 0; index < 200; index += 1) {
+      hub.subscribe(`idle_${index}`, () => undefined);
+    }
+    const snapshot = collect(hub, 'live').received[0];
+    assert.ok(snapshot?.type === 'snapshot');
+    assert.deepEqual(snapshot.tasks, [{ taskId: 'task_1', status: 'running', title: 'Build' }]);
   });
 });

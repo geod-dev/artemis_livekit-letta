@@ -18,6 +18,8 @@ import { projectHistory } from './history.ts';
 
 /** One conversation's main agent, as the conversation service drives it. */
 export interface MainAgentHandle {
+  /** True while a turn runs. */
+  readonly busy: boolean;
   submit(submission: TurnSubmission): TurnHandle;
   /** Aborts the running turn; false when none runs. */
   cancel(): boolean;
@@ -131,6 +133,8 @@ class StorageConversationService implements ConversationService {
   async rename(id: string, title: string): Promise<ConversationSummary> {
     const clean = title.trim();
     if (!clean) throw new AppError('invalid_title', 'Title must not be empty', 400);
+    // Archived conversations are not found (as `require` reports them), so they are not renamed.
+    await this.require(id);
     const record = await this.deps.storage.conversations.rename(id, clean, 'user');
     if (!record) throw new NotFoundError('Conversation');
     const conversation = await this.withUnread(record);
@@ -147,6 +151,10 @@ class StorageConversationService implements ConversationService {
 
   async rewind(id: string, messageId: string): Promise<MessageDeleteResponse> {
     await this.require(id);
+    // A running turn would append its rows after the cut, so the rewind waits for it to finish.
+    if (this.deps.supervisor.peekMainAgent(id)?.busy) {
+      throw new AppError('turn_in_progress', 'A turn is running in this conversation', 409);
+    }
     const message = await this.deps.storage.messages.get(messageId);
     if (!message || message.conversationId !== id || message.taskId !== null) {
       throw new NotFoundError('Message');
