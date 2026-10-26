@@ -45,6 +45,24 @@ test('GET /api/mcp never returns a device server bearer key', async () => {
   assert.deepEqual(docs!.headers, { 'X-Api-Key': 'user-own-key' });
 });
 
+test('PUT /api/mcp never returns a device server bearer key', async () => {
+  const routes = routesAnswering(() => Response.json(settings));
+  const response = await routes.fetch(
+    new Request('http://gateway.test/', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: 'r1', servers: [] }),
+    })
+  );
+  assert.equal(response.status, 200);
+  const text = await response.text();
+  assert.ok(!text.includes('Bearer'), 'the device bearer key must not reach the browser');
+  assert.ok(!text.includes('device-secret'));
+  const body = JSON.parse(text) as { servers: Array<{ name: string; headers?: unknown }> };
+  assert.equal(body.servers[0]!.headers, undefined);
+  assert.deepEqual(body.servers[1]!.headers, { 'X-Api-Key': 'user-own-key' });
+});
+
 test('GET /api/mcp refuses a successful answer that is not the settings object', async () => {
   const routes = routesAnswering(() => new Response('not json', { status: 200 }));
   const response = await routes.fetch(new Request('http://gateway.test/'));

@@ -9,7 +9,8 @@ export function createMcpRoutes(agent: AgentServerClient): Hono {
   mcp.onError(routeError);
   mcp.use('*', bodyLimit({ maxSize: PROXY_BODY_LIMIT }));
   mcp.get('/', async (c) => withoutDeviceCredentials(await agent.relay(c.req.raw, '/v1/mcp')));
-  mcp.put('/', (c) => agent.relay(c.req.raw, '/v1/mcp'));
+  // A save answers with the whole settings object, device keys included, so it is stripped too.
+  mcp.put('/', async (c) => withoutDeviceCredentials(await agent.relay(c.req.raw, '/v1/mcp')));
   return mcp;
 }
 
