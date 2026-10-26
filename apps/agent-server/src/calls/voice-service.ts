@@ -69,15 +69,23 @@ export function createVoiceService(deps: VoiceServiceDeps): VoiceService {
       });
       calls.acceptVoiceInput(conversationId, callId, utterance.identities);
 
-      const finished = handle.done.then((outcome) => {
-        if (outcome.status === 'completed') {
-          calls.finishResponse(conversationId, outcome.callState ?? null);
-        } else {
+      const finished = handle.done.then(
+        (outcome) => {
+          if (outcome.status === 'completed') {
+            calls.finishResponse(conversationId, outcome.callState ?? null);
+          } else {
+            calls.rejectVoiceInput(conversationId, callId, utterance.identities);
+            calls.finishResponse(conversationId, null);
+          }
+          return { apology: outcome.status === 'failed' && !outcome.text };
+        },
+        (error: unknown) => {
+          // The turn never reached an outcome: release the utterance so LiveKit's retry can send it again.
           calls.rejectVoiceInput(conversationId, callId, utterance.identities);
           calls.finishResponse(conversationId, null);
+          throw error;
         }
-        return { apology: outcome.status === 'failed' && !outcome.text };
-      });
+      );
       return { finished };
     },
 

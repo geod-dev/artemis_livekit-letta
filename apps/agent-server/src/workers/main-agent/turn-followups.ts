@@ -55,9 +55,13 @@ export class TurnFollowups {
   /** After a turn finished: memory turn bookkeeping, and the title request on the first user message. */
   async completed(conversationId: string, turnId: string, submission: TurnSubmission): Promise<void> {
     const { storage, memory, titles, logger } = this.deps;
-    const record: TurnRecord | null = await storage.turns.get(turnId);
-    if (record) await safely(logger, 'memory turn bookkeeping', () => memory.turnCompleted(record));
-    const conversation = await storage.conversations.get(conversationId);
-    if (submission.kind === 'user' && conversation && !conversation.title && submission.text.trim()) titles.request(conversationId, submission.text);
+    await safely(logger, 'memory turn bookkeeping', async () => {
+      const record: TurnRecord | null = await storage.turns.get(turnId);
+      if (record) await memory.turnCompleted(record);
+    });
+    await safely(logger, 'title request', async () => {
+      const conversation = await storage.conversations.get(conversationId);
+      if (submission.kind === 'user' && conversation && !conversation.title && submission.text.trim()) titles.request(conversationId, submission.text);
+    });
   }
 }

@@ -1,7 +1,7 @@
 import type { LoopOutcome } from '@artemis/agent-loop';
 import { AppError, errorMessage, NotFoundError, uuid } from '@artemis/core';
 import type { ImageBlock, LlmMessage, ToolUseBlock, UserContent } from '@artemis/llm';
-import type { ConversationRecord, RecalledMemory } from '@artemis/storage';
+import type { ConversationRecord, RecalledMemory, TurnUsage } from '@artemis/storage';
 import { CallStateFilter } from '../calls/call-state-filter.ts';
 import { depthAfter } from '../tasks/policy.ts';
 import type { AgentToolContext } from '../tools/index.ts';
@@ -14,6 +14,7 @@ import { inlineImages, userEnvelope } from './main-agent/envelope.ts';
 import { turnError, turnStatus, turnUsage } from './main-agent/outcome.ts';
 import type { TurnState } from './main-agent/turn-state.ts';
 import { McpReminder } from './main-agent/mcp-reminder.ts';
+import { safely } from './safely.ts';
 import { SerialScheduler } from './scheduler.ts';
 import { TurnFollowups } from './main-agent/turn-followups.ts';
 import { type TurnResult, TurnPersistence } from './main-agent/turn-persistence.ts';
@@ -155,6 +156,7 @@ export class MainAgentWorker extends Worker {
     await this.openTurn(state);
     const { conversation, snapshot } = await this.loadTurnContext();
     await claimUpdates(state, conversationId, this.env.delivery);
+    if (state.submission.kind === 'update' && state.claimed.length === 0) return this.finishEmpty(state);
     const history = toLlmMessages(await this.env.storage.messages.transcript(conversationId, null));
     const [memories, mcp, images] = await Promise.all([
       this.followups.recall(conversationId, state),
@@ -259,7 +261,17 @@ export class MainAgentWorker extends Worker {
   /** Ends the turn: persisted status and end events, then the memory and title follow-ups. */
   private async finish(state: TurnState, result: TurnResult): Promise<void> {
     await this.persistence.finish(state, this.conversationId, result);
-    await this.followups.completed(this.conversationId, state.turnId, state.submission);
+    await safely(this.env.logger, 'turn follow-ups', () => this.followups.completed(this.conversationId, state.turnId, state.submission));
+  }
+
+  /**
+   * An update turn whose updates a queued turn already claimed: nothing to deliver, so no
+   * model call, no user or assistant row, and no follow-ups. Its row is completed with no usage.
+   */
+  private async finishEmpty(state: TurnState): Promise<TurnOutcome> {
+    const usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, steps: 0, lastContextTokens: 0 };
+    await this.persistence.finish(state, this.conversationId, { status: 'completed', usage, model: '' });
+    return { turnId: state.turnId, status: 'completed', text: '' };
   }
 
   /** A turn that threw: its row is failed, its claim rolled back, and the failure returned as the outcome. */

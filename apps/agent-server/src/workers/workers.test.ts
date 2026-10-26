@@ -283,3 +283,88 @@ test('recovery fails interrupted turns and tasks and delivers the task failure t
   assert.ok(h.provider.requests.some((request) => lastUserText(request).includes('Interrupted by a server restart')));
   await h.runtime.supervisor.shutdown();
 });
+
+/** A held background update of conversation `c1`, as a finished task leaves it before any turn claims it. */
+async function holdUpdate(h: Harness, updateId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await h.storage.tasks.create({
+    id: `task_${updateId}`,
+    conversationId: 'c1',
+    kind: 'agent',
+    status: 'completed',
+    title: 'Held',
+    prompt: 'p',
+    subagentType: 'general-purpose',
+    command: null,
+    cwd: null,
+    outputPath: null,
+    needsInput: false,
+    originMode: 'text',
+    originTurnId: null,
+    originToolCallId: null,
+    parentTaskId: null,
+    resumedFromTaskId: null,
+    depth: 0,
+    model: null,
+    startedAt: now,
+  });
+  await h.storage.updates.create({
+    id: updateId,
+    conversationId: 'c1',
+    taskId: `task_${updateId}`,
+    title: 'Held',
+    status: 'completed',
+    needsInput: false,
+    report: 'done',
+    durationMs: 1,
+    depth: 0,
+    delivery: 'held',
+    unread: true,
+    createdAt: now,
+  });
+}
+
+test('an update turn whose update a queued user turn already claimed runs no model call and writes no rows', async () => {
+  const h = await createHarness(() => ({ content: [{ type: 'text', text: 'Answer' }] }));
+  await seedConversation(h, 'c1');
+  await holdUpdate(h, 'upd_claimed_first');
+  const worker = await h.runtime.supervisor.mainAgent('c1');
+
+  // The user turn queues first and claims the held update; the wake (update turn) runs after it with nothing left.
+  const user = worker.submit(textTurn('hello'));
+  const wake = worker.submit({ kind: 'update', modality: 'text', mode: 'text', effort: 'low', text: '' });
+
+  assert.equal((await user.done).status, 'completed');
+  assert.equal((await wake.done).status, 'completed');
+  assert.equal(h.provider.requests.length, 1, 'only the user turn called the model');
+  const transcript = await h.storage.messages.transcript('c1', null);
+  assert.deepEqual(transcript.map((message) => message.role), ['user', 'assistant'], 'the empty update wrote no user or assistant row');
+  assert.equal((await h.storage.updates.get('upd_claimed_first'))?.delivery, 'delivered');
+  await h.runtime.supervisor.shutdown();
+});
+
+test('a failure after a completed turn still reports the turn completed', async () => {
+  const h = await createHarness(() => ({ content: [{ type: 'text', text: 'Hi!' }] }));
+  await seedConversation(h, 'c1');
+  // The follow-ups read the conversation after the turn row is completed: fail that read only.
+  let turnEnded = false;
+  const publish = h.hub.publish.bind(h.hub);
+  h.hub.publish = (conversationId, event) => {
+    publish(conversationId, event);
+    if (event.type === 'turn_end') turnEnded = true;
+  };
+  const conversations = h.storage.conversations;
+  const get = conversations.get.bind(conversations);
+  conversations.get = async (id) => {
+    if (turnEnded) throw new Error('database unavailable');
+    return get(id);
+  };
+
+  const worker = await h.runtime.supervisor.mainAgent('c1');
+  const outcome = await worker.submit(textTurn('hello')).done;
+
+  assert.equal(outcome.status, 'completed');
+  assert.equal(outcome.error, undefined);
+  assert.equal((await h.storage.turns.get(outcome.turnId))?.status, 'completed');
+  await h.runtime.supervisor.shutdown();
+});
