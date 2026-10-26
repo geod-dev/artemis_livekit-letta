@@ -74,9 +74,7 @@ export class BashTool extends Tool<BashInput> {
         'run_in_background is not available inside a subagent; run the command in the foreground.'
       );
     }
-    const timeoutMs = synchronous
-      ? Math.min(input.timeout_ms ?? DEFAULT_BASH_TIMEOUT_MS, MAX_BASH_TIMEOUT_MS)
-      : undefined;
+    const timeoutMs = appliedTimeoutMs(input, synchronous);
 
     let handle: WorkspaceProcess;
     try {
@@ -160,10 +158,14 @@ export class BashTool extends Tool<BashInput> {
       if (chunk.stream === 'stdout') stdout += chunk.text;
       else stderr += chunk.text;
     }
+    // timedOut is set by whichever limit applied: the synchronous timeout_ms, or (no timeout) the lifetime.
+    const timeoutMs = appliedTimeoutMs(input, ctx.policy === 'synchronous');
     const status = interrupted
       ? interrupted
       : exit.timedOut
-        ? `Timed out and was killed (timeout_ms ${input.timeout_ms ?? DEFAULT_BASH_TIMEOUT_MS}).`
+        ? timeoutMs !== undefined
+          ? `Timed out and was killed (timeout_ms ${timeoutMs}).`
+          : 'Timed out and was killed at the command lifetime limit.'
         : exit.exitCode !== null
           ? `Exit code: ${exit.exitCode}.`
           : `Terminated by ${exit.signal ?? 'a signal'}.`;
@@ -223,6 +225,13 @@ function settleOrTimeout(
     if (ms !== null) timer = setTimeout(() => settle({ kind: 'timer' }), ms);
     void handle.exited.then((exit) => settle({ kind: 'exit', exit }));
   });
+}
+
+/** The timeout passed to the workspace: only synchronous runs have one; otherwise the lifetime limit applies. */
+function appliedTimeoutMs(input: BashInput, synchronous: boolean): number | undefined {
+  return synchronous
+    ? Math.min(input.timeout_ms ?? DEFAULT_BASH_TIMEOUT_MS, MAX_BASH_TIMEOUT_MS)
+    : undefined;
 }
 
 function commandDisplay(input: BashInput): {

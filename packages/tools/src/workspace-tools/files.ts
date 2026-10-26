@@ -6,7 +6,8 @@ import type { ToolContext } from '../context.ts';
 import { type ToolResult, capText, errorResult, textResult } from '../result.ts';
 import { Tool } from '../tool.ts';
 
-const MAX_READ_BYTES = 25 * 1024 * 1024;
+/** Largest file read whole by read_file and edit_file. */
+export const MAX_READ_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const DEFAULT_READ_LINES = 2_000;
 const MAX_LIST_ENTRIES = 500;
@@ -145,6 +146,10 @@ export class EditFileTool extends Tool<{
     const info = await ctx.workspace.stat(path);
     if (!info) return errorResult(`${path}: no such file.`);
     if (info.type !== 'file') return errorResult(`${path} is not a regular file.`);
+    if (info.size > MAX_READ_BYTES)
+      return errorResult(
+        `${path} is ${info.size} bytes; the size limit is ${MAX_READ_BYTES} bytes, so edit_file cannot change it.`
+      );
     const bytes = await ctx.workspace.readFile(path);
     if (!isTextContent(bytes))
       return errorResult(`${path} is a ${sniffMedia(bytes).label}; only text files can be edited.`);

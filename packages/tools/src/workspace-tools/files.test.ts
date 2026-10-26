@@ -78,6 +78,27 @@ test('edit_file requires a unique match unless replace_all is set', async () => 
   assert.equal(await workspace.readText('draft.md'), 'y y');
 });
 
+test('edit_file refuses a file over the read size limit without reading it', async () => {
+  const workspace = new FakeWorkspace();
+  workspace.addText('huge.log', 'a'.repeat(25 * 1024 * 1024 + 1));
+  let reads = 0;
+  const readFile = workspace.readFile.bind(workspace);
+  workspace.readFile = async (path: string) => {
+    reads += 1;
+    return readFile(path);
+  };
+
+  const result = await new EditFileTool().execute(
+    { path: 'huge.log', old_string: 'a', new_string: 'b', replace_all: true },
+    testContext(workspace)
+  );
+
+  assert.equal(result.isError, true);
+  assert.match(textOf(result), /huge\.log is 26214401 bytes; the size limit is 26214400 bytes/);
+  assert.equal(reads, 0);
+  assert.equal((await workspace.stat('huge.log'))?.size, 25 * 1024 * 1024 + 1);
+});
+
 test('edit_file refuses binary files with their kind', async () => {
   const workspace = new FakeWorkspace();
   await workspace.writeFile('bundle.xlsx', ZIP);

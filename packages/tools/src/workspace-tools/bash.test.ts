@@ -81,6 +81,24 @@ test('a synchronous command killed by its timeout says so', async () => {
   );
 });
 
+test('a foreground command killed at the lifetime limit is not reported with a timeout_ms', async () => {
+  const workspace = new FakeWorkspace(
+    () => new ScriptedProcess('sleep 9999', [], { exitCode: null, signal: 'SIGTERM', timedOut: true })
+  );
+  const tool = new BashTool({ handoff: handoffRecorder(), backgroundAfterMs: 10_000 });
+
+  const result = await tool.execute(
+    { command: 'sleep 9999', description: 'sleep' },
+    testContext(workspace, 'interactive')
+  );
+
+  assert.equal(result.isError, true);
+  const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+  assert.equal(workspace.spawned[0]?.timeoutMs, undefined);
+  assert.doesNotMatch(text, /timeout_ms/);
+  assert.match(text, /Timed out and was killed at the command lifetime limit/);
+});
+
 test('a subagent cannot start a command in the background', async () => {
   const workspace = new FakeWorkspace();
   const tool = new BashTool({ handoff: handoffRecorder(), backgroundAfterMs: 10_000 });
