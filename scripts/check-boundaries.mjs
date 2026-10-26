@@ -5,7 +5,8 @@
  * (.ts .tsx .mts .cts .mjs .cjs .js .jsx, declaration files and generated
  * directories included) with the root `typescript` compiler API and checks each
  * import and export specifier against the rules below. Prints one line per
- * violation as `file:line rule-N message` and exits 1 when there is any.
+ * violation as `file:line rule-N message` and exits 1 when there is any, or when
+ * the run covered no packages or no source files.
  *
  *   rule-1  packages/contracts imports nothing outside itself; no runtime deps.
  *   rule-2  packages/* never import apps/*, nor reach a vendor path outside
@@ -27,14 +28,21 @@
  *   rule-10 scripts/ (tooling) imports only the files named in TOOLING_IMPORTS,
  *           a package's src/index.ts, or a package subpath export.
  *
+ * Specifiers are collected from import, export, import-equals, require(),
+ * require.resolve(), import(), import.meta.resolve() and import types.
+ * Only a package's own top-level `dist` is skipped; a `dist` folder inside src
+ * is checked.
+ *
  * Test code (`*.test.*` files and anything under a `test/` or `testing/`
  * directory) is exempt from rule-4, rule-8, rule-9 and the apps/web/src half of
  * rule-5: tests build fixtures from the vendor testing subpaths and fake
  * servers, and web tests run under node itself. Reviewed exceptions live in
  * ALLOWLIST; it is empty.
  *
- * `--self-test` runs the checker on small synthetic fixtures, one per rule,
- * and exits 1 if any rule fails to fire or the clean fixture is flagged.
+ * `--self-test` runs the checker on small synthetic fixtures. Each rule clause
+ * has its own fixture, matched by rule and by a fragment of its message, so
+ * deleting that clause makes the self-test fail. It also checks the coverage
+ * floor and a clean fixture that must pass, and exits 1 on any failure.
  */
 import {
   existsSync,
@@ -57,7 +65,10 @@ const ts = require('typescript');
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.mjs', '.cjs', '.js', '.jsx']);
-const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', '.git']);
+/** Skipped at any depth. */
+const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git']);
+/** Skipped only as a package's own top-level build output, never inside src. */
+const BUILD_OUTPUT_DIRECTORY = 'dist';
 const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 /** The fields a shipped package installs at runtime. */
 const RUNTIME_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'];
@@ -134,11 +145,12 @@ function discoverPackages(root) {
   return packages;
 }
 
-function listSourceFiles(directory, out = []) {
+function listSourceFiles(directory, out = [], packageDirectory = directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name)) listSourceFiles(path, out);
+      const buildOutput = entry.name === BUILD_OUTPUT_DIRECTORY && directory === packageDirectory;
+      if (!SKIPPED_DIRECTORIES.has(entry.name) && !buildOutput) listSourceFiles(path, out, packageDirectory);
     } else if (entry.isFile() && SOURCE_EXTENSIONS.has(extname(entry.name))) {
       out.push(path);
     }
@@ -156,6 +168,23 @@ const SCRIPT_KINDS = {
   '.js': ts.ScriptKind.JS,
   '.jsx': ts.ScriptKind.JSX,
 };
+
+/**
+ * Whether a call's callee names a module by string: `import(...)`, `require(...)`,
+ * `require.resolve(...)` or `import.meta.resolve(...)`.
+ */
+function isModuleCall(callee) {
+  if (callee.kind === ts.SyntaxKind.ImportKeyword) return true;
+  if (ts.isIdentifier(callee)) return callee.text === 'require';
+  if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'resolve') {
+    const owner = callee.expression;
+    return (
+      (ts.isIdentifier(owner) && owner.text === 'require') ||
+      (ts.isMetaProperty(owner) && owner.keywordToken === ts.SyntaxKind.ImportKeyword)
+    );
+  }
+  return false;
+}
 
 /** Every module specifier in a file: static and re-exports, require(), import(), import types. */
 function collectSpecifiers(file, text) {
@@ -178,8 +207,7 @@ function collectSpecifiers(file, text) {
       add(node.moduleReference.expression);
     } else if (
       ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) && node.expression.text === 'require')) &&
+      isModuleCall(node.expression) &&
       node.arguments.length > 0 &&
       ts.isStringLiteralLike(node.arguments[0])
     ) {
@@ -488,8 +516,15 @@ function checkTree(root) {
   return { violations, allowed, filesChecked, packages: packages.length };
 }
 
+/** Why a run covered too little to pass, or undefined when it covered the tree. */
+function coverageProblem({ packages, filesChecked }) {
+  if (packages === 0) return 'no workspace packages were found under apps/ or packages/';
+  if (filesChecked === 0) return 'no source files were checked';
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
-// Self-test: one fixture per rule, plus a clean fixture that must pass.
+// Self-test: one fixture per rule clause, each matched by rule and message fragment, plus a clean fixture.
 
 function manifest(name, dependencies = {}, exports = undefined, devDependencies = undefined) {
   const json = { name, version: '0.1.0', private: true, type: 'module', dependencies };
@@ -539,32 +574,105 @@ function baselineFixture() {
   };
 }
 
+/**
+ * `message` is a fragment of the violation text the clause emits. A fixture
+ * passes only when a violation with its rule and that fragment is reported, so
+ * a clause that is deleted (or that reports under another rule) makes it fail.
+ */
 const FIXTURES = [
   { name: 'clean', rule: null, files: {} },
   {
     name: 'rule-1',
     rule: 'rule-1',
+    message: 'contracts must not import outside itself',
     files: {
       'packages/contracts/src/bad.ts': "import { core } from '@artemis/core';\nexport const bad = core;\n",
     },
   },
   {
+    name: 'rule-1-runtime-dependency',
+    rule: 'rule-1',
+    message: 'contracts declares runtime dependencies',
+    files: {
+      'packages/contracts/package.json': manifest('@artemis/contracts', { zod: '^3.25.0' }, undefined, { typescript: '^5.9.3' }),
+    },
+  },
+  {
     name: 'rule-2',
     rule: 'rule-2',
+    message: 'packages must not import apps',
     files: {
       'packages/core/src/bad.ts': "import { server } from '../../../apps/gateway/src/server.ts';\nexport const bad = server;\n",
     },
   },
   {
+    name: 'rule-2-absolute-import',
+    rule: 'rule-2',
+    message: 'absolute import path',
+    files: {
+      'packages/core/src/abs.ts': "import { server } from '/apps/gateway/src/server.ts';\nexport const bad = server;\n",
+    },
+  },
+  {
+    name: 'rule-2-relative-leaves-package',
+    rule: 'rule-2',
+    message: 'relative import leaves the package root',
+    files: {
+      'packages/core/src/leaves.ts': "import { x } from '../../../outside.ts';\nexport const bad = x;\n",
+    },
+  },
+  {
+    name: 'rule-2-vendor-path',
+    rule: 'rule-2',
+    message: 'packages may reach a vendor path only from inside their own src/vendor',
+    files: {
+      'packages/core/src/vendor-reach.ts': "import { anthropic } from '@artemis/llm/anthropic';\nexport const bad = anthropic;\n",
+    },
+  },
+  {
+    name: 'rule-2-require-resolve',
+    rule: 'rule-2',
+    message: 'packages must not import apps',
+    files: {
+      'packages/core/src/bad-resolve.ts': "export const bad = require.resolve('../../../apps/gateway/src/server.ts');\n",
+    },
+  },
+  {
+    name: 'rule-2-import-meta-resolve',
+    rule: 'rule-2',
+    message: 'packages must not import apps',
+    files: {
+      'packages/core/src/bad-meta.ts': "export const bad = import.meta.resolve('../../../apps/gateway/src/server.ts');\n",
+    },
+  },
+  {
+    name: 'rule-2-dist-inside-src',
+    rule: 'rule-2',
+    message: 'packages must not import apps',
+    files: {
+      'packages/core/src/dist/bad-dist.ts': "import { server } from '../../../../apps/gateway/src/server.ts';\nexport const bad = server;\n",
+    },
+  },
+  {
     name: 'rule-3',
     rule: 'rule-3',
+    message: 'apps must not import another app',
     files: {
       'apps/gateway/src/bad.ts': "import { main } from '../../web/src/main.tsx';\nexport const bad = main;\n",
     },
   },
   {
+    name: 'rule-3-relative-leaves-app',
+    rule: 'rule-3',
+    message: 'relative import leaves the app root',
+    files: {
+      'apps/gateway/src/leaves.ts': "import { x } from '../../../../outside.ts';\nexport const bad = x;\n",
+    },
+  },
+  {
     name: 'rule-4',
     rule: 'rule-4',
+    message: 'vendor implementation imported outside apps/*/src/compose.ts',
     files: {
       'apps/gateway/src/bad.ts': "import { anthropic } from '@artemis/llm/anthropic';\nexport const bad = anthropic;\n",
     },
@@ -572,6 +680,7 @@ const FIXTURES = [
   {
     name: 'rule-5',
     rule: 'rule-5',
+    message: 'apps/web may import only',
     files: {
       'apps/web/src/bad.ts': "import { core } from '@artemis/core';\nexport const bad = core;\n",
     },
@@ -579,6 +688,7 @@ const FIXTURES = [
   {
     name: 'rule-5-node-builtin',
     rule: 'rule-5',
+    message: 'must not import the Node built-in',
     files: {
       'apps/web/src/bad-node.ts': "import { readFileSync } from 'node:fs';\nexport const bad = readFileSync;\n",
     },
@@ -586,6 +696,7 @@ const FIXTURES = [
   {
     name: 'rule-5-server-sdk',
     rule: 'rule-5',
+    message: 'must not import the server-only SDK',
     files: {
       'apps/web/src/bad-sdk.ts': "import { Pool } from 'pg';\nexport const bad = Pool;\n",
     },
@@ -593,6 +704,7 @@ const FIXTURES = [
   {
     name: 'rule-8',
     rule: 'rule-8',
+    message: 'imported outside src/vendor',
     files: {
       'packages/core/src/bad-sdk.ts': "import { Pool } from 'pg';\nexport const bad = Pool;\n",
     },
@@ -600,6 +712,7 @@ const FIXTURES = [
   {
     name: 'scan-generated-declaration',
     rule: 'rule-2',
+    message: 'packages must not import apps',
     files: {
       'packages/core/src/generated/bad.d.ts': "import type { server } from '../../../../apps/gateway/src/server.ts';\nexport type Bad = typeof server;\n",
     },
@@ -607,6 +720,7 @@ const FIXTURES = [
   {
     name: 'scan-cjs',
     rule: 'rule-2',
+    message: 'packages must not import apps',
     files: {
       'packages/core/src/bad.cjs': "const server = require('../../../apps/gateway/src/server.ts');\nmodule.exports = server;\n",
     },
@@ -614,6 +728,7 @@ const FIXTURES = [
   {
     name: 'rule-6',
     rule: 'rule-6',
+    message: 'is not declared in',
     files: {
       'apps/gateway/src/bad.ts': "import leftPad from 'left-pad';\nexport const bad = leftPad;\n",
     },
@@ -621,6 +736,7 @@ const FIXTURES = [
   {
     name: 'rule-7',
     rule: 'rule-7',
+    message: 'form a cycle',
     files: {
       'packages/core/package.json': manifest('@artemis/core', { '@artemis/llm': 'workspace:*' }),
     },
@@ -628,6 +744,7 @@ const FIXTURES = [
   {
     name: 'rule-1-app-dependency',
     rule: 'rule-1',
+    message: 'packages must not depend on apps',
     files: {
       'packages/core/package.json': manifest('@artemis/core', {}, undefined, { '@artemis/gateway': 'workspace:*' }),
     },
@@ -635,6 +752,7 @@ const FIXTURES = [
   {
     name: 'rule-6-dev-dependency',
     rule: 'rule-6',
+    message: 'is not declared in',
     files: {
       'packages/core/package.json': manifest('@artemis/core', {}, undefined, { typescript: '^5.9.3' }),
       'packages/core/src/bad-dev.ts': "import ts from 'typescript';\nexport const bad = ts;\n",
@@ -643,6 +761,7 @@ const FIXTURES = [
   {
     name: 'rule-4-app-vendor',
     rule: 'rule-4',
+    message: 'vendor code must live in',
     files: {
       'apps/gateway/src/vendor/bad.ts': 'export const bad = 1;\n',
     },
@@ -650,6 +769,7 @@ const FIXTURES = [
   {
     name: 'rule-4-device-server',
     rule: 'rule-4',
+    message: 'vendor implementation imported outside apps/*/src/compose.ts',
     files: {
       'packages/mcp/package.json': manifest('@artemis/mcp', {}, { './device-server': './src/vendor/sdk/device-server.ts' }),
       'packages/mcp/src/vendor/sdk/device-server.ts': 'export const serve = 1;\n',
@@ -664,6 +784,7 @@ const FIXTURES = [
   {
     name: 'rule-9',
     rule: 'rule-9',
+    message: 'must not import a testing module',
     files: {
       'apps/gateway/src/bad-testing.ts': "import { FakeProvider } from '@artemis/llm/testing';\nexport const bad = FakeProvider;\n",
     },
@@ -671,6 +792,7 @@ const FIXTURES = [
   {
     name: 'rule-10',
     rule: 'rule-10',
+    message: 'tooling may import only',
     files: {
       'scripts/bad-tooling.ts': "import { core } from '../packages/core/src/internal.ts';\nexport const bad = core;\n",
     },
@@ -700,13 +822,43 @@ function selfTest() {
         }
         continue;
       }
-      const fired = violations.some((v) => v.rule === fixture.rule);
+      const fired = violations.some((v) => v.rule === fixture.rule && v.message.includes(fixture.message));
       if (fired) {
         console.log(`PASS ${fixture.name}: caught the synthetic violation`);
       } else {
         failures += 1;
-        console.log(`FAIL ${fixture.name}: the synthetic violation was not caught`);
+        console.log(`FAIL ${fixture.name}: no ${fixture.rule} violation containing "${fixture.message}"`);
         for (const v of violations) console.log(`  ${v.file}:${v.line} ${v.rule} ${v.message}`);
+      }
+    }
+
+    // The coverage floor, one case per clause: no packages (sources exist, no workspace package),
+    // and no source files (a package manifest with nothing under it to check).
+    const floorCases = [
+      {
+        name: 'coverage-no-packages',
+        message: 'no workspace packages were found',
+        files: { 'scripts/only.ts': 'export const only = 1;\n' },
+      },
+      {
+        name: 'coverage-no-files',
+        message: 'no source files were checked',
+        files: { 'packages/empty/package.json': manifest('@artemis/empty') },
+      },
+    ];
+    for (const floor of floorCases) {
+      const root = join(scratch, floor.name);
+      for (const [path, contents] of Object.entries(floor.files)) {
+        const target = join(root, path);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, contents);
+      }
+      const problem = coverageProblem(checkTree(root));
+      if (problem?.includes(floor.message)) {
+        console.log(`PASS ${floor.name}: refused (${problem})`);
+      } else {
+        failures += 1;
+        console.log(`FAIL ${floor.name}: expected a refusal containing "${floor.message}", got ${problem ?? 'none'}`);
       }
     }
   } finally {
@@ -721,7 +873,8 @@ function selfTest() {
 if (process.argv.includes('--self-test')) {
   process.exitCode = selfTest();
 } else {
-  const { violations, allowed, filesChecked, packages } = checkTree(ROOT);
+  const result = checkTree(ROOT);
+  const { violations, allowed, filesChecked, packages } = result;
   for (const v of violations) {
     console.log(`${v.file}:${v.line} ${v.rule} ${v.message}`);
   }
@@ -729,5 +882,7 @@ if (process.argv.includes('--self-test')) {
     `boundaries: ${violations.length} violation(s) in ${filesChecked} files across ${packages} packages` +
       (allowed > 0 ? ` (${allowed} allowlisted)` : '')
   );
-  process.exitCode = violations.length > 0 ? 1 : 0;
+  const problem = coverageProblem(result);
+  if (problem) console.log(`boundaries: refusing to pass: ${problem}`);
+  process.exitCode = violations.length > 0 || problem ? 1 : 0;
 }
