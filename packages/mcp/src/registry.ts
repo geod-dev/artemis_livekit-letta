@@ -113,7 +113,15 @@ export class McpServerRegistry {
         }
       }
       validateNames(servers);
-      this.assertNoDeviceClash(servers);
+      // Check against the manual list: the managed list being replaced holds
+      // these same devices, so re-pushing an already-connected device is fine.
+      const manualNames = new Set(this.manual.map((server) => server.name));
+      const manualClash = servers.find((server) => manualNames.has(server.name));
+      if (manualClash) {
+        throw new InvalidMcpServersError(
+          `The name ${manualClash.name} is already used by a manual server. Choose another device name.`
+        );
+      }
       this.managed = servers;
       await this.notify();
     });

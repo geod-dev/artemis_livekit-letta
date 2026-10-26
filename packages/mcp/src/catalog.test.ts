@@ -119,6 +119,25 @@ describe('McpCatalog', () => {
     assert.equal(peak, 3);
   });
 
+  test('two tools that qualify to the same name are reported, not shadowed', async () => {
+    const plain: McpServer = { name: 'a', transport: 'http', url: 'https://a.example.com/mcp' };
+    const joined: McpServer = { name: 'a__b', transport: 'http', url: 'https://ab.example.com/mcp' };
+    const client = new FakeMcpClient({
+      a: [{ name: 'b__c', description: 'the first one' }],
+      a__b: [{ name: 'c', description: 'the second one' }],
+    });
+    const catalog = new McpCatalog(client, () => [plain, joined]);
+    const tools = await catalog.tools();
+    assert.deepEqual(
+      tools.map((tool) => [tool.qualified, tool.server.name, tool.description]),
+      [['mcp__a__b__c', 'a', 'the first one']]
+    );
+    const failures = catalog.status().failures;
+    assert.deepEqual(Object.keys(failures), ['a__b']);
+    assert.match(failures['a__b'] ?? '', /mcp__a__b__c.*server "a"/);
+    assert.deepEqual(catalog.status().servers, ['a']);
+  });
+
   test('names are the sorted qualified names', async () => {
     const catalog = new McpCatalog(new FakeMcpClient(CATALOG), () => [WEB, NOTES]);
     assert.deepEqual(await catalog.names(), [

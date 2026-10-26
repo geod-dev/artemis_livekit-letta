@@ -125,7 +125,26 @@ export class McpCatalog {
       }
     };
     await Promise.all(Array.from({ length: Math.min(this.fanout, servers.length) }, worker));
-    this.entries = lists.flat();
+    // Two tools can qualify to the same name (`a` + `b__c` vs `a__b` + `c`). The
+    // first server keeps the name; a later one is left out and reported under
+    // its server, so the owner sees it in `failures` instead of a silent shadow.
+    const owners = new Map<string, string>();
+    const entries: CatalogTool[] = [];
+    servers.forEach((server, index) => {
+      for (const tool of lists[index] ?? []) {
+        const owner = owners.get(tool.qualified);
+        if (owner === undefined) {
+          owners.set(tool.qualified, server.name);
+          entries.push(tool);
+        } else if (!failures.has(server.name)) {
+          failures.set(
+            server.name,
+            `Tool "${tool.tool}" qualifies to ${tool.qualified}, the same name as a tool on server "${owner}". Rename one of the two servers so the names differ; this tool is not listed.`
+          );
+        }
+      }
+    });
+    this.entries = entries;
     this.failures = failures;
     this.listed = servers.map((server) => server.name).filter((name) => !failures.has(name));
     this.fetchedAt = this.now();

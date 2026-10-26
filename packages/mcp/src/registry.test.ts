@@ -107,6 +107,38 @@ describe('managed and manual servers', () => {
   });
 });
 
+describe('device re-push', () => {
+  const second: McpServer = {
+    ...device,
+    name: 'device_desk',
+    url: 'http://gateway:3000/internal/mcp/devices/desk',
+    managed: { type: 'device', deviceName: 'desk', connectedAt: '2026-10-12T00:00:00Z', tools: 1 },
+  };
+
+  test('re-pushing the same device server keeps it connected', async () => {
+    const { registry } = await registryWith([manual]);
+    await registry.setManaged([device]);
+    await registry.setManaged([device]);
+    assert.deepEqual(names(registry.servers()), ['search', 'device_laptop']);
+  });
+
+  test('re-pushing [A] then [A, B] succeeds and registers B', async () => {
+    const { registry } = await registryWith([manual]);
+    await registry.setManaged([device]);
+    await registry.setManaged([device, second]);
+    assert.deepEqual(names(registry.servers()), ['search', 'device_laptop', 'device_desk']);
+  });
+
+  test('a manual server that clashes with a device name is still refused', async () => {
+    const { registry } = await registryWith([manual]);
+    await assert.rejects(
+      registry.setManaged([{ ...device, name: 'search' }]),
+      /already used by a manual server/
+    );
+    assert.deepEqual(names(registry.servers()), ['search']);
+  });
+});
+
 describe('revisions', () => {
   test('settings expose the revision of the stored list', async () => {
     const { registry } = await registryWith([manual]);

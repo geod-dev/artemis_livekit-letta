@@ -101,6 +101,25 @@ describe('name resolution', () => {
     const exact = await run('mcp_call', { tool: 'mcp__web__search' });
     assert.equal(exact.isError, false);
   });
+
+  test('a qualified name held by two catalog entries is an error naming both servers, never a silent pick', async () => {
+    const entry = (server: McpServer) => ({
+      qualified: 'mcp__a__b__c',
+      server,
+      tool: 'b__c',
+      description: '',
+      inputSchema: { type: 'object', properties: {} },
+      readOnly: true,
+    });
+    const first: McpServer = { name: 'a', transport: 'http', url: 'https://a.example.com/mcp' };
+    const second: McpServer = { name: 'a__b', transport: 'http', url: 'https://ab.example.com/mcp' };
+    const catalog = { tools: async () => [entry(first), entry(second)] } as unknown as McpCatalog;
+    const [describeTool] = createMcpBridgeTools(catalog, new FakeMcpClient());
+    assert.ok(describeTool);
+    const answer = await describeTool.execute({ tool: 'mcp__a__b__c' }, context());
+    assert.equal(answer.isError, true);
+    assert.match((answer.content[0] as { text: string }).text, /several servers: a, a__b/);
+  });
 });
 
 describe('mcp_call and mcp_call_write', () => {

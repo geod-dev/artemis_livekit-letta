@@ -44,8 +44,11 @@ const CALL_SCHEMA = {
 function resolveTool(tools: readonly CatalogTool[], name: string): CatalogTool | string {
   const wanted = name.trim();
   if (!wanted) return '`tool` is required: use a qualified name from the latest MCP tool reminder.';
-  const exact = tools.find((tool) => tool.qualified === wanted);
-  if (exact) return exact;
+  const exact = tools.filter((tool) => tool.qualified === wanted);
+  if (exact.length > 1) {
+    return `"${wanted}" is defined by several servers: ${exact.map((tool) => tool.server.name).join(', ')}. Rename one of them.`;
+  }
+  if (exact[0]) return exact[0];
   const bare = tools.filter((tool) => tool.tool === wanted);
   if (bare.length === 1 && bare[0]) return bare[0];
   if (bare.length > 1) {
