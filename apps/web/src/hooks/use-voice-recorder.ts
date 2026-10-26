@@ -4,7 +4,11 @@ import { MAX_ATTACHMENT_BYTES } from '@artemis/contracts/chat-types';
 import { recordingEnd } from '@/hooks/voice-recording-end';
 import { apiFetch } from '@/lib/api';
 
-export type RecordingStatus = 'idle' | 'recording' | 'transcribing';
+/** 'limit': the recording was cut at a limit; the audio is kept until it is stopped or sent. */
+export type RecordingStatus = 'idle' | 'recording' | 'limit' | 'transcribing';
+
+/** The limit that cut a recording short. */
+export type CutReason = 'duration' | 'size';
 
 export type VoiceRecorder = ReturnType<typeof useVoiceRecorder>;
 
@@ -20,13 +24,61 @@ type Recording = {
   durationTimer: ReturnType<typeof setTimeout>;
 };
 
-const MAX_RECORDING_DURATION_MS = 5 * 60 * 1000;
+export const MAX_RECORDING_DURATION_MS = 5 * 60 * 1000;
 
 // Formats Groq accepts, in order of preference; the browser records the first it supports.
 const MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
 
 const extension = (mimeType: string) =>
   mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+
+/**
+ * Connects the level meter to the microphone and starts the recorder. When any step
+ * fails, the AudioContext created for the meter is closed, so failed starts do not pile up.
+ */
+export function openCapture(
+  stream: MediaStream,
+  recorder: MediaRecorder,
+  createContext: () => AudioContext
+): { context: AudioContext; node: AnalyserNode } {
+  const context = createContext();
+  try {
+    const node = context.createAnalyser();
+    node.fftSize = 1024;
+    context.createMediaStreamSource(stream).connect(node);
+    recorder.start(1000);
+    return { context, node };
+  } catch (error) {
+    void context.close().catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * Ends a recording at a limit: the recorder stops, the microphone is released, and the
+ * caller is told which limit was hit so the UI leaves the recording state.
+ */
+export function cutCapture(
+  recording: Pick<Recording, 'recorder' | 'tooLong' | 'tooLarge'>,
+  reason: CutReason,
+  releaseCapture: () => void,
+  onCut: (reason: CutReason) => void
+): void {
+  if (reason === 'duration') recording.tooLong = true;
+  else recording.tooLarge = true;
+  if (recording.recorder.state !== 'inactive') recording.recorder.stop();
+  releaseCapture();
+  onCut(reason);
+}
+
+/**
+ * Appends a dictated transcript to the composer text. Returns null when the result would
+ * exceed the message limit, so the caller can refuse it instead of sending a rejected message.
+ */
+export function appendTranscript(current: string, text: string, maxLength: number): string | null {
+  const next = current.trim() ? `${current.trimEnd()} ${text}` : text;
+  return next.length > maxLength ? null : next;
+}
 
 /**
  * Records the microphone for the composer, then transcribes the recording with
@@ -36,6 +88,7 @@ export function useVoiceRecorder() {
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [limit, setLimit] = useState<CutReason | null>(null);
   const recording = useRef<Recording | null>(null);
   const transcription = useRef<AbortController | null>(null);
   const active = useRef(false);
@@ -57,6 +110,7 @@ export function useVoiceRecorder() {
   const reset = useCallback(() => {
     active.current = false;
     setStartedAt(null);
+    setLimit(null);
     setStatus('idle');
   }, []);
 
@@ -102,10 +156,7 @@ export function useVoiceRecorder() {
         resolveStopped = resolve;
       });
       recorder.addEventListener('stop', resolveStopped, { once: true });
-      const context = new AudioContext();
-      const node = context.createAnalyser();
-      node.fftSize = 1024;
-      context.createMediaStreamSource(stream).connect(node);
+      const { context, node } = openCapture(stream, recorder, () => new AudioContext());
       const recordingData: Recording = {
         recorder,
         stream,
@@ -122,24 +173,24 @@ export function useVoiceRecorder() {
         setAnalyser(null);
         void context.close().catch(() => {});
       };
+      const onCut = (reason: CutReason) => {
+        if (recording.current !== recordingData) return;
+        setLimit(reason);
+        setStatus('limit');
+      };
       recorder.ondataavailable = (event) => {
         if (event.data.size <= 0) return;
         recordingData.bytes += event.data.size;
         if (recordingData.bytes > MAX_ATTACHMENT_BYTES) {
-          recordingData.tooLarge = true;
-          if (recorder.state !== 'inactive') recorder.stop();
-          releaseCapture();
+          cutCapture(recordingData, 'size', releaseCapture, onCut);
           return;
         }
         chunks.push(event.data);
       };
       recordingData.durationTimer = setTimeout(() => {
-        recordingData.tooLong = true;
-        if (recorder.state !== 'inactive') recorder.stop();
-        releaseCapture();
+        cutCapture(recordingData, 'duration', releaseCapture, onCut);
       }, MAX_RECORDING_DURATION_MS);
       recording.current = recordingData;
-      recorder.start(1000);
       setAnalyser(node);
       setStartedAt(Date.now());
     } catch (error) {
@@ -210,5 +261,5 @@ export function useVoiceRecorder() {
     }
   }, [release, reset]);
 
-  return { status, analyser, startedAt, start, stop, cancel };
+  return { status, analyser, startedAt, limit, start, stop, cancel };
 }

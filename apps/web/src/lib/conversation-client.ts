@@ -68,33 +68,65 @@ export interface ConversationStreamHandlers {
   onRejected: (reason: RejectedUpdate) => void;
 }
 
-/** Subscribe to a conversation's live events. Returns the function that closes it. */
+/** Reopen delays for a stream the browser gave up on: 1 s, doubling, capped at 30 s. */
+const STREAM_RETRY_MIN_MS = 1_000;
+const STREAM_RETRY_MAX_MS = 30_000;
+
+/**
+ * Subscribe to a conversation's live events. Returns the function that closes it.
+ * The browser retries a stream that failed transiently, but gives up for good on a
+ * non-200 response (a 502 while the gateway restarts), so a closed stream is reopened here.
+ */
 export function openConversationStream(
   id: string,
   handlers: ConversationStreamHandlers
 ): () => void {
-  const source = openEventSource(conversationRoute(id, CHAT_HTTP.conversationEvents));
-  source.addEventListener('open', () => handlers.onOpen());
-  source.onerror = () => handlers.onError();
-  source.onmessage = (e) => {
-    if (typeof e.data !== 'string' || e.data.length > 1_000_000) {
-      handlers.onRejected('oversized');
-      return;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(e.data);
-    } catch {
-      handlers.onRejected('invalid');
-      return;
-    }
-    if (!isConversationEvent(parsed)) {
-      handlers.onRejected('unsupported');
-      return;
-    }
-    handlers.onEvent(parsed);
+  const path = conversationRoute(id, CHAT_HTTP.conversationEvents);
+  let source: EventSource | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
+  let failures = 0;
+
+  const connect = () => {
+    const next = openEventSource(path);
+    source = next;
+    next.addEventListener('open', () => {
+      failures = 0;
+      handlers.onOpen();
+    });
+    next.onerror = () => {
+      handlers.onError();
+      if (closed || next.readyState !== EventSource.CLOSED) return;
+      source = null;
+      const delay = Math.min(STREAM_RETRY_MAX_MS, STREAM_RETRY_MIN_MS * 2 ** failures);
+      failures += 1;
+      retryTimer = setTimeout(connect, delay);
+    };
+    next.onmessage = (e) => {
+      if (typeof e.data !== 'string' || e.data.length > 1_000_000) {
+        handlers.onRejected('oversized');
+        return;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(e.data);
+      } catch {
+        handlers.onRejected('invalid');
+        return;
+      }
+      if (!isConversationEvent(parsed)) {
+        handlers.onRejected('unsupported');
+        return;
+      }
+      handlers.onEvent(parsed);
+    };
   };
-  return () => source.close();
+  connect();
+  return () => {
+    closed = true;
+    clearTimeout(retryTimer);
+    source?.close();
+  };
 }
 
 /** Post a text message; the reply arrives through the event stream. */

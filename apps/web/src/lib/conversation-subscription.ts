@@ -60,6 +60,9 @@ export interface StreamConnection {
 
 export const CONNECT_ERROR = 'Could not connect to the conversation stream. Try sending again.';
 
+/** Stream failures in a row before the user is told the live updates are down. */
+const OUTAGE_FAILURES = 3;
+
 /**
  * Waits until the stream of `id` is open and its gate has resolved. Resolves false when
  * the user switched to another conversation meanwhile (the send is dropped), and rejects
@@ -295,9 +298,17 @@ export function subscribeToConversation(
   }
 
   let gate = createReadyGate();
+  /** Failures since the stream last opened, and whether the outage has been reported. */
+  let failuresSinceOpen = 0;
+  let outageShown = false;
   const closeStream = deps.openStream(conversationId, {
     // A subscription is only ready after each successful open, including retries.
     onOpen: () => {
+      failuresSinceOpen = 0;
+      if (outageShown) {
+        outageShown = false;
+        deps.setError(null);
+      }
       deps.bumpContextUsage();
       gate.resolve();
       deps.connected.current = { id: conversationId, ready: Promise.resolve() };
@@ -307,10 +318,15 @@ export function subscribeToConversation(
       void reconcileHistory();
     },
     onError: () => {
-      // EventSource retries automatically. Keep sends waiting for the next open.
+      // The stream reopens itself (see openConversationStream). Keep sends waiting for the next open.
       if (deps.connected.current.id === conversationId && gate.settled) {
         gate = createReadyGate();
         deps.connected.current = { id: conversationId, ready: gate.promise };
+      }
+      failuresSinceOpen += 1;
+      if (failuresSinceOpen >= OUTAGE_FAILURES && !outageShown) {
+        outageShown = true;
+        deps.setError('Live updates are unavailable. Reconnecting…');
       }
     },
     onEvent: (event) => {

@@ -1,9 +1,14 @@
 import { type FC, useEffect, useRef, useState } from 'react';
 import { ArrowUpIcon, MicIcon, SquareIcon, XIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { MAX_TURN_TEXT_LENGTH } from '@artemis/contracts/chat-types';
 import { useAui } from '@assistant-ui/react';
 import { IconButton } from '@/components/ui/icon-button';
-import type { VoiceRecorder } from '@/hooks/use-voice-recorder';
+import {
+  MAX_RECORDING_DURATION_MS,
+  type VoiceRecorder,
+  appendTranscript,
+} from '@/hooks/use-voice-recorder';
 import { cn } from '@/lib/shadcn/utils';
 
 const BAR_WIDTH = 3;
@@ -159,8 +164,14 @@ export const ComposerVoice: FC<{ recorder: VoiceRecorder }> = ({ recorder }) => 
       toast('No speech detected');
       return;
     }
-    const current = aui.composer.getState().text;
-    aui.composer.setText(current.trim() ? `${current.trimEnd()} ${text}` : text);
+    const next = appendTranscript(aui.composer.getState().text, text, MAX_TURN_TEXT_LENGTH);
+    if (next === null) {
+      toast.error(
+        `The message would be longer than ${MAX_TURN_TEXT_LENGTH.toLocaleString()} characters. Nothing was added.`
+      );
+      return;
+    }
+    aui.composer.setText(next);
     if (!send) return;
     // Same rule as the send button: while a turn runs, send only if the thread queues.
     const thread = aui.thread.getState();
@@ -185,19 +196,25 @@ export const ComposerVoice: FC<{ recorder: VoiceRecorder }> = ({ recorder }) => 
         <XIcon className="size-4" />
       </IconButton>
       <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
-        {!transcribing && (
+        {recorder.status === 'recording' && (
           <span className="bg-destructive size-2 shrink-0 animate-pulse rounded-full" />
         )}
         <VoiceWaveform
           analyser={recorder.analyser}
           className={cn(
             'h-7 min-w-0 flex-1 transition-colors',
-            transcribing ? 'text-muted-foreground/40' : 'text-foreground/75'
+            recorder.status === 'recording' ? 'text-foreground/75' : 'text-muted-foreground/40'
           )}
         />
         {transcribing ? (
           <span className="shimmer text-muted-foreground shrink-0 text-xs motion-reduce:animate-none">
             Transcribing
+          </span>
+        ) : recorder.status === 'limit' ? (
+          <span role="status" className="text-destructive shrink-0 text-xs">
+            {recorder.limit === 'size'
+              ? 'Recording limit reached (file size). Stop or send to discard it.'
+              : `Recording limit reached (${MAX_RECORDING_DURATION_MS / 60_000} minutes). Stop or send to discard it.`}
           </span>
         ) : (
           <ElapsedTime

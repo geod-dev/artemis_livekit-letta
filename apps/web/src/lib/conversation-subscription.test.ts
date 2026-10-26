@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import type { ConversationEvent } from '@artemis/contracts/chat-types';
-import type { openConversationStream } from './conversation-client.ts';
+import { openConversationStream } from './conversation-client.ts';
 import {
   CONNECT_ERROR,
   type ConversationEventDeps,
@@ -202,4 +202,79 @@ test('a fresh conversation shows at once, then its stream loads history and appl
   close();
   assert.equal(closed, true);
   assert.equal(connected.current.id, null);
+});
+
+/** A stand-in for the browser's EventSource: the test drives its state and its events. */
+class FakeEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+  static instances: FakeEventSource[] = [];
+  readyState = FakeEventSource.CONNECTING;
+  onerror: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  private readonly openListeners: Array<() => void> = [];
+
+  constructor(public readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: () => void) {
+    if (type === 'open') this.openListeners.push(listener);
+  }
+
+  close() {
+    this.readyState = FakeEventSource.CLOSED;
+  }
+
+  /** The server answered: the stream is open. */
+  open() {
+    this.readyState = FakeEventSource.OPEN;
+    this.openListeners.forEach((listener) => listener());
+  }
+
+  /** The stream failed with the given state; a non-200 response leaves it CLOSED for good. */
+  fail(readyState: number) {
+    this.readyState = readyState;
+    this.onerror?.();
+  }
+}
+
+test('reopens the stream after EventSource closes on a 502', () => {
+  const original = Reflect.get(globalThis, 'EventSource');
+  Reflect.set(globalThis, 'EventSource', FakeEventSource);
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const connected = { current: { id: null as string | null, ready: Promise.resolve() } };
+    const fetched: string[] = [];
+    const close = subscribeToConversation('c1', true, {
+      ...fakeDeps().deps,
+      connected,
+      setStopped: () => undefined,
+      activate: () => undefined,
+      dispatch: () => undefined,
+      fetchHistory: async (id) => {
+        fetched.push(id);
+        return [];
+      },
+      openStream: openConversationStream,
+    });
+    FakeEventSource.instances[0]?.open();
+    assert.equal(connected.current.id, 'c1');
+
+    // The gateway restarted behind nginx: the request got a 502 and the stream is CLOSED.
+    FakeEventSource.instances[0]?.fail(FakeEventSource.CLOSED);
+    mock.timers.tick(1_000);
+    assert.equal(FakeEventSource.instances.length, 2, 'the closed stream is opened again');
+
+    FakeEventSource.instances[1]?.open();
+    assert.equal(connected.current.id, 'c1');
+    assert.deepEqual(fetched, ['c1', 'c1'], 'the history is re-read on each open, the reopen too');
+    close();
+    assert.equal(FakeEventSource.instances[1]?.readyState, FakeEventSource.CLOSED);
+  } finally {
+    mock.timers.reset();
+    Reflect.set(globalThis, 'EventSource', original);
+    FakeEventSource.instances = [];
+  }
 });
