@@ -54,6 +54,7 @@ and each exposes its public surface through `src/index.ts` and named subpath exp
 | `@artemis/mcp` | MCP registry, catalog, bridge, client, settings, and the device screenshot policy. Vendor: `sdk`, which also serves the device MCP endpoint (`./device-server`). |
 | `@artemis/tools` | Tool definitions, toolsets, results, and workspace tools (`./workspace-tools`). |
 | `@artemis/workspace` | Workspace interface and media types. Vendor: `filesystem`. |
+| `@artemis/voice-services` | Voice providers behind ports: the LiveKit token issuer and the Groq transcriber. Vendors: `./groq` and `./livekit`, imported only by the gateway's `compose.ts`. |
 
 ## Dependency rules
 

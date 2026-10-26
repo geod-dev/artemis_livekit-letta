@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Voice providers behind ports: the LiveKit token issuer and the Groq speech-to-text transcriber. Vendor SDK code lives in src/vendor and is reached only through the package root, from composition roots.",
+  "description": "Voice providers behind ports: the LiveKit token issuer and the Groq speech-to-text transcriber. Vendor SDK code lives in src/vendor and is reached only through the ./groq and ./livekit subpaths, from composition roots.",
   "exports": {
     ".": "./src/index.ts",
     "./groq": "./src/vendor/groq/transcription.ts",
