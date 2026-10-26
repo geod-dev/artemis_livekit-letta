@@ -32,30 +32,21 @@ function pythonPinProblems() {
   return problems;
 }
 
-// Placeholders so `docker compose config` can interpolate the required variables when this check
-// runs without a .env file. A real value in the environment or .env wins. Mirrors the compose job
-// in .github/workflows/ci.yml, which must stay in step with the `:?` variables in the compose files.
-const COMPOSE_PLACEHOLDERS = {
-  POSTGRES_PASSWORD: 'ci-placeholder',
-  ARTEMIS_DB_PASSWORD: 'ci-placeholder',
-  HINDSIGHT_DB_PASSWORD: 'ci-placeholder',
-  HINDSIGHT_API_KEY: 'ci-placeholder',
-  ANTHROPIC_API_KEY: 'ci-placeholder',
-  AGENT_SERVER_TOKEN: 'ci-placeholder',
-  ARTEMIS_PASSWORD: 'ci-placeholder',
-  ARTEMIS_DEVICE_TOKEN: 'ci-placeholder',
-  VOICE_GATEWAY_TOKEN: 'ci-placeholder',
-  LIVEKIT_API_KEY: 'ci-placeholder',
-  LIVEKIT_API_SECRET: 'ci-placeholder',
-  IP_ADDRESS: '127.0.0.1',
-  LIVEKIT_PUBLIC_URL: 'wss://ci-placeholder.invalid/livekit',
-  WORKSPACE_PATH: '/ci/workspace',
-  ARTEMIS_DATA_DIR: '/ci/gateway-data',
-};
+// CI sets CI to a truthy value; GitHub Actions sets it to "true".
+const isCi = Boolean(process.env.CI) && !['0', 'false'].includes(process.env.CI.toLowerCase());
+
+// In CI the Postgres suites must run. Without TEST_DATABASE_URL they skip and the group would still pass.
+function testDatabaseProblems() {
+  if (isCi && !process.env.TEST_DATABASE_URL) {
+    return ['TEST_DATABASE_URL is not set in CI, so the Postgres suites would be skipped. Set it in the CI job.'];
+  }
+  return [];
+}
 
 // Each group lists [label, executable, args, directory, env]. An executable that is a function runs in
 // this process and returns its problem messages; a null executable is a step that cannot run here.
 // The optional env holds defaults for the step; variables already set in the environment win.
+// The compose steps read the repo .env themselves (scripts/check-compose.mjs), so they need no defaults here.
 const commands = {
   gateway: [
     ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'], 'apps/gateway'],
@@ -65,7 +56,8 @@ const commands = {
   ],
   'agent-server': [
     ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', 'tsconfig.json'], 'apps/agent-server'],
-    ['tests', process.execPath, ['node_modules/tsx/dist/cli.mjs', '--test', 'src/**/*.test.ts'], 'apps/agent-server'],
+    ['Postgres suites configured', testDatabaseProblems, [], '.'],
+    ['tests',process.execPath, ['node_modules/tsx/dist/cli.mjs', '--test', 'src/**/*.test.ts'], 'apps/agent-server'],
   ],
   web: [
     ['typecheck', process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', 'tsconfig.json'], 'apps/web'],
@@ -99,11 +91,13 @@ const commands = {
     ['tests', pnpmExecutable, ['run', 'test:packages'], '.'],
   ],
   deploy: [
-    ['compose host roots and Coolify parity', process.execPath, ['scripts/check-compose.mjs'], '.', COMPOSE_PLACEHOLDERS],
+    ['compose host roots and Coolify parity', process.execPath, ['scripts/check-compose.mjs'], '.'],
+    ['compose host root tests', process.execPath, ['--test', 'scripts/check-compose.test.mjs'], '.'],
     ['mocked deployment tests', 'uv', ['run', '--python', pythonVersion, '--no-project', '--no-sync', 'python', '-m', 'unittest', 'discover', '-s', 'deploy/coolify', '-p', 'test_*.py'], '.'],
     ['sh syntax https', 'sh', ['-n', 'deploy/https/setup.sh'], '.'],
     ['sh syntax postgres', 'sh', ['-n', 'deploy/postgres/init-databases.sh'], '.'],
     ['sh syntax postgres entrypoint', 'sh', ['-n', 'deploy/postgres/entrypoint.sh'], '.'],
+    ['sh syntax agent-server entrypoint', 'sh', ['-n', 'apps/agent-server/docker-entrypoint.sh'], '.'],
   ],
   schema: [
     ['present schema drift', process.execPath, ['--experimental-strip-types', '--no-warnings', 'scripts/generate-present-tool.ts', '--check'], '.'],
