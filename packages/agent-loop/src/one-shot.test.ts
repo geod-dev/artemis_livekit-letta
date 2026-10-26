@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AppError } from '@artemis/core';
-import type { LlmStreamEvent } from '@artemis/llm';
+import type { LlmError, LlmStreamEvent } from '@artemis/llm';
 import { oneShot } from './one-shot.ts';
 import { fakeRoute, FakeProvider, messageEvents, response, textStep } from './testing/support.ts';
 
@@ -55,6 +55,31 @@ describe('oneShot', () => {
       (error: unknown) => {
         assert.ok(error instanceof AppError);
         assert.equal((error as AppError).code, 'refusal');
+        return true;
+      }
+    );
+  });
+
+  it('one-shot passes the provider error message through', async () => {
+    const provider = new FakeProvider([
+      [
+        { type: 'message_start', model: 'fake-model' },
+        {
+          type: 'message_end',
+          message: {
+            ...response([], 'error'),
+            error: { code: 'overloaded', message: 'Provider is overloaded, retry later' },
+          },
+        },
+      ],
+    ]);
+    await assert.rejects(
+      oneShot({ route: fakeRoute(provider), system: 's', prompt: 'p' }),
+      (error: unknown) => {
+        assert.ok(error instanceof AppError);
+        assert.match((error as AppError).message, /overloaded.*Provider is overloaded, retry later/);
+        assert.equal((error as AppError).code, 'unknown');
+        assert.equal((error as LlmError).retryable, true);
         return true;
       }
     );

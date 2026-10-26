@@ -114,9 +114,10 @@ function decodeNode(
   ) {
     return { ok: false, error: "The image URL is not allowed." };
   }
+  // Backslashes are refused too: CSS escapes can spell `url(` as `\75 rl(`.
   if (
     typeof props.background === "string" &&
-    /url\s*\(|expression\s*\(/i.test(props.background)
+    /\\|(?:url|image|image-set|expression)\s*\(/i.test(props.background)
   ) {
     return { ok: false, error: "The card background contains an unsafe CSS value." };
   }

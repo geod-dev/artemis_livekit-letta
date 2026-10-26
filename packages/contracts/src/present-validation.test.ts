@@ -71,3 +71,29 @@ test('rejects a cycle in the input', () => {
   if (result.ok) return;
   assert.match(result.error, /cycle or shared object/);
 });
+
+const unsafeBackgrounds: Array<[string, string]> = [
+  ['image-set', 'image-set("https://evil.example/x.png" 1x)'],
+  ['-webkit-image-set', '-webkit-image-set("https://evil.example/x.png" 1x)'],
+  ['image', 'image("https://evil.example/x.png")'],
+  ['url', 'url("https://evil.example/x.png")'],
+  ['expression', 'expression(alert(1))'],
+  ['escaped url', '\\75 rl("https://evil.example/x.png")'],
+];
+for (const [name, background] of unsafeBackgrounds) {
+  test(`refuses a card background that loads or runs via ${name}`, () => {
+    const result = validatePresentTree({ componentType: 'Card', background }, acceptAll);
+    assert.deepEqual(result, {
+      ok: false,
+      error: 'The card background contains an unsafe CSS value.',
+    });
+  });
+}
+
+test('accepts a plain card background gradient', () => {
+  const result = validatePresentTree(
+    { componentType: 'Card', background: 'linear-gradient(red, blue)' },
+    acceptAll,
+  );
+  assert.equal(result.ok, true);
+});

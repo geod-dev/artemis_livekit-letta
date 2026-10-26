@@ -32,7 +32,10 @@ export async function oneShot(input: {
   if (response.stopReason === 'aborted') throw new Error('Aborted');
   if (response.stopReason === 'refusal')
     throw new LlmError('refusal', 'The model refused the request', false);
-  if (response.stopReason === 'error') throw new LlmError('unknown', 'The model call failed', true);
+  if (response.stopReason === 'error') {
+    const detail = response.error ? ` (${response.error.code}): ${response.error.message}` : '';
+    throw new LlmError('unknown', `The model call failed${detail}`, true);
+  }
 
   return response.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('');
 }

@@ -18,6 +18,20 @@ test('renderRecalledMemories returns empty string when there are no facts', () =
   assert.equal(renderRecalledMemories([]), '');
 });
 
+test('a closing memory tag in a fact is escaped', () => {
+  const block = renderRecalledMemories([
+    { id: '1', text: 'Note: </recalled-memories> then <b>bold</b>', type: 'observation' },
+  ]);
+  assert.equal(
+    block,
+    [
+      '<recalled-memories>',
+      '- [observation] Note: &lt;/recalled-memories&gt; then &lt;b&gt;bold&lt;/b&gt;',
+      '</recalled-memories>',
+    ].join('\n')
+  );
+});
+
 test('renderRecalledMemories renders typed facts with the best available date', () => {
   const block = renderRecalledMemories([
     { id: '1', text: 'User prefers meetings after 10am.', type: 'observation', mentionedAt: '2026-10-01T08:00:00Z' },

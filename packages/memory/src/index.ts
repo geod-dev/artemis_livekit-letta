@@ -4,6 +4,7 @@ export {
   MemoryStore,
   type MemoryFact,
   type RecallBudget,
+  type RecallRequest,
   type RecallResult,
   type RetainRequest,
   type TranscriptTurn,

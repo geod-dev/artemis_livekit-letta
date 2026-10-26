@@ -25,7 +25,9 @@ export class FakeMemoryStore extends MemoryStore {
     this.recalls.push(request);
     if (this.recallMode === 'hang') {
       return new Promise<RecallResult>((_resolve, reject) => {
-        signal?.addEventListener('abort', () => reject(new Error('aborted by caller')));
+        const abort = () => reject(new Error('aborted by caller'));
+        if (signal?.aborted) return abort();
+        signal?.addEventListener('abort', abort, { once: true });
       });
     }
     return { facts: this.facts };

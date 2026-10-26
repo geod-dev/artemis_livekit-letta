@@ -12,8 +12,13 @@ export function formatTranscript(turns: readonly TranscriptTurn[]): string {
  */
 export function renderRecalledMemories(facts: readonly MemoryFact[]): string {
   if (facts.length === 0) return '';
-  const lines = facts.map((fact) => `- [${fact.type}] ${fact.text}${dateNote(fact)}`);
+  const lines = facts.map((fact) => `- [${fact.type}] ${escapeTags(fact.text)}${dateNote(fact)}`);
   return ['<recalled-memories>', ...lines, '</recalled-memories>'].join('\n');
+}
+
+/** Stops fact text from closing the block early; `&` is left alone so memories read naturally. */
+function escapeTags(value: string): string {
+  return value.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 function dateNote(fact: MemoryFact): string {
