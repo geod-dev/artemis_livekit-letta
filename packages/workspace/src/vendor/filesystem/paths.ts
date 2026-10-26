@@ -7,15 +7,25 @@ import { WorkspacePathError } from '../../transport.ts';
  * `displayRoot`-prefixed paths (`/workspace/files/x`) are accepted; absolute
  * paths and anything leaving the root lexically are rejected. Symlinks are
  * checked against the disk by `WorkspaceContainment`.
+ *
+ * On win32 `\` is also a separator (converted to `/` before the checks), so
+ * `..\victim.txt` is an escape there. On POSIX `\` is a filename character.
  */
-export function toRelativePath(input: string, displayRoot: string): string {
+export function toRelativePath(
+  input: string,
+  displayRoot: string,
+  platform: NodeJS.Platform = process.platform
+): string {
   if (input.includes('\0')) throw new WorkspacePathError(input, 'invalid character in path');
-  let path = input;
+  const windows = platform === 'win32';
+  let path = windows ? input.replace(/\\/g, '/') : input;
   const prefix = displayRoot.replace(/\/+$/, '');
   if (prefix && (path === prefix || path.startsWith(`${prefix}/`))) {
     path = path.slice(prefix.length).replace(/^\/+/, '');
   }
-  if (path.startsWith('/') || isAbsolute(path)) {
+  // `C:foo` is drive-relative on win32: it is refused like an absolute path.
+  const absolute = windows ? /^[A-Za-z]:/.test(path) : isAbsolute(path);
+  if (path.startsWith('/') || absolute) {
     throw new WorkspacePathError(
       input,
       'absolute paths are not allowed; use a path relative to the workspace'
@@ -26,6 +36,22 @@ export function toRelativePath(input: string, displayRoot: string): string {
     throw new WorkspacePathError(input, 'path leaves the workspace');
   }
   return normalized === '.' ? '' : normalized.replace(/\/+$/, '');
+}
+
+/**
+ * True when workspace-relative `rel` is `prefix` or lies beneath it. Both are
+ * already `toRelativePath` output. Windows compares case-insensitively (NTFS).
+ */
+export function isUnderPrefix(
+  rel: string,
+  prefix: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  const fold =
+    platform === 'win32' ? (value: string) => value.toLowerCase() : (value: string) => value;
+  const target = fold(rel);
+  const base = fold(prefix);
+  return target === base || target.startsWith(`${base}/`);
 }
 
 /** True when `path` is `root` or lies beneath it (both absolute, already resolved). */

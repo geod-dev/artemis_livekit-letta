@@ -24,6 +24,25 @@ test('absolute paths and paths leaving the workspace are rejected', () => {
   assert.throws(() => toRelativePath('a\0b', '/workspace'), WorkspacePathError);
 });
 
+test('win32 rules treat a backslash as a separator and reject every escape', () => {
+  assert.equal(toRelativePath('files\\report.xlsx', '/root', 'win32'), 'files/report.xlsx');
+  assert.equal(toRelativePath('.\\files\\\\a\\..\\b.txt', '/root', 'win32'), 'files/b.txt');
+  assert.throws(() => toRelativePath('..\\victim.txt', '/root', 'win32'), WorkspacePathError);
+  assert.throws(
+    () => toRelativePath('a\\..\\..\\victim.txt', '/root', 'win32'),
+    WorkspacePathError
+  );
+  assert.throws(() => toRelativePath('..', '/root', 'win32'), WorkspacePathError);
+  assert.throws(() => toRelativePath('C:\\Windows\\win.ini', '/root', 'win32'), WorkspacePathError);
+  assert.throws(() => toRelativePath('C:foo', '/root', 'win32'), WorkspacePathError);
+  assert.throws(() => toRelativePath('\\\\server\\share\\x', '/root', 'win32'), WorkspacePathError);
+});
+
+test('POSIX keeps a backslash as a filename character', () => {
+  assert.equal(toRelativePath('a\\b', '/root', 'linux'), 'a\\b');
+  assert.equal(toRelativePath('..\\victim.txt', '/root', 'linux'), '..\\victim.txt');
+});
+
 test('glob patterns used for include filters and exclusions', () => {
   assert.ok(globToRegExp('*.ts').test('index.ts'));
   assert.ok(!globToRegExp('*.ts').test('src/index.ts'));

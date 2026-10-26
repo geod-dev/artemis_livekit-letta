@@ -44,14 +44,25 @@ before(async () => {
 });
 
 after(async () => {
-  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  await rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 20,
+    retryDelay: 100,
+  });
   await rm(outside, { recursive: true, force: true });
 });
 
 const transport = (
   ripgrep: 'auto' | 'off' = 'off',
   extra: { shell?: string; env?: Record<string, string> } = {}
-) => new FilesystemWorkspaceTransport({ root, displayRoot: '/workspace', ripgrep, ...extra });
+) =>
+  new FilesystemWorkspaceTransport({
+    root,
+    displayRoot: '/workspace',
+    ripgrep,
+    ...extra,
+  });
 
 describe('files', () => {
   test('writes are atomic, create parents and leave no temporary file', async () => {
@@ -128,6 +139,71 @@ describe('files', () => {
     assert.throws(() => t.assertWritable('data/attachments/x.png', policy), WorkspacePathError);
     assert.throws(() => t.assertWritable('/workspace/data', policy), WorkspacePathError);
   });
+
+  test('Windows path rules (backslash separators, case) apply when the platform is win32, on any host', () => {
+    const t = new FilesystemWorkspaceTransport({
+      root,
+      displayRoot: '/workspace',
+      ripgrep: 'off',
+      platform: 'win32',
+    });
+    const policy = { readOnlyPrefixes: ['data'] };
+    assert.throws(() => t.assertWritable('data\\attachments\\x.png', policy), WorkspacePathError);
+    assert.throws(() => t.assertWritable('DATA/attachments/x.png', policy), WorkspacePathError);
+    assert.throws(() => t.assertWritable('Data\\Attachments\\x.png', policy), WorkspacePathError);
+    assert.throws(
+      () => t.assertWritable('..\\victim.txt', { readOnlyPrefixes: [] }),
+      WorkspacePathError
+    );
+    t.assertWritable('database.txt', policy);
+  });
+
+  test('on POSIX a backslash is a filename character and read-only prefixes are case-sensitive', (ctx) => {
+    if (process.platform === 'win32') return ctx.skip('POSIX path rules');
+    const t = transport();
+    const policy = { readOnlyPrefixes: ['data'] };
+    t.assertWritable('DATA/attachments/x.png', policy);
+    t.assertWritable('data\\attachments\\x.png', policy);
+  });
+
+  test('on Windows a backslash escape cannot reach or change a file outside the root', async (ctx) => {
+    if (process.platform !== 'win32') return ctx.skip('backslash separators are Windows-only');
+    const base = await mkdtemp(join(tmpdir(), 'ws-esc-'));
+    try {
+      const ws = join(base, 'ws');
+      await mkdir(ws);
+      await mkdir(join(base, 'empty-dir'));
+      await writeFile(join(base, 'victim.txt'), 'keep me\n');
+      const t = new FilesystemWorkspaceTransport({
+        root: ws,
+        displayRoot: '/workspace',
+        ripgrep: 'off',
+      });
+      await assert.rejects(() => t.deleteFile('..\\victim.txt'), WorkspacePathError);
+      await assert.rejects(() => t.stat('..\\victim.txt'), WorkspacePathError);
+      await assert.rejects(() => t.removeEmptyDirectory('..\\empty-dir'), WorkspacePathError);
+      await assert.rejects(() => t.writeFile('..\\written.txt', 'x'), WorkspacePathError);
+      assert.equal(await readFile(join(base, 'victim.txt'), 'utf8'), 'keep me\n');
+      assert.equal((await readdir(base)).includes('written.txt'), false);
+      assert.equal((await readdir(base)).includes('empty-dir'), true);
+    } finally {
+      await rm(base, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    }
+  });
+
+  test('on Windows the read-only prefix matches across separators and case', (ctx) => {
+    if (process.platform !== 'win32') return ctx.skip('Windows path rules');
+    const t = transport();
+    const policy = { readOnlyPrefixes: ['data'] };
+    assert.throws(() => t.assertWritable('data\\attachments\\x.png', policy), WorkspacePathError);
+    assert.throws(() => t.assertWritable('DATA/attachments/x.png', policy), WorkspacePathError);
+    t.assertWritable('database.txt', policy);
+  });
 });
 
 describe('search', () => {
@@ -163,7 +239,10 @@ describe('search', () => {
   }
 
   test('grep skips binary files and honours the limit', async () => {
-    const all = await transport().grep('needle', { caseInsensitive: true, limit: 2 });
+    const all = await transport().grep('needle', {
+      caseInsensitive: true,
+      limit: 2,
+    });
     assert.equal(all.length, 2);
     assert.ok(!all.some((m) => m.path === 'image.bin'));
   });
@@ -177,7 +256,9 @@ describe('search', () => {
 
 describe('processes', () => {
   test('spawn runs under the shell and buffers output for replay', async () => {
-    const process = await transport().spawn({ command: 'echo hello; echo oops >&2; exit 3' });
+    const process = await transport().spawn({
+      command: 'echo hello; echo oops >&2; exit 3',
+    });
     const exit = await process.exited;
     assert.equal(exit.exitCode, 3);
     assert.equal(exit.timedOut, false);
@@ -191,7 +272,9 @@ describe('processes', () => {
   test('spawn does not pass server secrets to commands', async () => {
     process.env.ARTEMIS_TEST_SECRET = 'leak-me';
     try {
-      const probe = await transport().spawn({ command: 'echo "[${ARTEMIS_TEST_SECRET:-absent}]"' });
+      const probe = await transport().spawn({
+        command: 'echo "[${ARTEMIS_TEST_SECRET:-absent}]"',
+      });
       await probe.exited;
       const output = probe.tail().stdout;
       assert.match(output, /\[absent\]/);
@@ -212,7 +295,10 @@ describe('processes', () => {
 
   test('timeoutMs kills the process tree and reports timedOut', async () => {
     const started = Date.now();
-    const process = await transport().spawn({ command: 'sleep 30', timeoutMs: 300 });
+    const process = await transport().spawn({
+      command: 'sleep 30',
+      timeoutMs: 300,
+    });
     const exit = await process.exited;
     assert.equal(exit.timedOut, true);
     assert.ok(Date.now() - started < 15_000, 'killed well before the sleep ends');
@@ -228,7 +314,9 @@ describe('processes', () => {
   });
 
   test('writeStdin reaches the command', async () => {
-    const process = await transport().spawn({ command: 'read line; echo "got $line"' });
+    const process = await transport().spawn({
+      command: 'read line; echo "got $line"',
+    });
     await process.writeStdin('ping\n');
     const exit = await process.exited;
     assert.equal(exit.exitCode, 0);

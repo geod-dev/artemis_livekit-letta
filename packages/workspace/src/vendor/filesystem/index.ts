@@ -31,7 +31,14 @@ import {
   WorkspaceTransport,
   type WriteHandle,
 } from '../../transport.ts';
-import { WorkspaceContainment, isWithin, lstatOrNull, toPosix, toRelativePath } from './paths.ts';
+import {
+  WorkspaceContainment,
+  isUnderPrefix,
+  isWithin,
+  lstatOrNull,
+  toPosix,
+  toRelativePath,
+} from './paths.ts';
 import { startProcess } from './process.ts';
 import { TextSearch } from './search.ts';
 
@@ -52,6 +59,8 @@ interface FilesystemWorkspaceOptions {
   commandLifetimeMs?: number;
   /** Retained output per command stream. Default 1 MiB; the oldest output is dropped. */
   maxOutputBytes?: number;
+  /** Rules for agent paths: `\` separators and case-insensitive prefixes on win32. Default `process.platform`; tests set `win32` to run those rules on any host. */
+  platform?: NodeJS.Platform;
 }
 
 const DEFAULT_GREP_LIMIT = 500;
@@ -82,12 +91,14 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
   readonly displayRoot: string;
   private readonly containment: WorkspaceContainment;
   private readonly search: TextSearch;
+  private readonly platform: NodeJS.Platform;
 
   constructor(readonly options: FilesystemWorkspaceOptions) {
     super();
     this.displayRoot = options.displayRoot ?? options.root;
     this.containment = new WorkspaceContainment(options.root);
     this.search = new TextSearch(options.ripgrep ?? 'auto');
+    this.platform = options.platform ?? process.platform;
   }
 
   async realPath(path: string): Promise<string> {
@@ -97,7 +108,7 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
 
   async stat(path: string): Promise<FileStat | null> {
     const rel = this.rel(path);
-    const link = await lstatOrNull(this.containment.host(rel));
+    const link = await lstatOrNull(this.entryHost(rel));
     if (!link) return null;
     let info = link;
     if (link.isSymbolicLink()) {
@@ -152,9 +163,10 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
     const rel = this.rel(path);
     if (rel === '') throw new WorkspacePathError('.', 'the workspace root cannot be deleted');
     await this.containment.directory(parentOf(rel));
-    const entry = await lstat(this.containment.host(rel));
+    const host = this.entryHost(rel);
+    const entry = await lstat(host);
     if (entry.isDirectory()) throw new Error(`${path}: is a directory`);
-    await unlink(this.containment.host(rel));
+    await unlink(host);
   }
 
   async readStream(path: string, range?: ByteRange): Promise<ReadableStream<Uint8Array>> {
@@ -174,7 +186,7 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
     const rel = this.rel(path);
     if (rel === '') throw new WorkspacePathError('.', 'the workspace root cannot be removed');
     await this.containment.directory(parentOf(rel));
-    await rmdir(this.containment.host(rel)).catch((error: NodeJS.ErrnoException) => {
+    await rmdir(this.entryHost(rel)).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY') throw error;
     });
   }
@@ -241,15 +253,28 @@ export class FilesystemWorkspaceTransport extends WorkspaceTransport {
   assertWritable(path: string, policy: WorkspaceAccessPolicy): void {
     const rel = this.rel(path);
     for (const prefix of policy.readOnlyPrefixes) {
-      const readOnly = toRelativePath(prefix, '');
-      if (readOnly && (rel === readOnly || rel.startsWith(`${readOnly}/`))) {
+      const readOnly = toRelativePath(prefix, '', this.platform);
+      if (readOnly && isUnderPrefix(rel, readOnly, this.platform)) {
         throw new WorkspacePathError(path, 'read-only in this workspace');
       }
     }
   }
 
   private rel(path: string): string {
-    return toRelativePath(path, this.displayRoot);
+    return toRelativePath(path, this.displayRoot, this.platform);
+  }
+
+  /**
+   * Lexical host path of an entry, refused when it is not inside the root. `rel`
+   * is already free of escapes; this is a second check. The entry itself is not
+   * resolved here, so a symlink is acted on as a link (its parent is checked).
+   */
+  private entryHost(rel: string): string {
+    const host = this.containment.host(rel);
+    if (!isWithin(this.containment.root, host)) {
+      throw new WorkspacePathError(rel || '.', 'resolves outside the workspace');
+    }
+    return host;
   }
 
   private commandEnv(extra: Record<string, string> | undefined): Record<string, string> {
