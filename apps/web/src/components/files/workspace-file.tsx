@@ -40,12 +40,14 @@ export function WorkspaceFileCard({ path }: { path: string }) {
     : fileKind('', name) === 'image';
   if (isImage) return <WorkspaceImage path={path} />;
 
-  if (info?.status === 'missing') {
+  if (info?.status === 'missing' || info?.status === 'error') {
     return (
       <span className="surface-panel text-muted-foreground my-2 flex w-fit max-w-full items-center gap-4.5 rounded-lg border-dashed px-4.5 py-3 text-sm">
         <FileXIcon aria-hidden className="size-7.5 shrink-0" />
         <span className="min-w-0 truncate">{name}</span>
-        <span className="shrink-0 text-xs">not found</span>
+        <span className="shrink-0 text-xs">
+          {info.status === 'missing' ? 'not found' : 'could not check'}
+        </span>
       </span>
     );
   }
@@ -87,7 +89,8 @@ export function WorkspaceFileCard({ path }: { path: string }) {
 export function WorkspaceImage({ path, alt }: { path: string; alt?: string }) {
   const info = useFileInfo(path);
   const openFile = useContext(WorkspaceFilePanelContext);
-  if (info?.status === 'missing') return <WorkspaceFileCard path={path} />;
+  if (info?.status === 'missing' || info?.status === 'error')
+    return <WorkspaceFileCard path={path} />;
   const name = fileName(path);
   return (
     <span className="group relative my-3 block w-fit max-w-full">

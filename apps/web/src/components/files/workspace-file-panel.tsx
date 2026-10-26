@@ -87,6 +87,14 @@ function Preview({ path, name, info }: { path: string; name: string; info: FileI
       </div>
     );
   }
+  if (info.status === 'error') {
+    return (
+      <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+        <FileXIcon aria-hidden className="size-16" />
+        <span className="max-w-full text-sm break-all">Could not load {name}. Try again.</span>
+      </div>
+    );
+  }
   const url = workspaceUrl(path);
   switch (previewKind(name, info)) {
     case 'image':
