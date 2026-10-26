@@ -3,6 +3,7 @@ import { CHAT_HTTP } from '@artemis/contracts/chat-http';
 import { sessionCheckFailure } from '@/components/auth-gate-session';
 import { MascotMark } from '@/components/chat/mascot/mascot-mark';
 import { apiFetch, isRecord, requestJson, responseJson } from '@/lib/api';
+import { onSessionEnded } from '@/lib/session';
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -13,6 +14,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const checkRevision = useRef(0);
   const authenticatedRef = useRef(false);
   authenticatedRef.current = authenticated === true;
+  useEffect(
+    () =>
+      onSessionEnded(() => {
+        checkRevision.current += 1;
+        setAuthenticated(false);
+        setError('Your session has ended. Sign in again.');
+      }),
+    []
+  );
   useEffect(() => {
     const check = () => {
       const revision = ++checkRevision.current;

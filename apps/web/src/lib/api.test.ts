@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { apiFetch, requestJson, responseJson } from './api.ts';
+import { onSessionEnded } from './session.ts';
 
 const realFetch = globalThis.fetch;
 
@@ -110,4 +111,34 @@ test('requestJson validates the body of a successful request', async () => {
 test('requestJson returns the validated body', async () => {
   globalThis.fetch = async () => jsonResponse(3);
   assert.equal(await requestJson('/api/count', { method: 'GET' }, isNumber, 'Fallback'), 3);
+});
+
+test('apiFetch 401 emits the sign-out signal', async () => {
+  let ended = 0;
+  const stop = onSessionEnded(() => {
+    ended += 1;
+  });
+  try {
+    globalThis.fetch = async () => new Response('{}', { status: 401 });
+    await apiFetch('/api/conversations');
+    assert.equal(ended, 1);
+  } finally {
+    stop();
+  }
+});
+
+test('a 401 from the auth routes and other failures do not emit the sign-out signal', async () => {
+  let ended = 0;
+  const stop = onSessionEnded(() => {
+    ended += 1;
+  });
+  try {
+    globalThis.fetch = async () => new Response('{}', { status: 401 });
+    await apiFetch('/api/auth/login', { method: 'POST' });
+    globalThis.fetch = async () => new Response('{}', { status: 500 });
+    await apiFetch('/api/conversations');
+    assert.equal(ended, 0);
+  } finally {
+    stop();
+  }
 });

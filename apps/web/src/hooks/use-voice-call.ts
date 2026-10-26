@@ -5,10 +5,31 @@ import type { ConversationSummary } from '@artemis/contracts/chat-types';
 import { useSession } from '@livekit/components-react';
 import type { useConversation } from '@/hooks/use-conversation';
 import type { useConversations } from '@/hooks/use-conversations';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, isRecord, responseJson } from '@/lib/api';
 
 type ConversationList = ReturnType<typeof useConversations>;
 type ActiveConversation = ReturnType<typeof useConversation>;
+
+/** The gateway's answer to a call start: the room to join, and the conversation it runs on. */
+type VoiceToken = {
+  serverUrl: string;
+  participantToken: string;
+  participantName: string;
+  roomName: string;
+  conversation?: ConversationSummary | null;
+};
+
+const isVoiceToken = (value: unknown): value is VoiceToken =>
+  isRecord(value) &&
+  typeof value.serverUrl === 'string' &&
+  typeof value.participantToken === 'string' &&
+  typeof value.participantName === 'string' &&
+  typeof value.roomName === 'string';
+
+/** Read a call-start response; a failed one reports its error before its body is parsed. */
+export function readVoiceToken(res: Response): Promise<VoiceToken> {
+  return responseJson(res, isVoiceToken, 'Could not start the call');
+}
 
 /**
  * The chat's voice call: its LiveKit session, whether it is connected, and the
@@ -45,9 +66,8 @@ export function useVoiceCall({
           // Calls from the web app are conversations: they stay open until ended.
           body: JSON.stringify({ conversationId: conversationId ?? undefined, mode: 'long' }),
         });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body?.error ?? 'Could not start the call');
-        const target = body.conversation as ConversationSummary | null;
+        const body = await readVoiceToken(res);
+        const target = body.conversation ?? null;
         if (target) {
           upsert(target);
           setCallConversationId(target.id);

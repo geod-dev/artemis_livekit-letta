@@ -185,6 +185,12 @@ function SourceBadge({ href, children }: { href: string; children: ReactNode }) 
   );
 }
 
+/** The sanitized URL a link preview may request: a web link that `safeHref` accepts, else undefined. */
+export function linkPreviewHref(href: string | undefined): string | undefined {
+  if (typeof href !== 'string' || !/^https?:\/\//i.test(href)) return undefined;
+  return safeHref(href);
+}
+
 /**
  * A link: a cited source (see `lib/citations`) as a badge, a file of the
  * agent's workspace (linked by its workspace path) as a card, anything else as
@@ -192,9 +198,9 @@ function SourceBadge({ href, children }: { href: string; children: ReactNode }) 
  */
 function MarkdownLink({ href, children, className, ...props }: ComponentProps<'a'>) {
   const [previewOpen, setPreviewOpen] = useState(false);
-  const isWebLink =
-    typeof href === 'string' && /^https?:\/\//i.test(href) && safeHref(href) !== null;
-  const metadata = useLinkMetadata(previewOpen && isWebLink ? href : undefined);
+  const previewHref = linkPreviewHref(href);
+  const isWebLink = previewHref !== undefined;
+  const metadata = useLinkMetadata(previewOpen ? previewHref : undefined);
   const path = workspacePath(href);
   if (path) return <WorkspaceFileCard path={path} />;
   const safe = safeHref(href);

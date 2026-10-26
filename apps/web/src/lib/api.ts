@@ -1,4 +1,5 @@
 import { CHAT_HTTP } from '@artemis/contracts/chat-http';
+import { announceSessionEnded } from '@/lib/session';
 
 /**
  * The one client for every browser-to-gateway request: fetch, EventSource and
@@ -19,10 +20,23 @@ class ApiError extends Error {
 export const conversationRoute = (id: string, suffix = '') =>
   `${CHAT_HTTP.conversations}/${encodeURIComponent(id)}${suffix}`;
 
-/** Fetch a gateway path; a request that never got a response becomes an ApiError. */
+/**
+ * Whether a request goes to the auth routes. There a 401 is an answer (a wrong
+ * password), not an ended session.
+ */
+function isAuthRoute(input: RequestInfo | URL): boolean {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  return new URL(url, 'http://localhost').pathname.startsWith(`${CHAT_HTTP.auth}/`);
+}
+
+/**
+ * Fetch a gateway path; a request that never got a response becomes an ApiError.
+ * A 401 from any other route means the session has ended (see `lib/session`).
+ */
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  let response: Response;
   try {
-    return await fetch(input, init);
+    response = await fetch(input, init);
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError(
@@ -30,6 +44,8 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
       null
     );
   }
+  if (response.status === 401 && !isAuthRoute(input)) announceSessionEnded();
+  return response;
 }
 
 /** Open a server-sent event stream on a gateway path. */
