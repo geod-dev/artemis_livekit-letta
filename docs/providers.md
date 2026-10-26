@@ -8,7 +8,7 @@ Delegated workers use openai-compatible/zai-org/GLM-5.3-Flash on Telnyx at provi
 
 Set OPENAI_COMPATIBLE_BASE_URL=https://api.telnyx.com/v2/ai/openai and OPENAI_COMPATIBLE_API_KEY to the Telnyx key. This protocol connection requires no OpenAI account or credentials.
 
-The Telnyx adapter preserves provider-reported limits and prices. Missing pricing uses neutral accounting rates with costKnown: false, and missing limits stay unknown. GLM image input is advertised explicitly.
+GLM image input is advertised explicitly.
 
 ## Model routing
 

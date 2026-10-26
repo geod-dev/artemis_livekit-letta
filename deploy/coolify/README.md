@@ -67,7 +67,7 @@ sudo install -d -o artemis-deploy -g artemis-deploy -m 0750 /etc/artemis
 sudo install -d -m 0755 /usr/local/lib/artemis
 sudo install -d -o 1001 -g 1001 -m 0775 /data/artemis/workspace
 sudo install -d -o 1001 -g 1001 -m 0755 /data/artemis/workspace/data
-sudo install -d -o 1001 -g 1001 -m 0755 /data/artemis/data/gateway
+sudo install -d -o 1001 -g 1001 -m 0750 /data/artemis/data/gateway
 ```
 
 The workspace root is 1001:1001 with mode 0775 (group 1001 is the agent's group). `data/` is

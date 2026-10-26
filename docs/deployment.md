@@ -27,15 +27,16 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 Compose refuses to start without these (they use the `${VAR:?...}` form). The base file
 requires them, and so does the Coolify file, which takes the same names:
 
-- `POSTGRES_PASSWORD`, `ARTEMIS_DB_PASSWORD`, `HINDSIGHT_DB_PASSWORD`
+- `POSTGRES_PASSWORD`, `ARTEMIS_DB_PASSWORD`, `HINDSIGHT_DB_PASSWORD`, `HINDSIGHT_API_KEY`
 - `ANTHROPIC_API_KEY` (Hindsight's model and the assistant)
 - `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, and `IP_ADDRESS`
 - `AGENT_SERVER_TOKEN`, `ARTEMIS_PASSWORD`, `ARTEMIS_DEVICE_TOKEN`, `VOICE_GATEWAY_TOKEN`
 
 The production override also requires `WORKSPACE_PATH` and `ARTEMIS_DATA_DIR`.
 
-With `NODE_ENV=production`, the gateway refuses to start unless `ARTEMIS_PASSWORD` and
-`ARTEMIS_DEVICE_TOKEN` are set, and `AGENT_SERVER_TOKEN`, `LIVEKIT_API_KEY`,
+The gateway requires `ARTEMIS_DEVICE_TOKEN` in every mode, with no development fallback. With
+`NODE_ENV=production`, it also refuses to start unless `ARTEMIS_PASSWORD` is set, and
+`AGENT_SERVER_TOKEN`, `LIVEKIT_API_KEY`,
 `LIVEKIT_API_SECRET`, and `VOICE_GATEWAY_TOKEN` are not placeholders. A placeholder is empty, the
 development fallback, or a value that starts with `change-me` or `dev-`. The agent server refuses
 the development token and the placeholder database passwords in production.
@@ -62,13 +63,17 @@ These behaviours changed with the fix round and are intended:
 
 - **Login backoff.** The gateway counts failed logins per client address (10 per minute) and
   across all clients (50 per minute). A lockout doubles on each repeat, up to 15 minutes. A
-  successful login clears the repeats. The client address comes from the socket, or from
-  `X-Real-IP` when the peer is loopback or a private address (behind nginx).
+  successful login clears the repeats. The client address comes from the socket. The gateway reads
+  `X-Real-IP` only when the socket peer is a trusted proxy: an address in `TRUSTED_PROXIES` when
+  that is set (Compose sets it to the web container's static address, `172.29.250.10`), otherwise
+  any loopback or private peer.
 - **Device names.** A device name that a connected device holds is refused with HTTP 409, and the
-  existing session is kept. A lapsed device, one without a heartbeat for its lease, frees its name.
+  existing session is kept. A lapsed device, one without a heartbeat for its lease (75 seconds),
+  frees its name.
 - **Voice gateway URL.** The voice agent refuses a plain-HTTP `GATEWAY_URL` unless the host is
   loopback (`localhost`, `127.0.0.1`, `::1`) or a single-label Compose service name such as
-  `http://gateway:3000`. Put a remote gateway behind HTTPS.
+  `http://gateway:3000` while `GATEWAY_ALLOW_PLAIN_HTTP_SERVICE` is set (Compose sets it on
+  `voice-agent`). Put a remote gateway behind HTTPS.
 - **Device client.** It connects to a non-loopback server only with `--server https://...`.
 
 ## Runtime data
@@ -131,15 +136,29 @@ superuser) is set only when the volume is first created.
 
 The three database passwords are spliced into connection URLs without encoding. Use only letters
 and digits; hex is recommended. The characters `@ : / ? #` and other URL-reserved characters break
-the URL. Nothing checks this, so check the values before the first start.
+the URL. With `NODE_ENV=production`, the agent server refuses a password that is not letters and
+digits, or a development placeholder, for `ARTEMIS_DB_PASSWORD`, `HINDSIGHT_DB_PASSWORD`, and the
+password in `DATABASE_URL`. Outside production nothing checks these values, and nothing checks
+`POSTGRES_PASSWORD` at all, so check them before the first start.
+
+### Health check
+
+The Postgres healthcheck runs `pg_isready` against `127.0.0.1` over TCP, not over the Unix socket.
 
 ## Network
 
-The Compose network is pinned to `172.29.250.0/24`. The web nginx sets the client address from
+The Compose network is pinned to `172.29.250.0/24`. The web container holds the static address
+`172.29.250.10`, which the gateway's `TRUSTED_PROXIES` names; the other services on `edge` take
+dynamic addresses. The web nginx sets the client address from
 `X-Forwarded-For` only for loopback and this subnet. If Coolify's proxy reaches `web` from another
 network, the login limiter sees the proxy address for every client. Put the proxy on the
 application's network, or change the subnet in both `docker-compose*.yml` files and in
 `apps/web/nginx.conf` together.
+
+## Container hardening
+
+In `docker-compose.yml`, the agent server, gateway, web, and voice-agent containers drop all Linux
+capabilities (`cap_drop: [ALL]`) and set `no-new-privileges`.
 
 ## Coolify
 

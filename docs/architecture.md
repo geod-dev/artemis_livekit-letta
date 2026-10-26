@@ -59,8 +59,9 @@ and each exposes its public surface through `src/index.ts` and named subpath exp
 ## Dependency rules
 
 `scripts/check-boundaries.mjs` enforces these rules. It parses every `.ts`, `.tsx`, `.mts`,
-`.cts`, `.mjs`, `.cjs`, `.js`, and `.jsx` file under `apps/` and `packages/`, including
-declaration files and generated directories. It runs as the `boundaries` check group, and its
+`.cts`, `.mjs`, `.cjs`, `.js`, and `.jsx` file under `apps/`, `packages/`, and `scripts/`,
+including declaration files and generated directories. The `scripts/` files are checked as
+tooling under rule 10. It runs as the `boundaries` check group, and its
 `--self-test` runs one fixture per rule. The Python apps (`apps/voice-agent` and
 `apps/device-client`) are outside the checker's scope and have their own tooling.
 
@@ -76,17 +77,18 @@ declaration files and generated directories. It runs as the `boundaries` check g
 8. A vendor SDK npm package (`@anthropic-ai/sdk`, `@modelcontextprotocol/sdk`,
    `@vectorize-io/hindsight-client`, `livekit-server-sdk`, `openai`, `pg`) is imported only
    from a `src/vendor` directory and from `apps/<app>/src/compose.ts`.
+9. Non-test code imports no `testing` module (a `*/testing` subpath).
+10. `scripts/` (tooling) imports only the files named in the checker's `TOOLING_IMPORTS`, a
+    package's `src/index.ts`, or a package subpath export.
 
-**Test code is exempt** from rules 4, 8, and the `apps/web/src` half of rule 5. Test code is
-any `*.test.*` file and anything under a `test/` directory. Tests build fixtures from the
-vendor testing subpaths and from fake servers.
+**Test code is exempt** from rules 4, 8, 9, and the `apps/web/src` half of rule 5. Test code is
+any `*.test.*` file and anything under a `test/` or `testing/` directory. Tests build fixtures
+from the vendor testing subpaths and from fake servers.
 
-**Reviewed exceptions** live in the `ALLOWLIST` array in the checker. It holds two entries,
-both for rule 4 and both for the `@artemis/mcp/device-server` subpath. The gateway's device
-MCP endpoint (`apps/gateway/src/devices/hub.ts` and `apps/gateway/src/devices/mcp-endpoint.ts`)
-imports it directly, because the gateway is the only place that serves that endpoint and
-there is no second implementation for `compose.ts` to select. Add an entry only for a
-violation that is intended, and give its reason.
+**Reviewed exceptions** live in the `ALLOWLIST` array in the checker. The array is empty, so no
+violation is excused. The only importer of `@artemis/mcp/device-server` is the gateway's
+`apps/gateway/src/compose.ts`, which rule 4 already allows, so the device MCP endpoint needs no
+exception. Add an entry only for a violation that is intended, and give its reason.
 
 ## Vendor rule
 
@@ -152,7 +154,8 @@ device's own credential, which the hub issues at registration.
 - **Voice agent:** WebRTC media through LiveKit (`LIVEKIT_URL`). Call state, call updates, and
   completions go to the gateway (`GATEWAY_URL`) under `/api/voice`. The gateway relays them to
   the agent server's `/v1/voice` routes. The voice agent refuses a plain-HTTP `GATEWAY_URL` unless
-  the host is loopback or a single-label Compose service name.
+  the host is loopback, or a single-label Compose service name while `GATEWAY_ALLOW_PLAIN_HTTP_SERVICE`
+  is set (Compose sets it on `voice-agent`).
 - **Browser to LiveKit:** signaling through `/livekit/` on nginx. Media uses TCP 7881 and UDP
   7882. In Compose, the browser-facing URL is `ws://$IP_ADDRESS:$WEB_PORT/livekit` unless
   `LIVEKIT_PUBLIC_URL` overrides it.
