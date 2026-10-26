@@ -1,9 +1,11 @@
 plugins { id 'com.android.application' }
 
-// Signing: when .signing/debug.keystore exists, the debug and release builds are signed with it.
-// Its store password, key alias and key password come from local.properties, then the
-// environment, and the build stops when one is missing. Without that key, both build types use
-// AGP's default debug key.
+// Signing. Debug: when .signing/debug.keystore exists, debug builds are signed with it; its values
+// come from local.properties, then the environment, and the build stops when one is missing.
+// Without that keystore, debug builds use AGP's default debug key.
+// Release: signed only with .signing/release.keystore and its artemis.release* values (or the
+// ARTEMIS_RELEASE_* environment variables). A release build never uses the debug key; the release
+// tasks fail with a clear message while those values are missing.
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) localPropertiesFile.withInputStream { localProperties.load(it) }
@@ -16,6 +18,14 @@ def signingValue = { String property, String variable ->
     }
     return value
 }
+def releaseValue = { String property, String variable ->
+    localProperties.getProperty(property) ?: System.getenv(variable)
+}
+def releaseKeyStore = rootProject.file(releaseValue('artemis.releaseStoreFile', 'ARTEMIS_RELEASE_STORE_FILE') ?: '.signing/release.keystore')
+def releaseStorePassword = releaseValue('artemis.releaseStorePassword', 'ARTEMIS_RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = releaseValue('artemis.releaseKeyAlias', 'ARTEMIS_RELEASE_KEY_ALIAS')
+def releaseKeyPassword = releaseValue('artemis.releaseKeyPassword', 'ARTEMIS_RELEASE_KEY_PASSWORD')
+def releaseSigningMissing = !releaseKeyStore.exists() || !releaseStorePassword || !releaseKeyAlias || !releaseKeyPassword
 
 android {
     namespace 'ai.artemis.mobile'
@@ -29,13 +39,21 @@ android {
                 keyPassword signingValue('artemis.debugKeyPassword', 'ARTEMIS_DEBUG_KEY_PASSWORD')
             }
         }
+        if (!releaseSigningMissing) {
+            release {
+                storeFile releaseKeyStore
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         // Not debuggable, so adb run-as cannot read app data (including WebView session cookies).
         release {
             debuggable false
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            if (!releaseSigningMissing) signingConfig signingConfigs.release
         }
     }
     defaultConfig {
@@ -82,4 +100,15 @@ dependencies {
     // JVM unit tests run on the host JVM, where android.net.Uri and org.json are stubs.
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
+}
+
+// A release package must never be produced unsigned or with the debug key. Fail the packaging
+// tasks with the missing setting named, instead of failing configuration for debug builds too.
+tasks.configureEach { task ->
+    if (releaseSigningMissing && task.name ==~ /(assemble|bundle|package|install)Release.*/) {
+        task.doFirst {
+            throw new org.gradle.api.GradleException(
+                'Release signing is not configured. Create .signing/release.keystore and set artemis.releaseStorePassword, artemis.releaseKeyAlias and artemis.releaseKeyPassword in local.properties (or the ARTEMIS_RELEASE_* environment variables).')
+        }
+    }
 }
