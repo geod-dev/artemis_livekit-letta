@@ -97,6 +97,48 @@ test('heartbeat renews a live session and disconnect removes the device', async 
   }
 });
 
+test('disconnect without a session is refused and keeps the device', async () => {
+  const f = fixture();
+  try {
+    await f.register();
+    const response = await f.call('POST', '/laptop/disconnect', { body: {} });
+    assert.equal(response.status, 400);
+    assert.match(((await response.json()) as { error: string }).error, /X-Device-Session/);
+    assert.equal(f.hub.servers().length, 1);
+  } finally {
+    f.hub.close();
+  }
+});
+
+test('disconnect with another device session is refused and keeps the device', async () => {
+  const f = fixture();
+  try {
+    await f.register('laptop');
+    const otherSession = await f.register('desk');
+    const response = await f.call('POST', '/laptop/disconnect', { session: otherSession });
+    assert.equal(response.status, 410);
+    assert.equal(f.hub.servers().length, 2);
+  } finally {
+    f.hub.close();
+  }
+});
+
+test('disconnect with the matching session removes only that device', async () => {
+  const f = fixture();
+  try {
+    await f.register('laptop');
+    const deskSession = await f.register('desk');
+    const response = await f.call('POST', '/desk/disconnect', { session: deskSession });
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      f.hub.servers().map((server) => server.managed?.deviceName),
+      ['laptop']
+    );
+  } finally {
+    f.hub.close();
+  }
+});
+
 test('poll delivers a queued call, and a result answers the call', async () => {
   const f = fixture();
   try {

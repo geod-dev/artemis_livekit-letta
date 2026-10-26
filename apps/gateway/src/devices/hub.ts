@@ -145,9 +145,10 @@ export class DeviceHub {
     this.refreshRegistry(name, session);
     return session;
   }
+  /** Removes a device. A passed session must match exactly; only internal sweeps omit it. */
   private remove(name: string, session?: string): boolean {
     const device = this.devices.get(name);
-    if (!device || (session && session !== device.session)) return false;
+    if (!device || (session !== undefined && session !== device.session)) return false;
     this.devices.delete(name);
     device.wake?.();
     for (const [id, request] of this.pending)
@@ -166,9 +167,14 @@ export class DeviceHub {
       }
     return true;
   }
-  /** Removes the device and publishes the change; the agent-server sync is not awaited. */
-  unregister(name: string, session: string): void {
-    if (this.remove(name, session)) this.refreshRegistry();
+  /**
+   * Removes the device when the session is its current one, and publishes the change;
+   * the agent-server sync is not awaited. Returns false when nothing matched.
+   */
+  unregister(name: string, session: string): boolean {
+    if (!this.remove(name, session)) return false;
+    this.refreshRegistry();
+    return true;
   }
   async expire(): Promise<void> {
     let removed = false;

@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { MAX_UPLOAD_BYTES } from '../attachments/limits.ts';
 import { HttpError, errorResponse, jsonObject, requestLimit } from '../http.ts';
-import { DeviceError } from './errors.ts';
+import { DeviceError, DeviceSessionExpired } from './errors.ts';
 import type { DeviceHub } from './hub.ts';
 import { saveDeviceFile } from './upload.ts';
 
@@ -126,8 +126,11 @@ export function createDeviceRoutes(hub: DeviceHub, workspace: WorkspaceTransport
       return failure(error);
     }
   });
+  // Disconnecting names the session it ends, so a holder of the device token cannot evict a device it does not own.
   routes.post('/:name/disconnect', (c) => {
-    hub.unregister(c.req.param('name'), sessionOf(c));
+    const session = sessionOf(c);
+    if (!session) return errorResponse('X-Device-Session header is required to disconnect', 400);
+    if (!hub.unregister(c.req.param('name'), session)) return failure(new DeviceSessionExpired());
     return c.json({ ok: true });
   });
   routes.post('/:name/results', requestLimit(RESULT_BODY_LIMIT), async (c) => {
