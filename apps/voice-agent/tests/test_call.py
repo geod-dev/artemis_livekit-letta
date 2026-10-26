@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
 
+import aiohttp
 import pytest
 
 from voice_agent import call as call_module
@@ -267,3 +268,45 @@ async def test_failed_acknowledgement_is_retried_until_it_lands(
     assert gateway.acks == [("u4", True)]
     assert attempts == [("u4", True), ("u4", True)]
     await controller.aclose()
+
+
+def http_error(status: int) -> aiohttp.ClientResponseError:
+    request = SimpleNamespace(real_url="http://gateway.test/update", method="GET", headers={})
+    return aiohttp.ClientResponseError(request, (), status=status)  # type: ignore[arg-type]
+
+
+async def test_permanent_gateway_rejection_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(call_module, "UPDATE_RETRY_BASE_SECONDS", 0.01)
+    controller, _, _, gateway = setup(CallState(mode="long", next="listen"))
+    attempts = 0
+
+    async def rejected(update_id: str) -> AsyncIterator[str]:
+        nonlocal attempts
+        attempts += 1
+        raise http_error(404)
+        yield ""  # pragma: no cover - makes this an async generator
+
+    gateway.update_text = rejected  # type: ignore[method-assign]
+    await gateway.notices.put({"type": "update", "id": "gone"})
+    for _ in range(100):
+        if attempts:
+            break
+        await asyncio.sleep(0.01)
+    assert attempts == 1
+    # A rejected update stays dropped when the backend reannounces it.
+    await gateway.notices.put({"type": "update", "id": "gone"})
+    await asyncio.sleep(0.3)
+    assert attempts == 1
+    await controller.aclose()
+
+
+def test_only_non_transient_client_errors_are_permanent() -> None:
+    for status, permanent in [(404, True), (409, True), (408, False), (429, False), (503, False)]:
+        assert call_module._is_permanent(http_error(status)) is permanent, status
+
+
+def test_reconnect_delay_grows_and_is_capped() -> None:
+    assert call_module._reconnect_delay(0) == call_module.RECONNECT_SECONDS
+    assert call_module._reconnect_delay(1) == call_module.RECONNECT_SECONDS
+    assert call_module._reconnect_delay(3) == 8.0
+    assert call_module._reconnect_delay(50) == call_module.RECONNECT_MAX_SECONDS

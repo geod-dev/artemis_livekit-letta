@@ -227,6 +227,8 @@ services:
     environment:
       VOICE_GATEWAY_TOKEN: ${VOICE_GATEWAY_TOKEN:?set VOICE_GATEWAY_TOKEN in .env}
       GATEWAY_URL: http://gateway:3000
+      # Plain HTTP to the in-network gateway service only; a bare name is refused without this opt-in.
+      GATEWAY_ALLOW_PLAIN_HTTP_SERVICE: "true"
       LIVEKIT_URL: ws://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}

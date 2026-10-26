@@ -14,6 +14,7 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any, Literal
 
+import aiohttp
 from livekit.agents import (
     AgentSession,
     JobContext,
@@ -31,17 +32,32 @@ logger = logging.getLogger("voice_agent")
 END_GRACE_SECONDS = 0.6
 # Silence required before a background update is spoken.
 QUIET_SECONDS = 1.0
-# Delay before reopening a dropped gateway channel.
+# Delay before reopening a dropped gateway channel; it doubles while the channel keeps failing.
 RECONNECT_SECONDS = 2.0
+RECONNECT_MAX_SECONDS = 60.0
 # Retry failed generations with a capped exponential delay while keeping the
 # update claim retryable on the backend.
 UPDATE_RETRY_BASE_SECONDS = 1.0
 UPDATE_RETRY_MAX_SECONDS = 30.0
+# An update that keeps failing is abandoned after this many attempts.
+MAX_UPDATE_ATTEMPTS = 8
 
 
 def _retry_delay(attempt: int) -> float:
     """Capped exponential delay before retry number `attempt` (1 is the first retry)."""
     return min(UPDATE_RETRY_BASE_SECONDS * (2 ** (attempt - 1)), UPDATE_RETRY_MAX_SECONDS)
+
+
+def _reconnect_delay(failures: int) -> float:
+    """Delay before reopening the gateway channel after `failures` failures in a row."""
+    if failures <= 0:
+        return RECONNECT_SECONDS
+    return min(RECONNECT_SECONDS * (2 ** (failures - 1)), RECONNECT_MAX_SECONDS)
+
+
+def _is_permanent(error: aiohttp.ClientResponseError) -> bool:
+    """A 4xx other than timeout and rate limiting will not succeed on a retry."""
+    return 400 <= error.status < 500 and error.status not in (408, 429)
 
 
 type EventHandlerRegistration = (
@@ -65,6 +81,8 @@ class CallController:
         self._completed: set[str] = set()
         self._retry_scheduled: set[str] = set()
         self._retry_attempts: dict[str, int] = {}
+        # Updates the gateway rejected permanently, or that kept failing: not retried again.
+        self._abandoned: set[str] = set()
         self._wake = asyncio.Event()
         self._end_task: asyncio.Task[None] | None = None
         self._ending = False
@@ -158,20 +176,31 @@ class CallController:
     # -- Background updates --------------------------------------------------
 
     async def _follow_gateway(self) -> None:
-        """Keep the gateway's call channel open; it delivers update notices."""
+        """Keep the gateway's call channel open; it delivers update notices.
+
+        A failing channel is reopened with capped exponential backoff. The first
+        failure of a streak is logged as a warning; later ones only at debug level.
+        """
+        failures = 0
         while not self._ending:
+            received = False
             try:
                 async for event in self._gateway.events():
+                    received = True
                     update_id = event.get("id")
                     # A reopened channel announces pending updates again.
                     if event.get("type") == "update" and isinstance(update_id, str):
                         self._queue_update(update_id)
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.exception("gateway call channel failed")
+            except Exception as error:
+                if failures == 0 and not received:
+                    logger.warning("gateway call channel failed: %s; reconnecting", error)
+                else:
+                    logger.debug("gateway call channel failed again: %s", error)
             if not self._ending:
-                await asyncio.sleep(RECONNECT_SECONDS)
+                failures = 0 if received else failures + 1
+                await asyncio.sleep(_reconnect_delay(failures))
 
     async def _speak_updates(self) -> None:
         while True:
@@ -191,7 +220,7 @@ class CallController:
                     raise
                 except Exception:
                     self._schedule_update_retry(update_id)
-                    logger.exception("could not speak background update %s", update_id)
+                    logger.warning("could not speak background update %s", update_id, exc_info=True)
                 finally:
                     self._processing.discard(update_id)
 
@@ -221,8 +250,21 @@ class CallController:
 
         async def text() -> AsyncIterator[str]:
             nonlocal streamed
-            async for chunk in self._gateway.update_text(update_id):
-                yield chunk
+            try:
+                async for chunk in self._gateway.update_text(update_id):
+                    yield chunk
+            except aiohttp.ClientResponseError as error:
+                if _is_permanent(error):
+                    # The gateway will not generate this update (for example it was deleted or
+                    # already claimed): retrying would start a turn on every attempt.
+                    self._abandoned.add(update_id)
+                    self._retry_attempts.pop(update_id, None)
+                    logger.warning(
+                        "gateway rejected background update %s with HTTP %s; not retrying",
+                        update_id,
+                        error.status,
+                    )
+                raise
             streamed = True
 
         handle = self._session.say(text(), add_to_chat_ctx=False)
@@ -249,6 +291,7 @@ class CallController:
             or update_id in self._queued
             or update_id in self._processing
             or update_id in self._retry_scheduled
+            or update_id in self._abandoned
         ):
             return
         self._updates.append(update_id)
@@ -256,9 +299,21 @@ class CallController:
         self._wake.set()
 
     def _schedule_update_retry(self, update_id: str) -> None:
-        if self._ending or update_id in self._completed or update_id in self._retry_scheduled:
+        if (
+            self._ending
+            or update_id in self._completed
+            or update_id in self._retry_scheduled
+            or update_id in self._abandoned
+        ):
             return
         attempt = self._retry_attempts.get(update_id, 0) + 1
+        if attempt > MAX_UPDATE_ATTEMPTS:
+            self._abandoned.add(update_id)
+            self._retry_attempts.pop(update_id, None)
+            logger.warning(
+                "background update %s failed %d times; not retrying", update_id, MAX_UPDATE_ATTEMPTS
+            )
+            return
         self._retry_attempts[update_id] = attempt
         self._retry_scheduled.add(update_id)
         self._spawn(self._retry_update_after(update_id, _retry_delay(attempt)))

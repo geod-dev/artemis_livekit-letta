@@ -127,7 +127,6 @@ def test_remote_plain_http_gateway_is_rejected(monkeypatch):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://[::1]:3000",
-        "http://gateway:3000",
         "https://203.0.113.7:3000",
     ],
 )
@@ -137,11 +136,26 @@ def test_allowed_gateway_urls(url):
 
 @pytest.mark.parametrize(
     "url",
-    ["http://voice.example.com", "http://192.168.1.20:3000", "ftp://gateway:3000", "gateway"],
+    [
+        "http://voice.example.com",
+        "http://192.168.1.20:3000",
+        "http://artemis:3000",
+        "http://gateway:3000",
+        "ftp://gateway:3000",
+        "gateway",
+    ],
 )
 def test_rejected_gateway_urls(url):
     with pytest.raises(ValueError):
         require_secure_gateway_url(url)
+
+
+def test_compose_service_name_needs_the_explicit_opt_in():
+    assert require_secure_gateway_url("http://gateway:3000", allow_service_name=True) == (
+        "http://gateway:3000"
+    )
+    with pytest.raises(ValueError):
+        require_secure_gateway_url("http://voice.example.com", allow_service_name=True)
 
 
 def test_conversation_id_is_quoted_in_the_base_url():

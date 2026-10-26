@@ -98,21 +98,25 @@ def _is_service_name(host: str) -> bool:
     return False
 
 
-def require_secure_gateway_url(url: str) -> str:
+def require_secure_gateway_url(url: str, *, allow_service_name: bool = False) -> str:
     """Bearer tokens travel to the gateway, so a remote gateway must use HTTPS.
 
-    Plain HTTP is accepted for loopback hosts and for single-label service names
-    (Compose). Mirrors the device client's rule.
+    Plain HTTP is accepted for loopback hosts. A single-label service name (a Compose
+    service such as `gateway`) is accepted only when `allow_service_name` is set, because
+    a bare name can resolve through a DNS search suffix to a remote host.
     """
     parts = urlsplit(url)
     host = parts.hostname
     if parts.scheme not in ("http", "https") or not host:
         raise ValueError(f"GATEWAY_URL must be an http(s) URL with a host, got {url!r}")
-    if parts.scheme == "https" or _is_loopback_host(host) or _is_service_name(host):
+    if parts.scheme == "https" or _is_loopback_host(host):
+        return url
+    if allow_service_name and _is_service_name(host):
         return url
     raise ValueError(
         f"GATEWAY_URL {url!r} uses plain HTTP for a remote host; use HTTPS "
-        "(HTTP is allowed only for loopback hosts and Compose service names)."
+        "(HTTP is allowed only for loopback hosts, or for a Compose service name when "
+        "GATEWAY_ALLOW_PLAIN_HTTP_SERVICE is set)."
     )
 
 
@@ -141,8 +145,14 @@ class Settings:
                 f"{PLACEHOLDER_TOKEN_PREFIX!r}); set it to the gateway's voice token."
             )
         default_gateway = f"http://{os.getenv('IP_ADDRESS', '127.0.0.1')}:{DEFAULT_GATEWAY_PORT}"
+        allow_service_name = os.getenv("GATEWAY_ALLOW_PLAIN_HTTP_SERVICE", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
         gateway_url = require_secure_gateway_url(
-            os.getenv("GATEWAY_URL", default_gateway).rstrip("/")
+            os.getenv("GATEWAY_URL", default_gateway).rstrip("/"),
+            allow_service_name=allow_service_name,
         )
         return cls(
             gateway_url=gateway_url,
