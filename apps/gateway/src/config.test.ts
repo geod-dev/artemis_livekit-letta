@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { validateConfig } from './config.ts';
+import { loadConfig, validateConfig } from './config.ts';
 
 const repoRoot = join(import.meta.dirname, '..', '..', '..');
 const appsDir = join(import.meta.dirname, '..', '..');
@@ -48,6 +48,25 @@ function exampleEnv(): Record<string, string> {
 test('configuration rejects invalid ports', () => {
   assert.throws(() => validateConfig({ GATEWAY_PORT: '0' }), /GATEWAY_PORT/);
   assert.throws(() => validateConfig({ AGENT_SERVER_PORT: '0' }), /AGENT_SERVER_PORT/);
+});
+
+test('loadConfig refuses an empty device token in every mode', () => {
+  const voice = { VOICE_GATEWAY_TOKEN: 'private-voice-token' };
+  for (const env of [
+    { ...voice },
+    { ...voice, NODE_ENV: 'development' },
+    { ...voice, ARTEMIS_DEVICE_TOKEN: '  ' },
+  ]) {
+    assert.throws(() => loadConfig(env), /ARTEMIS_DEVICE_TOKEN/);
+  }
+  assert.throws(
+    () => loadConfig({ ...productionEnv, ARTEMIS_DEVICE_TOKEN: undefined }),
+    /ARTEMIS_DEVICE_TOKEN/
+  );
+  assert.equal(
+    loadConfig({ ...voice, ARTEMIS_DEVICE_TOKEN: 'device-token' }).auth.deviceToken,
+    'device-token'
+  );
 });
 
 test('TRUSTED_PROXIES lists proxy IP addresses or CIDR ranges, and nothing else', () => {

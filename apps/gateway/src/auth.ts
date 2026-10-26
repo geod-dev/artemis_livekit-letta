@@ -1,4 +1,4 @@
-import { type Context, Hono } from 'hono';
+import { type Context, Hono, type Next } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
@@ -22,6 +22,9 @@ const MAX_GLOBAL_LOCKOUT_MS = 15 * 60_000;
 const MAX_TRACKED_CLIENTS = 10_000;
 /** Expired client windows are swept once per this many new windows, not on every request. */
 const CLIENT_SWEEP_EVERY = 1_000;
+
+/** The login gate's hand-off to the login route: the client window its attempt holds a place in. */
+type LoginEnv = { Variables: { loginWindow: FailureWindow } };
 
 export interface SessionAuthOptions {
   password: string;
@@ -62,16 +65,28 @@ function proxyList(entries: string[]): BlockList {
 class FailureWindow {
   private failures = 0;
   private resetAt = 0;
+  /** Logins whose bodies are still being read; each takes a place in the window until it settles. */
+  private inFlight = 0;
 
   constructor(private readonly limit: number) {}
 
-  /** True while the window has reached its limit; a window that has run out starts again. */
+  /** True while failures and logins in flight reach the limit; a window that has run out starts again. */
   blocked(now: number): boolean {
     if (this.expired(now)) {
       this.failures = 0;
       this.resetAt = now + LOGIN_WINDOW_MS;
     }
-    return this.failures >= this.limit;
+    return this.failures + this.inFlight >= this.limit;
+  }
+
+  /** Counts a login before its body is read, so a withheld body cannot outrun the limit. */
+  begin(): void {
+    this.inFlight++;
+  }
+
+  /** Settles a login counted by begin(); its failure, if any, has already been recorded. */
+  end(): void {
+    this.inFlight--;
   }
 
   fail(): void {
@@ -99,10 +114,34 @@ class GlobalCeiling {
   private windowEnd = 0;
   private lockedUntil = 0;
   private repeats = 0;
+  /** Logins whose bodies are still being read; they count toward the ceiling until they settle. */
+  private inFlight = 0;
 
   /** Milliseconds until logins are accepted again; 0 while they are open. */
   lockedFor(now: number): number {
     return Math.max(0, this.lockedUntil - now);
+  }
+
+  /**
+   * Milliseconds until a login may be tried: the lockout, or the window's end once failures and
+   * logins in flight fill it. 0 while logins are open.
+   */
+  waitFor(now: number): number {
+    const locked = this.lockedFor(now);
+    if (locked > 0) return locked;
+    const failures = now >= this.windowEnd ? 0 : this.failures;
+    if (failures + this.inFlight < LOGIN_LIMIT_GLOBAL) return 0;
+    return now < this.windowEnd ? this.windowEnd - now : LOGIN_WINDOW_MS;
+  }
+
+  /** Counts a login before its body is read; see FailureWindow.begin. */
+  begin(): void {
+    this.inFlight++;
+  }
+
+  /** Settles a login counted by begin(). */
+  end(): void {
+    this.inFlight--;
   }
 
   fail(now: number): void {
@@ -287,18 +326,33 @@ export function createSessionAuth(options: SessionAuthOptions): Hono {
     secure:
       new URL(c.req.url).protocol === 'https:' || c.req.header('X-Forwarded-Proto') === 'https',
   });
-  app.post('/api/auth/login', bodyLimit({ maxSize: 4096 }), async (c) => {
+  // Runs before bodyLimit, which reads the whole body before the route. The attempt takes its place
+  // here, from the headers, so a request that withholds its body counts like any other. The place
+  // is given back in finally, once the handler has recorded any failure.
+  const loginGate = async (c: Context<LoginEnv>, next: Next) => {
     const now = Date.now();
     const client = clientWindow(clientAddress(c));
-    const globalWait = everyone.lockedFor(now);
+    const globalWait = everyone.waitFor(now);
     if (globalWait > 0 || client.blocked(now)) {
       const wait = globalWait > 0 ? globalWait : client.remainingMs(now);
       c.header('Retry-After', String(Math.ceil(wait / 1000)));
       return c.json({ error: 'Too many attempts. Try again later.' }, 429);
     }
+    client.begin();
+    everyone.begin();
+    c.set('loginWindow', client);
+    try {
+      await next();
+    } finally {
+      client.end();
+      everyone.end();
+    }
+  };
+  app.post('/api/auth/login', loginGate, bodyLimit({ maxSize: 4096 }), async (c) => {
+    const client = c.get('loginWindow') as FailureWindow;
     const body = await c.req.json().catch(() => null);
     if (typeof body?.password !== 'string' || !sameSecret(body.password, password)) {
-      everyone.fail(now);
+      everyone.fail(Date.now());
       client.fail();
       return c.json({ error: 'Incorrect password.' }, 401);
     }

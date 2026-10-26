@@ -225,15 +225,18 @@ export function validateConfig(env: NodeJS.ProcessEnv): AppConfig {
 }
 
 /** Load the shared repository .env file and validate the complete runtime configuration. */
-export function loadConfig(): AppConfig {
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (!rootEnvLoaded) {
     const rootEnv = join(repoDir, '.env');
     if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
     rootEnvLoaded = true;
   }
   // Production secrets are checked by validateConfig; createAuth checks the login password.
-  const config = validateConfig(process.env);
+  const config = validateConfig(env);
   if (!config.voiceGatewayToken)
     throw new Error('Set VOICE_GATEWAY_TOKEN in .env before starting the gateway');
+  // No development fallback in any mode: without it every /api/devices route answers 401.
+  if (!config.auth.deviceToken)
+    throw new Error('Set ARTEMIS_DEVICE_TOKEN in .env before starting the gateway');
   return config;
 }

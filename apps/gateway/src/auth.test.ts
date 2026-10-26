@@ -251,6 +251,71 @@ test('the global lockout doubles on each repeat and then reopens', async (t) => 
   assert.equal((await attempt(app, '198.51.100.3')).status, 200);
 });
 
+/** A login whose headers arrive now and whose body stays open until `release` closes it. */
+function withheldLogin(app: App, address: string) {
+  let release = () => {};
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      release = () => controller.close();
+    },
+  });
+  const response = Promise.resolve(
+    app.request(
+      `${ORIGIN}/api/auth/login`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        duplex: 'half',
+      } as RequestInit,
+      peer(address)
+    )
+  );
+  return { response, release };
+}
+
+/** Lets every request already started run as far as it can without its body: its login counted. */
+const flushed = () => new Promise((resolve) => setImmediate(resolve));
+
+/** The promise's value, or 'still waiting' if it has not settled within the wait. */
+const settledWithin = <T>(promise: Promise<T>, ms: number) =>
+  Promise.race([
+    promise,
+    new Promise<'still waiting'>((resolve) => setTimeout(resolve, ms, 'still waiting')),
+  ]);
+
+test('concurrent logins with delayed bodies share one limit window', async () => {
+  const app = fixture();
+  const admitted: ReturnType<typeof withheldLogin>[] = [];
+  const refusedLogins: ReturnType<typeof withheldLogin>[] = [];
+  try {
+    // Ten logins send headers and withhold their bodies: each one takes a place in the window.
+    for (let i = 0; i < 10; i++) admitted.push(withheldLogin(app, '203.0.113.60'));
+    await flushed();
+    const eleventh = withheldLogin(app, '203.0.113.60');
+    refusedLogins.push(eleventh);
+    const refused = await settledWithin(eleventh.response, 100);
+    if (refused === 'still waiting')
+      assert.fail('an eleventh login from one client must be refused before its body arrives');
+    assert.equal(refused.status, 429);
+
+    // Forty more from other clients make fifty in flight, so the global ceiling refuses the next.
+    for (let i = 0; i < 40; i++) admitted.push(withheldLogin(app, `203.0.113.${100 + i}`));
+    await flushed();
+    const overCeiling = withheldLogin(app, '198.51.100.9');
+    refusedLogins.push(overCeiling);
+    const ceiling = await settledWithin(overCeiling.response, 100);
+    if (ceiling === 'still waiting')
+      assert.fail('the global ceiling must count logins whose bodies are withheld');
+    assert.equal(ceiling.status, 429);
+    assert.equal(ceiling.headers.get('Retry-After'), '60');
+  } finally {
+    for (const login of [...admitted, ...refusedLogins]) login.release();
+  }
+  // Every admitted login settles once its body closes, as a failed password.
+  for (const login of admitted) assert.equal((await login.response).status, 401);
+});
+
 test('an /api response with no cache policy is no-store, raw Responses included', async () => {
   const app = gate();
   app.get('/api/relayed', () => new Response('relayed', { status: 200 }));
