@@ -158,6 +158,20 @@ def test_compose_service_name_needs_the_explicit_opt_in():
         require_secure_gateway_url("http://voice.example.com", allow_service_name=True)
 
 
+def test_gateway_token_is_not_in_the_settings_repr():
+    settings = Settings(
+        gateway_url="https://gateway.example.com",
+        gateway_token="super-secret-token",
+        stt="groq/whisper-large-v3-turbo",
+        tts="deepgram/flux-hannah-en",
+        language="en",
+        greeting="",
+        groq_base_url=config.DEFAULT_GROQ_BASE_URL,
+    )
+    assert "super-secret-token" not in repr(settings)
+    assert settings.gateway_token == "super-secret-token"
+
+
 def test_conversation_id_is_quoted_in_the_base_url():
     settings = Settings(
         gateway_url="https://gateway.example.com",

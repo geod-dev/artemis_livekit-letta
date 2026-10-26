@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -123,7 +123,8 @@ def require_secure_gateway_url(url: str, *, allow_service_name: bool = False) ->
 @dataclass(frozen=True)
 class Settings:
     gateway_url: str
-    gateway_token: str
+    # Kept out of repr so that logging or printing the settings never shows the bearer token.
+    gateway_token: str = field(repr=False)
     stt: str
     tts: str
     language: str

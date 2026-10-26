@@ -41,6 +41,8 @@ UPDATE_RETRY_BASE_SECONDS = 1.0
 UPDATE_RETRY_MAX_SECONDS = 30.0
 # An update that keeps failing is abandoned after this many attempts.
 MAX_UPDATE_ATTEMPTS = 8
+# An acknowledgement that keeps failing is retried this many times, then given up.
+MAX_ACKNOWLEDGE_RETRIES = 10
 
 
 def _retry_delay(attempt: int) -> float:
@@ -179,7 +181,9 @@ class CallController:
         """Keep the gateway's call channel open; it delivers update notices.
 
         A failing channel is reopened with capped exponential backoff. The first
-        failure of a streak is logged as a warning; later ones only at debug level.
+        failure of a streak is logged as a warning, and so is every permanent 4xx
+        (for example a rejected token, which stops update notices); other later
+        failures are logged only at debug level.
         """
         failures = 0
         while not self._ending:
@@ -194,7 +198,13 @@ class CallController:
             except asyncio.CancelledError:
                 raise
             except Exception as error:
-                if failures == 0 and not received:
+                if isinstance(error, aiohttp.ClientResponseError) and _is_permanent(error):
+                    logger.warning(
+                        "gateway call channel rejected with HTTP %s; update notices stop until it "
+                        "is accepted again, retrying",
+                        error.status,
+                    )
+                elif failures == 0 and not received:
                     logger.warning("gateway call channel failed: %s; reconnecting", error)
                 else:
                     logger.debug("gateway call channel failed again: %s", error)
@@ -306,8 +316,9 @@ class CallController:
             or update_id in self._abandoned
         ):
             return
+        # `attempt` numbers this failure, so exactly MAX_UPDATE_ATTEMPTS tries happen.
         attempt = self._retry_attempts.get(update_id, 0) + 1
-        if attempt > MAX_UPDATE_ATTEMPTS:
+        if attempt >= MAX_UPDATE_ATTEMPTS:
             self._abandoned.add(update_id)
             self._retry_attempts.pop(update_id, None)
             logger.warning(
@@ -319,17 +330,27 @@ class CallController:
         self._spawn(self._retry_update_after(update_id, _retry_delay(attempt)))
 
     async def _retry_acknowledge(self, update_id: str, *, heard: bool) -> None:
-        attempt = 1
-        while not self._ending:
+        for attempt in range(1, MAX_ACKNOWLEDGE_RETRIES + 1):
             await asyncio.sleep(_retry_delay(attempt))
             if self._ending:
                 return
             try:
                 await self._gateway.acknowledge_update(update_id, heard=heard)
                 return
-            except Exception:
+            except Exception as error:
+                if isinstance(error, aiohttp.ClientResponseError) and _is_permanent(error):
+                    # The gateway no longer knows this update (for example its conversation was
+                    # removed mid-call): retrying cannot succeed.
+                    logger.warning(
+                        "gateway rejected the acknowledgement of update %s (HTTP %s); not retrying",
+                        update_id,
+                        error.status,
+                    )
+                    return
                 logger.warning("could not acknowledge update %s", update_id, exc_info=True)
-                attempt += 1
+        logger.warning(
+            "gave up acknowledging update %s after %d retries", update_id, MAX_ACKNOWLEDGE_RETRIES
+        )
 
     async def _retry_update_after(self, update_id: str, delay: float) -> None:
         try:

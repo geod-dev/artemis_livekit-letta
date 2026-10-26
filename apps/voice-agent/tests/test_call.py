@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
@@ -310,3 +311,87 @@ def test_reconnect_delay_grows_and_is_capped() -> None:
     assert call_module._reconnect_delay(1) == call_module.RECONNECT_SECONDS
     assert call_module._reconnect_delay(3) == 8.0
     assert call_module._reconnect_delay(50) == call_module.RECONNECT_MAX_SECONDS
+
+
+async def test_update_that_keeps_failing_is_attempted_exactly_max_times(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(call_module, "UPDATE_RETRY_BASE_SECONDS", 0.0)
+    controller, _, _, gateway = setup(CallState(mode="long", next="listen"))
+    attempts = 0
+
+    async def unavailable(update_id: str) -> AsyncIterator[str]:
+        nonlocal attempts
+        attempts += 1
+        raise http_error(503)
+        yield ""  # pragma: no cover - makes this an async generator
+
+    gateway.update_text = unavailable  # type: ignore[method-assign]
+    await gateway.notices.put({"type": "update", "id": "flaky"})
+    for _ in range(500):
+        if "flaky" in controller._abandoned:
+            break
+        await asyncio.sleep(0.01)
+    assert "flaky" in controller._abandoned
+    await asyncio.sleep(0.2)
+    assert attempts == call_module.MAX_UPDATE_ATTEMPTS
+    await controller.aclose()
+
+
+async def test_acknowledgement_stops_after_a_permanent_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(call_module, "UPDATE_RETRY_BASE_SECONDS", 0.0)
+    controller, _, _, gateway = setup(CallState(mode="long", next="listen"))
+    calls = 0
+
+    async def rejected(update_id: str, *, heard: bool) -> None:
+        nonlocal calls
+        calls += 1
+        raise http_error(404)
+
+    gateway.acknowledge_update = rejected  # type: ignore[method-assign]
+    await controller._retry_acknowledge("gone", heard=True)
+    assert calls == 1
+    await controller.aclose()
+
+
+async def test_acknowledgement_retries_are_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(call_module, "UPDATE_RETRY_BASE_SECONDS", 0.0)
+    controller, _, _, gateway = setup(CallState(mode="long", next="listen"))
+    calls = 0
+
+    async def unavailable(update_id: str, *, heard: bool) -> None:
+        nonlocal calls
+        calls += 1
+        raise http_error(503)
+
+    gateway.acknowledge_update = unavailable  # type: ignore[method-assign]
+    await controller._retry_acknowledge("flaky", heard=True)
+    assert calls == call_module.MAX_ACKNOWLEDGE_RETRIES
+    await controller.aclose()
+
+
+async def test_permanent_rejection_of_the_call_channel_is_logged_on_each_attempt(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(call_module, "RECONNECT_SECONDS", 0.0)
+    controller, _, _, gateway = setup(CallState(mode="long", next="listen"))
+    opened = 0
+
+    async def rejected() -> AsyncIterator[dict[str, Any]]:
+        nonlocal opened
+        opened += 1
+        raise http_error(401)
+        yield {}  # pragma: no cover - makes this an async generator
+
+    gateway.events = rejected  # type: ignore[method-assign]
+    with caplog.at_level(logging.WARNING, logger="voice_agent"):
+        for _ in range(300):
+            if opened >= 3:
+                break
+            await asyncio.sleep(0.01)
+    await controller.aclose()
+    assert opened >= 3
+    rejections = [r for r in caplog.records if "rejected with HTTP 401" in r.getMessage()]
+    assert len(rejections) >= 3
