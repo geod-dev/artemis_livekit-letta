@@ -60,6 +60,9 @@ export interface StreamConnection {
 
 export const CONNECT_ERROR = 'Could not connect to the conversation stream. Try sending again.';
 
+/** Shown once the live updates have been down for a few failures; the composer offers a Reconnect. */
+export const LIVE_UPDATES_DOWN = 'Live updates are unavailable. Reconnecting…';
+
 /** Stream failures in a row before the user is told the live updates are down. */
 const OUTAGE_FAILURES = 3;
 
@@ -326,7 +329,7 @@ export function subscribeToConversation(
       failuresSinceOpen += 1;
       if (failuresSinceOpen >= OUTAGE_FAILURES && !outageShown) {
         outageShown = true;
-        deps.setError('Live updates are unavailable. Reconnecting…');
+        deps.setError(LIVE_UPDATES_DOWN);
       }
     },
     onEvent: (event) => {

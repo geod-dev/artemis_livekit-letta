@@ -2,9 +2,12 @@ import { XIcon } from 'lucide-react';
 import { ComposerPrimitive, QueueItemPrimitive, useAuiState } from '@assistant-ui/react';
 import { TaskLabel } from '@/components/tasks/task-label';
 import { TaskStopButton } from '@/components/tasks/task-stop-button';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useAppActivity } from '@/hooks/use-app-activity';
 import { useChatThread } from '@/hooks/use-chat-thread';
+import { reconnectLiveUpdates } from '@/lib/conversation-client';
+import { LIVE_UPDATES_DOWN } from '@/lib/conversation-subscription';
 import { cn } from '@/lib/shadcn/utils';
 import { formatTaskDuration, taskStatusLabel } from '@/lib/task-status';
 
@@ -39,7 +42,16 @@ export function BeforeComposer() {
           />
         </div>
       ))}
-      {error && <p className="task-error animate-pop-in rounded-xl px-4 py-2 text-sm">{error}</p>}
+      {error === LIVE_UPDATES_DOWN ? (
+        <div className="task-error animate-pop-in flex w-full flex-wrap items-center gap-2 rounded-xl px-4 py-2 text-sm">
+          <p className="min-w-0 flex-1">{error}</p>
+          <Button type="button" variant="outline" size="sm" onClick={reconnectLiveUpdates}>
+            Reconnect
+          </Button>
+        </div>
+      ) : (
+        error && <p className="task-error animate-pop-in rounded-xl px-4 py-2 text-sm">{error}</p>
+      )}
       {activityError && (
         <p role="alert" className="text-destructive px-1 py-2 text-sm">
           {activityError}

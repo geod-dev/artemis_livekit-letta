@@ -9,7 +9,7 @@ import {
 } from '@assistant-ui/react';
 import type { useConversation } from '@/hooks/use-conversation';
 import type { useConversations } from '@/hooks/use-conversations';
-import { attachmentAdapter, sentAttachments } from '@/lib/attachment-adapter';
+import { createAttachmentAdapter, sentAttachments } from '@/lib/attachment-adapter';
 import { type ThreadMessageCache, toThreadMessages } from '@/lib/thread-messages';
 
 // `lastMessageAt` is not part of the adapter's thread type, but the runtime
@@ -47,6 +47,14 @@ export function useChatRuntime({
   const { send, cancel, showPending, expectNew, keepPending, rewind, setErrorFor } = conversation;
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
+  // The attachment adapter counts the composer's attachments through the runtime,
+  // which is created below and read on each add.
+  const runtimeRef = useRef<ReturnType<typeof useExternalStoreRuntime> | null>(null);
+  const [attachments] = useState(() =>
+    createAttachmentAdapter(
+      () => runtimeRef.current?.thread.composer.getState().attachments.length ?? 0
+    )
+  );
 
   const cache = useRef<ThreadMessageCache>(new Map());
   const messages = useMemo(() => {
@@ -205,7 +213,7 @@ export function useChatRuntime({
     [list.conversations, callConversationId]
   );
 
-  return useExternalStoreRuntime({
+  const runtime = useExternalStoreRuntime({
     messages,
     convertMessage: identity,
     isRunning,
@@ -232,7 +240,7 @@ export function useChatRuntime({
       }
     },
     adapters: {
-      attachments: attachmentAdapter,
+      attachments,
       threadList: {
         threadId: activeId ?? undefined,
         isLoading: list.loading,
@@ -247,4 +255,6 @@ export function useChatRuntime({
       },
     },
   });
+  runtimeRef.current = runtime;
+  return runtime;
 }

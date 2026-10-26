@@ -72,6 +72,17 @@ export interface ConversationStreamHandlers {
 const STREAM_RETRY_MIN_MS = 1_000;
 const STREAM_RETRY_MAX_MS = 30_000;
 
+/** Reopens the conversation stream that is open in the app now (see reconnectLiveUpdates). */
+let reopenNow: (() => void) | null = null;
+
+/**
+ * Reopens the live event stream at once, with the backoff reset, for a user who asks to
+ * reconnect. Does nothing when the stream is already open.
+ */
+export function reconnectLiveUpdates(): void {
+  reopenNow?.();
+}
+
 /**
  * Subscribe to a conversation's live events. Returns the function that closes it.
  * The browser retries a stream that failed transiently, but gives up for good on a
@@ -121,11 +132,21 @@ export function openConversationStream(
       handlers.onEvent(parsed);
     };
   };
+  const reopen = () => {
+    if (closed || source?.readyState === EventSource.OPEN) return;
+    clearTimeout(retryTimer);
+    failures = 0;
+    source?.close();
+    source = null;
+    connect();
+  };
+  reopenNow = reopen;
   connect();
   return () => {
     closed = true;
     clearTimeout(retryTimer);
     source?.close();
+    if (reopenNow === reopen) reopenNow = null;
   };
 }
 

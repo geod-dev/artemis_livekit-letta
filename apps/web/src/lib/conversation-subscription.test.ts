@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import type { ConversationEvent } from '@artemis/contracts/chat-types';
-import { openConversationStream } from './conversation-client.ts';
+import { openConversationStream, reconnectLiveUpdates } from './conversation-client.ts';
 import {
   CONNECT_ERROR,
   type ConversationEventDeps,
+  LIVE_UPDATES_DOWN,
   type StreamConnection,
   awaitStreamReady,
   createConversationEventRouter,
@@ -272,6 +273,57 @@ test('reopens the stream after EventSource closes on a 502', () => {
     assert.deepEqual(fetched, ['c1', 'c1'], 'the history is re-read on each open, the reopen too');
     close();
     assert.equal(FakeEventSource.instances[1]?.readyState, FakeEventSource.CLOSED);
+  } finally {
+    mock.timers.reset();
+    Reflect.set(globalThis, 'EventSource', original);
+    FakeEventSource.instances = [];
+  }
+});
+
+test('Reconnect reopens the stream at once after the outage is shown', () => {
+  const original = Reflect.get(globalThis, 'EventSource');
+  Reflect.set(globalThis, 'EventSource', FakeEventSource);
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { deps, store } = fakeDeps();
+    const connected = { current: { id: null as string | null, ready: Promise.resolve() } };
+    const close = subscribeToConversation('c1', true, {
+      ...deps,
+      connected,
+      setStopped: () => undefined,
+      activate: () => undefined,
+      dispatch: () => undefined,
+      fetchHistory: async () => [],
+      openStream: openConversationStream,
+    });
+    FakeEventSource.instances[0]?.open();
+
+    // Three failures in a row: the backoff grows to 4 s and the outage is shown.
+    FakeEventSource.instances[0]?.fail(FakeEventSource.CLOSED);
+    mock.timers.tick(1_000);
+    FakeEventSource.instances[1]?.fail(FakeEventSource.CLOSED);
+    mock.timers.tick(2_000);
+    FakeEventSource.instances[2]?.fail(FakeEventSource.CLOSED);
+    assert.equal(store.error, LIVE_UPDATES_DOWN);
+    assert.equal(FakeEventSource.instances.length, 3, 'the next reopen waits out the 4 s backoff');
+
+    // The user asks to reconnect: the stream reopens now, and the scheduled reopen is dropped.
+    reconnectLiveUpdates();
+    assert.equal(FakeEventSource.instances.length, 4);
+    mock.timers.tick(10_000);
+    assert.equal(FakeEventSource.instances.length, 4, 'the backoff timer no longer reopens it');
+
+    FakeEventSource.instances[3]?.open();
+    assert.equal(store.error, null, 'the outage clears once the stream is open');
+    assert.equal(connected.current.id, 'c1');
+
+    // An open stream is left alone.
+    reconnectLiveUpdates();
+    assert.equal(FakeEventSource.instances.length, 4);
+    assert.notEqual(FakeEventSource.instances[3]?.readyState, FakeEventSource.CLOSED);
+
+    close();
+    assert.equal(FakeEventSource.instances[3]?.readyState, FakeEventSource.CLOSED);
   } finally {
     mock.timers.reset();
     Reflect.set(globalThis, 'EventSource', original);
