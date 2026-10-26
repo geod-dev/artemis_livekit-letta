@@ -1,11 +1,20 @@
-import { type Logger, errorMessage } from '@artemis/core';
+import { type Clock, type Logger, errorMessage } from '@artemis/core';
 import { mcpToolsReminder, type McpCatalog } from '@artemis/mcp';
 import type { ConversationRecord, Storage } from '@artemis/storage';
 import { safely } from '../safely.ts';
+import { runWithTimeout } from '../../util/async.ts';
+
+/**
+ * Longest a turn or a subagent start waits for the MCP catalog. A refresh past this
+ * bound keeps running inside the catalog (its next read sees the result); the caller
+ * proceeds without the tool list for this turn.
+ */
+export const MCP_CATALOG_WAIT_MS = 3_000;
 
 export interface McpReminderDeps {
   storage: Pick<Storage, 'conversations'>;
   catalog: McpCatalog;
+  clock: Clock;
   logger: Logger;
 }
 
@@ -26,10 +35,11 @@ export interface McpReminderPlan {
 export class McpReminder {
   constructor(private readonly deps: McpReminderDeps) {}
 
-  async plan(conversationId: string, conversation: ConversationRecord): Promise<McpReminderPlan> {
-    const { catalog, logger } = this.deps;
+  /** Plans the reminder under `signal` (the turn's); the catalog wait is bounded by `MCP_CATALOG_WAIT_MS`. */
+  async plan(conversationId: string, conversation: ConversationRecord, signal: AbortSignal): Promise<McpReminderPlan> {
+    const { catalog, clock, logger } = this.deps;
     try {
-      const names = await catalog.names();
+      const names = await runWithTimeout({ clock, timeoutMs: MCP_CATALOG_WAIT_MS, parent: signal }, () => catalog.names());
       const reminder = mcpToolsReminder(names, conversation.mcpToolNamesShown);
       return { ...(reminder ? { reminder } : {}), names };
     } catch (error) {

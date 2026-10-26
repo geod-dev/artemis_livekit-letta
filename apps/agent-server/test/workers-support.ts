@@ -213,7 +213,7 @@ export function testConfig(workspaceRoot: string, overrides: Partial<AgentServer
     models: { assistant: 'anthropic/test-model', task: 'anthropic/test-model', title: 'anthropic/test-model' },
     providers: {},
     workspace: { root: workspaceRoot, displayRoot: '/workspace', readOnlyPrefixes: ['data/'] },
-    workers: { idleTimeoutMs: 120_000, backgroundAfterMs: 200, maxPendingTurns: 32, maxSubagents: 4, ...overrides },
+    workers: { idleTimeoutMs: 120_000, backgroundAfterMs: 200, maxPendingTurns: 32, maxSubagents: 4, maxCommandTasks: 8, ...overrides },
     memory: {
       enabled: false,
       hindsightUrl: '',

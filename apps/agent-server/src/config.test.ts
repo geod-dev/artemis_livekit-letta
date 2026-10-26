@@ -33,6 +33,7 @@ describe('loadConfig', () => {
     assert.equal(config.workers.backgroundAfterMs, 10_000);
     assert.equal(config.workers.maxPendingTurns, 32);
     assert.equal(config.workers.maxSubagents, 4);
+    assert.equal(config.workers.maxCommandTasks, 8);
     assert.equal(config.memory.enabled, false);
     assert.equal(config.memory.retainEvery, 3);
     assert.deepEqual(config.workspace.readOnlyPrefixes, ['data/']);

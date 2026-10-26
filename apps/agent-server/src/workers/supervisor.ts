@@ -62,6 +62,7 @@ export class WorkerSupervisor implements TaskWorkers {
         clock: base.clock,
         subagents: base.subagents,
         maxSubagents: base.config.workers.maxSubagents,
+        maxCommandTasks: base.config.workers.maxCommandTasks,
       },
       this
     );
@@ -178,6 +179,15 @@ export class WorkerSupervisor implements TaskWorkers {
     let count = 0;
     for (const worker of this.taskWorkers.values()) {
       if (worker instanceof SubagentTaskWorker) count += 1;
+    }
+    return count;
+  }
+
+  /** Command workers that are registered and not yet finished. */
+  runningCommandCount(): number {
+    let count = 0;
+    for (const worker of this.taskWorkers.values()) {
+      if (worker instanceof CommandTaskWorker) count += 1;
     }
     return count;
   }

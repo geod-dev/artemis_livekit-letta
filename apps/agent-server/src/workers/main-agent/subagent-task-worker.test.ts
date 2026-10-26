@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { SubagentSpec } from '../types.ts';
+import { EphemeralStorage } from '@artemis/storage/testing';
 import { createHarness, seedConversation, until } from '../../../test/workers-support.ts';
+import { resumedHistory } from './subagent-task-worker.ts';
 
 const spec = (overrides: Partial<SubagentSpec> = {}): SubagentSpec => ({
   conversationId: 'c1',
@@ -50,4 +52,45 @@ test('a background subagent run completes its task and leaves an update for the 
   assert.equal(update?.status, 'completed');
   assert.equal(update?.report, 'Background report.');
   await h.runtime.supervisor.shutdown();
+});
+
+test('a resume chain over the cap replays its newest tasks behind a notice counting the omitted ones', async () => {
+  const storage = new EphemeralStorage();
+  await storage.conversations.create(
+    { id: 'c1', title: null, titleSource: null },
+    { systemPrompt: 'S', tools: [], templateId: 'system', templateHash: 'test' }
+  );
+  let previous: string | null = null;
+  for (let index = 0; index < 21; index += 1) {
+    const id = `task_chain_${index}`;
+    await storage.tasks.create({
+      id,
+      conversationId: 'c1',
+      kind: 'agent',
+      status: 'completed',
+      title: 'Step',
+      prompt: 'step',
+      subagentType: 'general-purpose',
+      command: null,
+      cwd: null,
+      outputPath: null,
+      needsInput: false,
+      originMode: 'text',
+      originTurnId: null,
+      originToolCallId: null,
+      parentTaskId: null,
+      resumedFromTaskId: previous,
+      depth: 0,
+      model: null,
+      startedAt: '2026-10-26T10:00:00.000Z',
+    });
+    previous = id;
+  }
+
+  const overCap = await resumedHistory(storage, 'c1', previous);
+  assert.equal(overCap[0]?.role, 'user');
+  assert.match(JSON.stringify(overCap[0]), /1 earlier resumed tasks are omitted/);
+
+  const atCap = await resumedHistory(storage, 'c1', 'task_chain_19');
+  assert.equal(JSON.stringify(atCap).includes('omitted'), false);
 });

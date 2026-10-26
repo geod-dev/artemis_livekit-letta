@@ -24,6 +24,8 @@ export interface TaskServiceDeps {
   subagents: readonly SubagentDefinition[];
   /** `workers.maxSubagents`: subagents that may run at once. */
   maxSubagents: number;
+  /** `workers.maxCommandTasks`: background command tasks that may run at once. */
+  maxCommandTasks: number;
 }
 
 /** A command process handed over by the bash tool, to be run as a background task. */
@@ -45,6 +47,8 @@ export interface SubagentRun {
 /** The workers a task runs in: implemented by the supervisor, which owns their lifecycle. */
 export interface TaskWorkers {
   runningSubagentCount(): number;
+  /** Command workers registered in this process and not yet finished. */
+  runningCommandCount(): number;
   /** Registers a subagent before its task row exists, so archive and stop reach it at once. */
   registerSubagent(taskId: string, spec: SubagentSpec): SubagentRun;
   forgetSubagent(taskId: string): void;
@@ -57,14 +61,37 @@ export interface TaskWorkers {
 const LIST_LIMIT = 200;
 
 class WorkerTaskService implements TaskPort {
+  /** Adoptions past their cap check whose command worker is not registered yet. */
+  private pendingCommands = 0;
+
   constructor(
     private readonly deps: TaskServiceDeps,
     private readonly workers: TaskWorkers
   ) {}
 
+  /**
+   * The cap check and the reservation run before the first await, so concurrent
+   * adoptions cannot all pass a count that none of them has yet raised.
+   */
   async adopt(input: Parameters<CommandHandoff['adopt']>[0]): ReturnType<CommandHandoff['adopt']> {
     const context = input.context;
     if (!isAgentContext(context)) throw new AppError('invalid_context', 'Background commands need a conversation context', 500);
+    const { maxCommandTasks } = this.deps;
+    if (this.workers.runningCommandCount() + this.pendingCommands >= maxCommandTasks) {
+      throw new AppError('too_many_tasks', `At most ${maxCommandTasks} background commands can run at once`, 429);
+    }
+    this.pendingCommands += 1;
+    try {
+      return await this.adoptCommandTask(input, context);
+    } finally {
+      this.pendingCommands -= 1;
+    }
+  }
+
+  private async adoptCommandTask(
+    input: Parameters<CommandHandoff['adopt']>[0],
+    context: AgentToolContext
+  ): ReturnType<CommandHandoff['adopt']> {
     const taskId = prefixedId('task');
     const outputPath = `${DATA_SUBDIRS.tasks}/${taskId}.log`;
     await this.deps.storage.tasks.create({
@@ -105,17 +132,9 @@ class WorkerTaskService implements TaskPort {
   }
 
   async runSubagent(spec: SubagentSpec, signal: AbortSignal): Promise<{ taskId: string; report: string; status: ConversationTask['status'] }> {
-    const run = await this.spawnSubagent(spec, 'synchronous');
-    const { taskId } = run;
-    const stop = () => void run.stop('Cancelled by the user');
-    if (signal.aborted) stop();
-    else signal.addEventListener('abort', stop, { once: true });
-    try {
-      const { task } = await run.outcome;
-      return { taskId, report: task.report ?? '', status: task.status };
-    } finally {
-      signal.removeEventListener('abort', stop);
-    }
+    const run = await this.spawnSubagent(spec, 'synchronous', signal);
+    const { task } = await run.outcome;
+    return { taskId: run.taskId, report: task.report ?? '', status: task.status };
   }
 
   async list(conversationId: string): Promise<ConversationTask[]> {
@@ -142,19 +161,27 @@ class WorkerTaskService implements TaskPort {
    * starts the worker. Archive and stop reach the worker from registration on, even while
    * the row is being written or the loop is spawning.
    */
-  private async spawnSubagent(spec: SubagentSpec, mode: SubagentStartMode): Promise<SubagentRun> {
+  private async spawnSubagent(spec: SubagentSpec, mode: SubagentStartMode, signal?: AbortSignal): Promise<SubagentRun> {
     const { maxSubagents } = this.deps;
     if (this.workers.runningSubagentCount() >= maxSubagents) {
       throw new AppError('too_many_tasks', `At most ${maxSubagents} subagents can run at once`, 429);
     }
     const taskId = prefixedId('task');
     const run = this.workers.registerSubagent(taskId, spec);
+    // Cancellation reaches the worker from registration on, so an abort during spawning stops
+    // it without waiting for start() to return. The listener is released when the run settles.
+    const cancel = () => void run.stop('Cancelled by the user');
+    const release = () => signal?.removeEventListener('abort', cancel);
+    if (signal?.aborted) cancel();
+    else signal?.addEventListener('abort', cancel, { once: true });
     try {
       await this.createSubagentTask(taskId, spec);
     } catch (error) {
+      release();
       this.workers.forgetSubagent(taskId);
       throw error;
     }
+    void run.outcome.then(release, release);
     return this.workers.startSubagent(run, mode);
   }
 
@@ -168,6 +195,9 @@ class WorkerTaskService implements TaskPort {
       const previous = await storage.tasks.get(spec.resumedFromTaskId);
       if (!previous || previous.conversationId !== spec.conversationId || previous.kind !== 'agent') {
         throw new NotFoundError(`Task ${spec.resumedFromTaskId}`);
+      }
+      if (previous.status === 'running') {
+        throw new AppError('task_running', `Task ${spec.resumedFromTaskId} is still running and cannot be resumed`, 409);
       }
     }
     await storage.tasks.create({

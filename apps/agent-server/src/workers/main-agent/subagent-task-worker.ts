@@ -1,8 +1,8 @@
 import type { LoopOutcome } from '@artemis/agent-loop';
 import { AppError, errorMessage, uuid } from '@artemis/core';
 import type { LlmMessage, ToolDefinition, ToolUseBlock } from '@artemis/llm';
-import { mcpToolsSection } from '@artemis/mcp';
-import type { TurnUsage } from '@artemis/storage';
+import { mcpToolsSection, type McpCatalog } from '@artemis/mcp';
+import type { Storage, TurnUsage } from '@artemis/storage';
 import { needsUserInput } from '../../subagents/definitions.ts';
 import type { AgentToolContext } from '../../tools/index.ts';
 import { workspaceAccess, type WorkerEnv } from '../env.ts';
@@ -10,11 +10,15 @@ import { LoopPersistence, runLoop } from './loop-persistence.ts';
 import { TaskWorker } from '../task-worker.ts';
 import type { SubagentSpec, TaskOutcome } from '../types.ts';
 import { toLlmMessages } from './codecs.ts';
+import { MCP_CATALOG_WAIT_MS } from './mcp-reminder.ts';
 import { turnUsage } from './outcome.ts';
 import { isoAt } from '../../util/time.ts';
+import { runWithTimeout } from '../../util/async.ts';
 
 /** Longest chain of resumed tasks replayed into one transcript. */
 const MAX_RESUME_CHAIN = 20;
+
+type CatalogTools = Awaited<ReturnType<McpCatalog['tools']>>;
 
 /**
  * A subagent run: AgentLoop on the `worker` route, its own transcript
@@ -59,7 +63,7 @@ export class SubagentTaskWorker extends TaskWorker {
       workspace: env.workspace.displayRoot,
       conversationId: spec.conversationId,
       taskId,
-      mcpTools: mcpToolsSection(await env.catalog.tools()),
+      mcpTools: mcpToolsSection(await this.catalogTools()),
     });
     if (!controller.signal.aborted) {
       this.toolDefinitions = env.tools.definitions();
@@ -73,7 +77,7 @@ export class SubagentTaskWorker extends TaskWorker {
         templateHash: rendered.templateHash,
       });
     }
-    if (!controller.signal.aborted) this.history = await this.resumedHistory();
+    if (!controller.signal.aborted) this.history = await resumedHistory(env.storage, spec.conversationId, spec.resumedFromTaskId);
     this.currentState = 'busy';
     this.touch();
     void this.run()
@@ -210,18 +214,51 @@ export class SubagentTaskWorker extends TaskWorker {
     };
   }
 
-  /** Transcripts of the tasks this one resumes, oldest first. */
-  private async resumedHistory(): Promise<LlmMessage[]> {
-    const chain: string[] = [];
-    let id = this.spec.resumedFromTaskId;
-    while (id && chain.length < MAX_RESUME_CHAIN) {
-      chain.unshift(id);
-      id = (await this.env.storage.tasks.get(id))?.resumedFromTaskId ?? null;
+  /** The MCP tools for the frozen prompt; a catalog wait past the bound gives an empty list for this run. */
+  private async catalogTools(): Promise<CatalogTools> {
+    const { env, controller, taskId } = this;
+    try {
+      return await runWithTimeout({ clock: env.clock, timeoutMs: MCP_CATALOG_WAIT_MS, parent: controller.signal }, () =>
+        env.catalog.tools()
+      );
+    } catch (error) {
+      env.logger.warn('MCP tool list unavailable for this subagent', { taskId, error: errorMessage(error) });
+      return [];
     }
-    const history: LlmMessage[] = [];
-    for (const taskId of chain) {
-      history.push(...toLlmMessages(await this.env.storage.messages.transcript(this.spec.conversationId, taskId)));
-    }
-    return history;
   }
+}
+
+/**
+ * Transcripts of the tasks a resumed task follows, oldest first. A chain longer than
+ * `MAX_RESUME_CHAIN` keeps its newest tasks and starts with a notice counting the omitted ones.
+ */
+export async function resumedHistory(
+  storage: Pick<Storage, 'tasks' | 'messages'>,
+  conversationId: string,
+  fromTaskId: string | null
+): Promise<LlmMessage[]> {
+  const chain: string[] = [];
+  const seen = new Set<string>();
+  for (let id = fromTaskId; id && !seen.has(id); ) {
+    seen.add(id);
+    chain.unshift(id);
+    id = (await storage.tasks.get(id))?.resumedFromTaskId ?? null;
+  }
+  const omitted = Math.max(0, chain.length - MAX_RESUME_CHAIN);
+  const history: LlmMessage[] = [];
+  if (omitted > 0) {
+    history.push({
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: `${omitted} earlier resumed tasks are omitted from this transcript (only the newest ${MAX_RESUME_CHAIN} are replayed).`,
+        },
+      ],
+    });
+  }
+  for (const taskId of chain.slice(omitted)) {
+    history.push(...toLlmMessages(await storage.messages.transcript(conversationId, taskId)));
+  }
+  return history;
 }

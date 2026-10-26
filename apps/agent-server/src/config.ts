@@ -48,6 +48,8 @@ export interface AgentServerConfig {
     maxPendingTurns: number;
     /** Max concurrently running subagent tasks, fixed at 4 (not read from the environment). */
     maxSubagents: number;
+    /** Max concurrently running background command tasks, fixed at 8 (not read from the environment). */
+    maxCommandTasks: number;
   };
   memory: {
     enabled: boolean;
@@ -74,6 +76,8 @@ const DEFAULT_TASK_MODEL = 'openai-compatible/zai-org/GLM-5.3-Flash';
 /** Fixed limits and workspace settings: not read from the environment. */
 export const MAX_PENDING_TURNS = 32;
 const MAX_SUBAGENTS = 4;
+/** Background command tasks (each a live child process with a bounded log) that may run at once. */
+export const MAX_COMMAND_TASKS = 8;
 /** Workspace-relative data area: written by the server, read-only for agent tools. */
 const DATA_DIR = 'data';
 /** Subpaths of `DATA_DIR` (workspace-relative). */
@@ -272,6 +276,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentServerConfig {
       backgroundAfterMs: integer(env, 'BASH_BACKGROUND_AFTER_MS', 10_000, 0),
       maxPendingTurns: MAX_PENDING_TURNS,
       maxSubagents: MAX_SUBAGENTS,
+      maxCommandTasks: MAX_COMMAND_TASKS,
     },
     memory: {
       enabled: hindsightUrl !== '',

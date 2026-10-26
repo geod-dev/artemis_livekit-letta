@@ -158,7 +158,7 @@ export class MainAgentWorker extends Worker {
     const history = toLlmMessages(await this.env.storage.messages.transcript(conversationId, null));
     const [memories, mcp, images] = await Promise.all([
       this.followups.recall(conversationId, state),
-      this.mcp.plan(conversationId, conversation),
+      this.mcp.plan(conversationId, conversation, state.signal),
       inlineImages(this.env.workspace, this.env.logger, state.submission.attachments ?? []),
     ]);
     const content = await this.persistUserMessage(state, memories, mcp.reminder, images);
