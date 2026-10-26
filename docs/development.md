@@ -8,7 +8,7 @@
   Python 3.13 through `uv run --python 3.13`. The voice agent pins 3.13 in
   `apps/voice-agent/.python-version` and requires `>=3.13`.
 - **Docker with Compose v2** for Postgres, Hindsight, and LiveKit.
-- **Java 17 and Android SDK 35**, only for building the Android app.
+- **Java 17 and Android SDK 36**, only for building the Android app.
 
 ## Install
 
@@ -62,8 +62,11 @@ To test from another device, set `IP_ADDRESS` to the host's LAN address and `LIV
 to a matching bind address.
 
 The voice agent reads the env file named by `VOICE_ENV_FILE`, or the repository-root `.env` when
-that variable is unset. Its `GATEWAY_URL` must be HTTPS unless it is loopback, so a LAN gateway needs
-HTTPS. The device client needs `--server https://...` for any non-loopback gateway.
+that variable is unset. Its `GATEWAY_URL` must be HTTPS unless the host is loopback. A single-label
+Compose service name such as `http://gateway:3000` is accepted over plain HTTP only when
+`GATEWAY_ALLOW_PLAIN_HTTP_SERVICE` is set; Compose sets it for the voice-agent service, and host runs
+do not need it. A LAN gateway needs HTTPS. The device client needs `--server https://...` for any
+non-loopback gateway.
 
 ## Checks
 
@@ -73,7 +76,7 @@ Run every check group from the repository root:
 pnpm check
 ```
 
-Run one group with `pnpm check:<group>`. The groups are `gateway`, `agent-server`, `web`, `voice`,
+Run one group with `pnpm check:<group>`. The groups are `gateway`, `agent-server`, `web`, `voice-agent`,
 `device-client`, `mobile`, `packages`, `deploy`, `schema`, and `boundaries`. Their contents are
 listed in the [README](../README.md#checks).
 
@@ -81,11 +84,15 @@ Notes:
 
 - The `web` group runs `tsc` for the app, its Node config, and its tests (`tsconfig.test.json`), then
   the Prettier format check, ESLint, and the tests.
-- The `mobile` group needs a JDK and the Android SDK. Without a JDK, each of its steps is skipped with
-  a message, not failed.
+- The `mobile` group needs a JDK 17 and the Android SDK. Without a JDK, the group fails unless
+  `CHECK_SKIP_MOBILE=1` is set in the shell environment; with it, the group's steps are skipped with a
+  warning. `scripts/check.mjs` does not read `.env`, so set the variable in the shell that runs
+  `pnpm check`. A run with `CHECK_SKIP_MOBILE=1` does not build or test the Android app, and the Android
+  build is not verified on a machine without a JDK.
 - The `packages` group runs typecheck and tests for every `packages/*` workspace package.
-- The `schema` group fails if `packages/contracts/generated/present-tool.json` has drifted from its
-  generator. Regenerate it with `pnpm generate:present-tool`.
+- The `schema` group fails if `packages/contracts/generated/present-tool.json` or
+  `packages/contracts/generated/present-components.json` has drifted from the generator
+  (`scripts/generate-present-tool.ts --check`). Regenerate both with `pnpm generate:present-tool`.
 - Postgres integration tests run only when `TEST_DATABASE_URL` is set to a Postgres server admin URL.
   The suites create and drop their own databases, so use a throwaway server. Without it, `pnpm check`
   prints a warning and skips them.
@@ -147,16 +154,18 @@ release APK when one exists and the debug APK otherwise; pass `-ApkPath` to inst
 authenticated downloads, and same-site previews all depend on this origin. Navigations off that origin
 open in the browser. See [its README](../apps/mobile/README.md).
 
-Debug signing values are explicit. Set `ARTEMIS_DEBUG_STORE_PASSWORD`, `ARTEMIS_DEBUG_KEY_ALIAS`, and
-`ARTEMIS_DEBUG_KEY_PASSWORD` in the environment, or the matching `artemis.debug*` properties in
-`local.properties`. Without them, the standard Android debug values apply. The app has no release build
-type and no release signing.
+Debug signing: when `apps/mobile/.signing/debug.keystore` exists, debug builds are signed with it, and the
+build fails unless its values are set: `artemis.debugStorePassword`, `artemis.debugKeyAlias` and
+`artemis.debugKeyPassword` in `local.properties`, or `ARTEMIS_DEBUG_STORE_PASSWORD`,
+`ARTEMIS_DEBUG_KEY_ALIAS` and `ARTEMIS_DEBUG_KEY_PASSWORD` in the environment. Without that keystore,
+debug builds use the per-machine default Android debug key.
+
+Release signing: release builds are signed only with `apps/mobile/.signing/release.keystore` and its
+values, `artemis.releaseStorePassword`, `artemis.releaseKeyAlias` and `artemis.releaseKeyPassword` in
+`local.properties` (or the `ARTEMIS_RELEASE_STORE_PASSWORD`, `ARTEMIS_RELEASE_KEY_ALIAS` and
+`ARTEMIS_RELEASE_KEY_PASSWORD` environment variables). `artemis.releaseStoreFile` (or
+`ARTEMIS_RELEASE_STORE_FILE`) overrides the keystore path. Without them, the `assemble`, `bundle`,
+`package` and `install` Release tasks fail with a message. A release build never uses the debug key.
 
 Signing keys under `apps/mobile/.signing/` and build outputs are gitignored. Keep your debug keystore
 between builds if you want to install updates without uninstalling.
-
-## Known issues
-
-- **Peer dependency warning.** `pnpm install` reports that `@assistant-ui/react-streamdown` wants
-  `@streamdown/code@^1.0.0`, while `apps/web` uses `@streamdown/code` 2.0.0. This is a known issue, not
-  a fixed one.

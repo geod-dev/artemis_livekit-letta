@@ -58,18 +58,22 @@ alone with `pnpm check:<group>`:
 | `gateway` | Typecheck, ESLint, and tests for `apps/gateway` |
 | `agent-server` | Typecheck and tests for `apps/agent-server` |
 | `web` | Typecheck (app, Node config, and tests), Prettier format check, ESLint, and tests for `apps/web` |
-| `voice` | Pytest, ruff, and pyright for `apps/voice-agent` |
+| `voice-agent` | Pytest, ruff, and pyright for `apps/voice-agent` |
 | `device-client` | Ruff and unit tests for `apps/device-client` |
-| `mobile` | Debug APK build and JVM unit tests for `apps/mobile`. Needs JDK 17 and the Android SDK; without a JDK each step is skipped with a message |
+| `mobile` | Debug APK build, JVM unit tests and lint for `apps/mobile`. Needs JDK 17 and the Android SDK; without a JDK the group fails unless `CHECK_SKIP_MOBILE=1` is set |
 | `packages` | Typecheck and tests for every `packages/*` workspace package |
 | `deploy` | Mocked tests for the Coolify scripts, and syntax checks of the shell scripts in `deploy/` |
 | `schema` | Drift check for the generated present-tool schema, and typecheck of the generator |
 | `boundaries` | Dependency rules and the checker's self-test |
 
+`CHECK_SKIP_MOBILE=1` skips the `mobile` group's steps with a warning when no JDK is on `PATH`. Set it
+in the shell that runs `pnpm check`; `scripts/check.mjs` does not read `.env`. A run with it does not
+build or test the Android app.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md): the apps, packages, dependency rules, routes, runtime data, and how the services talk.
-- [Development](docs/development.md): prerequisites, running each app, checks, tests, and known issues.
+- [Development](docs/development.md): prerequisites, running each app, checks, and tests.
 - [Deployment](docs/deployment.md): Compose files, required settings, runtime data ownership, HTTPS, Postgres, and Coolify.
 - [Providers](docs/providers.md): model, worker, memory, and speech provider configuration.
 - [Web app design](docs/frontend-design.md): visual system and component layout of the web app.
