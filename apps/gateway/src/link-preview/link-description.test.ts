@@ -58,3 +58,14 @@ test('limits excerpts to the first 24 words', () => {
     `${words.slice(0, 24).join(' ')}…`
   );
 });
+
+test('a page of unclosed meta and title openers is parsed in linear time', () => {
+  // No '>' in the hostile run: each unclosed quote scans to the end of the head.
+  const hostile = '<meta "'.repeat(36 * 1024);
+  const html = `<head><meta name="description" content="Plain summary">${hostile}</head>`;
+  const started = performance.now();
+  const metadata = linkMetadata(html);
+  const elapsed = performance.now() - started;
+  assert.equal(metadata.description, 'Plain summary');
+  assert.ok(elapsed < 1000, `parsing took ${Math.round(elapsed)} ms`);
+});
