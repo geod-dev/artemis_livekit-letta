@@ -49,7 +49,9 @@ for a deployment are:
 - `WEB_BIND`, `WEB_PORT`, `LIVEKIT_SIGNAL_BIND`: host bind addresses.
 - Model and speech keys: `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_API_KEY` for
   workers, `GROQ_API_KEY` for transcription, `DEEPGRAM_API_KEY` for speech output, and
-  `HINDSIGHT_API_KEY` only if the Hindsight deployment requires one. See [Providers](providers.md).
+  `HINDSIGHT_API_KEY`, which is required. Compose passes it to Hindsight as its HTTP API token
+  (`HINDSIGHT_API_TENANT_API_KEY`) and to the agent-server as the bearer token. Generate it with
+  `openssl rand -hex 32`. See [Providers](providers.md).
 
 Local `.env` changes are not copied to Git or to Coolify. Set the values in the target
 environment.

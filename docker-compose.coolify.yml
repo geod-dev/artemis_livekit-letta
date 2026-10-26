@@ -49,6 +49,8 @@ services:
       HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_LLM_MODEL:-claude-haiku-5-5}
       HINDSIGHT_API_LLM_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in Coolify}
       HINDSIGHT_API_LLM_EXTRA_BODY: '{"output_config":{"effort":"medium"}}'
+      # The HTTP API checks this bearer token. The agent-server sends the same value as HINDSIGHT_API_KEY.
+      HINDSIGHT_API_TENANT_API_KEY: ${HINDSIGHT_API_KEY:?set HINDSIGHT_API_KEY in Coolify}
     depends_on:
       postgres:
         condition: service_healthy
