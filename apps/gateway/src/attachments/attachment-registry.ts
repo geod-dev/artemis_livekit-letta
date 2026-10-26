@@ -22,7 +22,16 @@ const CLEANUP_EVERY_MS = 6 * 60 * 60 * 1000;
 
 /** The type and kind of an upload, decided once from its leading bytes. */
 export type UploadRecord = { kind: 'image' | 'file'; mimeType: string };
-type RetentionRecord = UploadRecord & { createdAt: number; owners: string[] };
+/**
+ * `owners` holds one entry per reservation (`<conversation>#<uuid>`), so each turn
+ * releases only its own reference; a plain conversation id is a legacy or
+ * replaced-message owner. `unreferencedAt` is when the last owner was removed.
+ */
+type RetentionRecord = UploadRecord & {
+  createdAt: number;
+  owners: string[];
+  unreferencedAt?: number;
+};
 type RetentionState = { files: Record<string, RetentionRecord> };
 
 /** The retention state of one workspace, loaded once and persisted after every change. */
@@ -74,7 +83,11 @@ export class AttachmentRegistry {
    * keeps nothing from a refused reservation. The returned function gives back the
    * references this turn added; the route calls it when the turn is not accepted.
    */
-  async reserveReferences(owner: string, paths: readonly string[]): Promise<() => Promise<void>> {
+  async reserveReferences(
+    conversation: string,
+    paths: readonly string[]
+  ): Promise<() => Promise<void>> {
+    const owner = `${conversation}#${randomUUID()}`;
     const added = await this.update((state) => {
       const unavailable = paths.some((path) => !ATTACHMENT_PATH.test(path) || !state.files[path]);
       if (unavailable) throw new AttachmentUnavailableError();
@@ -83,27 +96,27 @@ export class AttachmentRegistry {
     return () => this.removeReferences(owner, added);
   }
 
-  /** Undo references added by `addReferences`. */
+  /** Undo the references of one owner, as returned by `reserveReferences`. */
   async removeReferences(owner: string, paths: readonly string[]): Promise<void> {
     await this.update((state) => {
       for (const path of paths) {
         const record = state.files[path];
-        if (record) record.owners = record.owners.filter((item) => item !== owner);
+        if (record) dropOwners(record, (item) => item === owner);
       }
     });
   }
 
   /** Replace the active references of a conversation after a message deletion. */
-  async setReferences(owner: string, paths: readonly string[]): Promise<void> {
+  async setReferences(conversation: string, paths: readonly string[]): Promise<void> {
     await this.update((state) => {
-      removeOwner(state, owner);
-      addOwner(state, owner, paths);
+      removeOwner(state, conversation);
+      addOwner(state, conversation, paths);
     });
   }
 
-  /** Drop every reference of a deleted conversation; its uploads become collectable. */
-  async releaseReferences(owner: string): Promise<void> {
-    await this.update((state) => removeOwner(state, owner));
+  /** Drop every reference of a deleted conversation, including each turn's; its uploads become collectable. */
+  async releaseReferences(conversation: string): Promise<void> {
+    await this.update((state) => removeOwner(state, conversation));
   }
 
   /** Remove an unreferenced upload: a discarded composer attachment, or a write that failed. */
@@ -126,7 +139,7 @@ export class AttachmentRegistry {
         if (
           !ATTACHMENT_PATH.test(path) ||
           record.owners.length ||
-          now - record.createdAt < ABANDONED_AFTER_MS
+          now - (record.unreferencedAt ?? record.createdAt) < ABANDONED_AFTER_MS
         )
           continue;
         await this.deleteUpload(path);
@@ -257,7 +270,8 @@ function isRetentionRecord(value: unknown): value is RetentionRecord {
     Array.isArray(value.owners) &&
     value.owners.every((owner) => typeof owner === 'string') &&
     typeof value.mimeType === 'string' &&
-    (value.kind === 'image' || value.kind === 'file')
+    (value.kind === 'image' || value.kind === 'file') &&
+    (value.unreferencedAt === undefined || typeof value.unreferencedAt === 'number')
   );
 }
 
@@ -274,15 +288,32 @@ function addOwner(
       missing.push(path);
     } else if (!record.owners.includes(owner)) {
       record.owners.push(owner);
+      delete record.unreferencedAt;
       added.push(path);
     }
   }
   return { missing, added };
 }
 
-function removeOwner(state: RetentionState, owner: string): void {
+/** Removes every owner of one conversation: its legacy owner and each turn's reservation. */
+function removeOwner(state: RetentionState, conversation: string): void {
   for (const record of Object.values(state.files))
-    record.owners = record.owners.filter((item) => item !== owner);
+    dropOwners(record, (item) => ownerConversation(item) === conversation);
+}
+
+/** Drops the matching owners, and stamps the moment the upload lost its last one. */
+function dropOwners(record: RetentionRecord, drop: (owner: string) => boolean): void {
+  const owners = record.owners.filter((owner) => !drop(owner));
+  if (owners.length === record.owners.length) return;
+  record.owners = owners;
+  if (owners.length === 0) record.unreferencedAt ??= Date.now();
+}
+
+const RESERVATION_OWNER = /^(.*)#[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/s;
+
+/** The conversation an owner belongs to: a reservation's conversation, or a legacy owner itself. */
+function ownerConversation(owner: string): string {
+  return RESERVATION_OWNER.exec(owner)?.[1] ?? owner;
 }
 
 function ignoreMissing(error: NodeJS.ErrnoException): void {

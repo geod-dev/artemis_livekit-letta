@@ -152,3 +152,79 @@ test('an invalid retention record is a load error and is never dropped on save',
     await rm(state, { recursive: true, force: true });
   }
 });
+
+const HOUR = 60 * 60 * 1000;
+
+test('an upload shared by two turns stays referenced when the earlier turn is rejected', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-shared-'));
+  const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-shared-state-'));
+  try {
+    const registry = new AttachmentStore(composeWorkspace(root), state).registry;
+    const upload = attachmentPath(randomUUID(), 'shared.png');
+    await registry.register(upload, IMAGE);
+
+    const rejectedTurn = await registry.reserveReferences('conversation-a', [upload]);
+    await registry.reserveReferences('conversation-a', [upload]);
+    await rejectedTurn();
+
+    // The accepted turn still references the upload, so it is neither removable nor collectable.
+    assert.equal(await registry.removeUnused(upload), false);
+    assert.equal(await registry.cleanupAbandoned(Date.now() + 2 * 24 * HOUR), 0);
+    assert.deepEqual(await registry.uploadOf(upload), IMAGE);
+
+    // Releasing the conversation (its deletion) drops the accepted turn's reference too.
+    await registry.releaseReferences('conversation-a');
+    assert.equal(await registry.cleanupAbandoned(Date.now() + 25 * HOUR), 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  }
+});
+
+test('an upload is kept for the full retention period after it loses its last owner', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-unref-'));
+  const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-unref-state-'));
+  try {
+    const uploadedAt = Date.parse('2026-01-01T00:00:00Z');
+    let clock = uploadedAt;
+    t.mock.method(Date, 'now', () => clock);
+    const registry = new AttachmentStore(composeWorkspace(root), state).registry;
+    const path = attachmentPath(randomUUID(), 'late.png');
+    await registry.register(path, IMAGE);
+
+    // Uploaded three days before the turn is sent and then rejected: it became unreferenced just now.
+    clock = uploadedAt + 3 * 24 * HOUR;
+    const release = await registry.reserveReferences('conversation-a', [path]);
+    await release();
+
+    clock = uploadedAt + 3 * 24 * HOUR + 23 * HOUR;
+    assert.equal(await registry.cleanupAbandoned(clock), 0);
+    clock = uploadedAt + 3 * 24 * HOUR + 25 * HOUR;
+    assert.equal(await registry.cleanupAbandoned(clock), 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  }
+});
+
+test('a retention state written before unreferencedAt existed still loads and releases its owners', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'artemis-attachment-legacy-'));
+  const state = await mkdtemp(join(tmpdir(), 'artemis-attachment-legacy-state-'));
+  try {
+    const path = attachmentPath(randomUUID(), 'legacy.png');
+    await writeFile(
+      join(state, 'attachment-retention.json'),
+      JSON.stringify({
+        files: { [path]: { ...IMAGE, createdAt: 0, owners: ['conversation-x'] } },
+      })
+    );
+    const registry = new AttachmentStore(composeWorkspace(root), state).registry;
+    const released = Date.now();
+    await registry.releaseReferences('conversation-x');
+    assert.equal(await registry.cleanupAbandoned(released + 23 * HOUR), 0);
+    assert.equal(await registry.cleanupAbandoned(released + 25 * HOUR), 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  }
+});
