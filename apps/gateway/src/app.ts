@@ -36,6 +36,7 @@ export function createGatewayApp(deps: GatewayDependencies, options: GatewayAppO
     password: config.auth.password,
     deviceToken: config.auth.deviceToken,
     dataDir: config.workspace.dataDir,
+    trustedProxies: config.auth.trustedProxies,
     peerAddress: options.peerAddress,
   });
   app.get('/health', (c) => c.json({ status: 'ok' }));

@@ -169,6 +169,8 @@ services:
       ASSISTANT_TRANSCRIPTION_MODEL: ${ASSISTANT_TRANSCRIPTION_MODEL:-}
       WORKSPACE_PATH: /workspace
       ARTEMIS_DATA_DIR: /data/gateway
+      # The web service's static edge address (see the edge network). Only its X-Real-IP is trusted.
+      TRUSTED_PROXIES: 172.29.250.10
     depends_on:
       agent-server:
         condition: service_healthy
@@ -202,7 +204,10 @@ services:
     ports:
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-5180}:8080"
     networks:
-      - edge
+      edge:
+        # Static address: the gateway's TRUSTED_PROXIES names it, so only this container's X-Real-IP counts.
+        # 172.29.250.10 is reserved for it; the other services on edge take dynamic addresses.
+        ipv4_address: 172.29.250.10
     healthcheck:
       # Local nginx check only: /health proxies to the gateway, so it would mark web unhealthy when the gateway is down.
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/nginx-health"]
@@ -246,6 +251,8 @@ networks:
   edge:
     # Pinned subnet: apps/web/nginx.conf trusts this range (and loopback) for X-Forwarded-For.
     # Keep the two in sync. Also set in docker-compose.coolify.yml, where the Coolify proxy must join this network.
+    # web holds the static address 172.29.250.10; the gateway's TRUSTED_PROXIES must name the same address.
+    # Change both together, and the same way in docker-compose.coolify.yml.
     ipam:
       config:
         - subnet: 172.29.250.0/24
