@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,6 +26,45 @@ async function replay(log: OutputLog): Promise<{ stream: string; text: string }[
   const out: { stream: string; text: string }[] = [];
   for await (const chunk of log.iterate()) out.push(chunk);
   return out;
+}
+
+/** Whether `pid` is alive. On Linux a killed child may stay a zombie until its reaper collects it, so zombies count as gone. */
+function childRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  try {
+    return !/\) Z /.test(readFileSync(`/proc/${pid}/stat`, 'utf8'));
+  } catch {
+    return true;
+  }
+}
+
+async function eventually(check: () => boolean, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (check()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return check();
+}
+
+/** The pid printed by `echo $!`, the last line of stdout. */
+function pidFrom(stdout: string): number {
+  const pid = Number(stdout.trim().split('\n').at(-1));
+  assert.ok(Number.isInteger(pid) && pid > 0, `expected a pid, got ${JSON.stringify(stdout)}`);
+  return pid;
+}
+
+/** Cleans up a background child that a failing assertion left running. */
+function killQuietly(pid: number): void {
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    // Already gone.
+  }
 }
 
 describe('OutputLog', () => {
@@ -173,4 +213,76 @@ describe('command lifetime', () => {
     assert.equal(exit.exitCode, 0);
     assert.match(process.tail().stdout, /quick/);
   });
+});
+
+describe('background children', () => {
+  const posixOnly = process.platform === 'win32' ? 'POSIX process groups' : false;
+
+  test(
+    'a background child is killed at the lifetime limit after the shell has exited',
+    { skip: posixOnly },
+    async () => {
+      const transport = new FilesystemWorkspaceTransport({
+        root,
+        displayRoot: '/workspace',
+        commandLifetimeMs: 1_000,
+      });
+      const proc = await transport.spawn({ command: 'sleep 60 & echo $!' });
+      await proc.exited;
+      const childPid = pidFrom(proc.tail().stdout);
+      try {
+        assert.equal(childRunning(childPid), true, 'the background child outlives the shell');
+        assert.equal(
+          await eventually(() => !childRunning(childPid), 10_000),
+          true,
+          'the lifetime limit kills the background child'
+        );
+      } finally {
+        killQuietly(childPid);
+      }
+    }
+  );
+
+  test(
+    'kill after the shell has exited still stops its background children',
+    { skip: posixOnly },
+    async () => {
+      const transport = new FilesystemWorkspaceTransport({
+        root,
+        displayRoot: '/workspace',
+        commandLifetimeMs: 60_000,
+      });
+      const proc = await transport.spawn({ command: 'sleep 60 & echo $!' });
+      await proc.exited;
+      const childPid = pidFrom(proc.tail().stdout);
+      try {
+        await proc.kill();
+        assert.equal(
+          await eventually(() => !childRunning(childPid), 10_000),
+          true,
+          'kill signals the process group even though the shell has exited'
+        );
+      } finally {
+        killQuietly(childPid);
+      }
+    }
+  );
+
+  test(
+    'win32: kill while the shell is alive ends its command tree',
+    { skip: process.platform !== 'win32' && 'Windows tree kill' },
+    async () => {
+      const transport = new FilesystemWorkspaceTransport({
+        root,
+        displayRoot: '/workspace',
+        commandLifetimeMs: 60_000,
+      });
+      const proc = await transport.spawn({ command: 'sleep 60 & sleep 60' });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const started = Date.now();
+      await proc.kill();
+      assert.equal(proc.running, false);
+      assert.ok(Date.now() - started < 15_000, 'taskkill /T returns well before the sleeps end');
+    }
+  );
 });

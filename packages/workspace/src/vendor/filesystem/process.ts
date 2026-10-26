@@ -186,14 +186,34 @@ class FilesystemProcess extends WorkspaceProcess {
 
   /** Resolves once the shell has exited and its tree has been signalled, so no child keeps the directory busy. */
   async kill(graceMs = DEFAULT_KILL_GRACE_MS): Promise<ProcessExit> {
-    if (this.finished) return this.exited;
+    if (!this.treeMayLive()) return this.exited;
     const signalled = signalTree(this.child, 'SIGTERM');
+    // Checks the tree, not the shell: a background child can outlive the shell and ignore the first signal.
     const force = setTimeout(() => {
-      if (!this.finished) void signalTree(this.child, 'SIGKILL');
+      if (this.treeMayLive()) void signalTree(this.child, 'SIGKILL');
     }, graceMs);
-    const exit = await this.exited.finally(() => clearTimeout(force));
+    force.unref();
+    const exit = await this.exited;
     await signalled;
     return exit;
+  }
+
+  /**
+   * Whether anything of this command may still run. On POSIX that is any member of its process group,
+   * so background children count after the shell has exited. On Windows `taskkill /T` cannot reach
+   * children orphaned by an exited shell, so only a running shell counts there.
+   */
+  private treeMayLive(): boolean {
+    if (process.platform === 'win32') return !this.finished;
+    const pid = this.child.pid;
+    if (pid === undefined) return false;
+    try {
+      process.kill(-pid, 0);
+      return true;
+    } catch (error) {
+      // EPERM: the group exists but this process may not signal it.
+      return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
   }
 
   async writeStdin(text: string): Promise<void> {
@@ -208,9 +228,11 @@ class FilesystemProcess extends WorkspaceProcess {
   /** Kill the process tree after `ms` (lifetime limit, or the synchronous timeout). */
   armTimeout(ms: number): void {
     this.timeout = setTimeout(() => {
-      this.timedOut = true;
+      if (!this.finished) this.timedOut = true;
       void this.kill();
     }, ms);
+    // Unref'd so a background child cannot keep the host process alive for the whole lifetime.
+    this.timeout.unref();
   }
 
   private append(stream: 'stdout' | 'stderr', text: string): void {
@@ -222,7 +244,11 @@ class FilesystemProcess extends WorkspaceProcess {
     this.append('stdout', this.decoders.stdout.end());
     this.append('stderr', this.decoders.stderr.end());
     this.finished = true;
-    if (this.timeout) clearTimeout(this.timeout);
+    // The lifetime timer outlives the shell while its group has members, so background children are still killed at the limit.
+    if (this.timeout && !this.treeMayLive()) {
+      clearTimeout(this.timeout);
+      this.timeout = null;
+    }
     if (this.drain) clearTimeout(this.drain);
     this.child.stdout?.destroy();
     this.child.stderr?.destroy();
