@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { prefixedId } from '@artemis/core';
 import { storageContract } from '../../../test/storage-contract.ts';
 import { EphemeralStorage } from './ephemeral-storage.ts';
 
@@ -69,4 +70,56 @@ test('EphemeralStorage transactions wait for queued operations and roll back on 
   await assert.rejects(failing, /abort/);
   assert.equal(await outside, null);
   assert.equal(await storage.conversations.get(id), null);
+});
+
+test('EphemeralStorage progress after finish keeps the final tails', async () => {
+  const storage = new EphemeralStorage();
+  const conversationId = '00000000-0000-4000-8000-000000000004';
+  await storage.conversations.create(
+    { id: conversationId, title: null, titleSource: null },
+    { systemPrompt: 'p', tools: [], templateId: 't', templateHash: 'h' }
+  );
+  const task = await storage.tasks.create({
+    id: prefixedId('task'),
+    conversationId,
+    kind: 'command',
+    status: 'running',
+    title: 'Build',
+    prompt: null,
+    subagentType: null,
+    command: 'npm run build',
+    cwd: '/workspace',
+    outputPath: null,
+    needsInput: false,
+    originMode: 'text',
+    originTurnId: null,
+    originToolCallId: null,
+    parentTaskId: null,
+    resumedFromTaskId: null,
+    depth: 0,
+    model: null,
+    startedAt: '2026-01-01T00:01:00.000Z',
+  });
+
+  await storage.tasks.updateProgress(task.id, { stdoutTail: 'building', outputPath: '/workspace/data/task.log' });
+  assert.equal((await storage.tasks.get(task.id))?.stdoutTail, 'building');
+
+  await storage.tasks.finish(task.id, {
+    status: 'completed',
+    report: 'done',
+    needsInput: false,
+    exitCode: 0,
+    stdoutTail: 'built',
+    stderrTail: 'warn',
+    usage: null,
+    endedAt: '2026-01-01T00:02:00.000Z',
+  });
+  await storage.tasks.updateProgress(task.id, { stdoutTail: 'late', stderrTail: 'late', outputPath: '/late.log' });
+
+  const row = await storage.tasks.get(task.id);
+  assert.equal(row?.status, 'completed');
+  assert.equal(row?.stdoutTail, 'built');
+  assert.equal(row?.stderrTail, 'warn');
+  assert.equal(row?.outputPath, '/workspace/data/task.log');
+  await assert.rejects(storage.tasks.updateProgress(prefixedId('task'), { stdoutTail: 'x' }), /task/);
 });

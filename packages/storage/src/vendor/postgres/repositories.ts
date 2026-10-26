@@ -565,12 +565,13 @@ class PgTaskRepository extends TaskRepository {
       return;
     }
     const sets = assignments.map(([column], index) => `${column} = $${index + 2}`).join(', ');
-    await requireAffected(
+    // Only a running task takes progress: a late write after finish() must not overwrite the final tails.
+    const updated = await affected(
       this.session,
-      `UPDATE tasks SET ${sets} WHERE id = $1`,
-      [id, ...assignments.map(([, value]) => value)],
-      'task'
+      `UPDATE tasks SET ${sets} WHERE id = $1 AND status = 'running'`,
+      [id, ...assignments.map(([, value]) => value)]
     );
+    if (updated === 0 && (await this.get(id)) === null) throw new NotFoundError('task');
   }
 
   async requestStop(id: string, at: string): Promise<void> {
@@ -830,9 +831,12 @@ class PgAppStateRepository extends AppStateRepository {
 
   swap<T>(key: AppStateKey, value: T): Promise<T | null> {
     return this.session.transaction(async (tx) => {
-      const repo = new PgAppStateRepository(tx);
-      const previous = await repo.get<T>(key);
-      await repo.set(key, value);
+      // Seed the row so there is something to lock. ON CONFLICT leaves an existing row untouched.
+      await tx.query(`INSERT INTO app_state (key, value) VALUES ($1, 'null'::jsonb) ON CONFLICT (key) DO NOTHING`, [key]);
+      // Lock the row for the rest of the transaction so concurrent swaps read the previous value in turn.
+      const { rows } = await tx.query<{ value: T | null }>('SELECT value FROM app_state WHERE key = $1 FOR UPDATE', [key]);
+      const previous = rows[0]?.value ?? null;
+      await new PgAppStateRepository(tx).set(key, value);
       return previous;
     });
   }

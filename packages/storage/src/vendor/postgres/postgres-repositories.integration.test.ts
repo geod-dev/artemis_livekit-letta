@@ -796,4 +796,47 @@ describe('PostgresStorage repositories against real Postgres', { skip }, () => {
       );
     });
   });
+
+  describe('app state swaps and task progress', () => {
+    test('concurrent swaps return distinct previous values', async () => {
+      await storage.appState.set('last_active_conversation_id', 'seed');
+      const values = Array.from({ length: 8 }, (_, index) => `v${index + 1}`);
+      const previous = await Promise.all(
+        values.map((value) => storage.appState.swap('last_active_conversation_id', value))
+      );
+      const final = await storage.appState.get<string>('last_active_conversation_id');
+
+      // The row lock serialises the swaps: each one sees a different predecessor, namely the seed and every value
+      // except the final one. Without the lock, two swaps can read the same predecessor and one write is lost.
+      assert.equal(new Set(previous).size, values.length);
+      assert.deepEqual(
+        [...previous].sort(),
+        ['seed', ...values.filter((value) => value !== final)].sort()
+      );
+    });
+
+    test('progress written after finish keeps the final tails', async () => {
+      const conversationId = await newConversation();
+      const task = await newTask(conversationId);
+      await storage.tasks.updateProgress(task.id, { stdoutTail: 'building' });
+      await storage.tasks.finish(task.id, {
+        status: 'completed',
+        report: 'done',
+        needsInput: false,
+        exitCode: 0,
+        stdoutTail: 'built',
+        stderrTail: 'warn',
+        usage: null,
+        endedAt: ts(3),
+      });
+      await storage.tasks.updateProgress(task.id, { stdoutTail: 'late', stderrTail: 'late', outputPath: '/late.log' });
+
+      const row = await storage.tasks.get(task.id);
+      assert.equal(row?.status, 'completed');
+      assert.equal(row?.stdoutTail, 'built');
+      assert.equal(row?.stderrTail, 'warn');
+      assert.equal(row?.outputPath, null);
+      await assert.rejects(storage.tasks.updateProgress(prefixedId('task'), { stdoutTail: 'x' }), NotFoundError);
+    });
+  });
 });

@@ -76,7 +76,10 @@ export abstract class MessageRepository {
   /** Conversation transcript page, newest first; `before` is a message id. */
   abstract page(conversationId: string, options: { before?: string; limit: number }): Promise<Page<MessageRecord>>;
   abstract get(id: string): Promise<MessageRecord | null>;
-  /** Soft-deletes `messageId` and every later message (and their turns' tool calls) of the conversation. */
+  /**
+   * Soft-deletes `messageId` and every later message of its transcript (same conversation and task scope).
+   * Tool-call rows are not deleted; only messages are soft-deleted.
+   */
   abstract softDeleteFrom(conversationId: string, messageId: string): Promise<number>;
 }
 

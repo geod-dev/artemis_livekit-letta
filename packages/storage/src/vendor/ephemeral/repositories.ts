@@ -469,6 +469,8 @@ class EphemeralTaskRepository extends TaskRepository {
   ): Promise<void> {
     return this.access.run((state) => {
       const row = requireRow(state.tasks.get(id), 'task');
+      // Only a running task takes progress: a late write after finish() must not overwrite the final tails.
+      if (row.status !== 'running') return;
       for (const key of ['stdoutTail', 'stderrTail', 'usage', 'outputPath'] as const) {
         if (patch[key] !== undefined) Object.assign(row, { [key]: copy(patch[key]) });
       }
