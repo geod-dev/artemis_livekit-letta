@@ -33,10 +33,31 @@ DISCONNECT_TIMEOUT_SECONDS = 3
 REQUEST_QUEUE_SIZE = 32
 EXECUTION_WORKERS = 4
 MAX_RECONNECT_DELAY_SECONDS = 30
+# A stream that stays up this long counts as healthy, so the next failure restarts the backoff.
+STABLE_STREAM_SECONDS = 30
 # Tools whose calls are written to stderr before they run, so the operator sees what is asked.
 AUDITED_TOOLS = ("terminal_run", "filesystem_read", "filesystem_write", "filesystem_export")
 AUDIT_LINE_LIMIT = 300
 TOKEN_TAIL_MIN_LENGTH = 16
+
+
+class _GatewayRedirectsRefused(urllib.request.HTTPRedirectHandler):
+    """The device token and uploaded files go only to the configured gateway. Returning None
+    lets the default error handler raise HTTPError for the 3xx response, so no hop is followed."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_GATEWAY_OPENER = urllib.request.build_opener(_GatewayRedirectsRefused)
+
+
+def stream_is_stable(connected_at, relayed):
+    """A stream is stable once it has relayed a request or stayed up for the threshold. A bare
+    connected event does not count: a gateway that accepts and then drops is not healthy."""
+    if connected_at is None:
+        return False
+    return relayed or time.monotonic() - connected_at >= STABLE_STREAM_SECONDS
 
 
 def normalize_token(value):
@@ -157,7 +178,7 @@ def upload_device_file(server, token, name, session, call_id, path):
                 "Content-Length": str(size),
             },
         )
-        with urllib.request.urlopen(req, timeout=UPLOAD_TIMEOUT_SECONDS) as response:
+        with _GATEWAY_OPENER.open(req, timeout=UPLOAD_TIMEOUT_SECONDS) as response:
             return json.load(response)
 
 
@@ -239,7 +260,7 @@ class DeviceSession:
             self.server + "/api/devices/" + path, data=data, headers=headers
         )
         try:
-            return urllib.request.urlopen(req, timeout=timeout)
+            return _GATEWAY_OPENER.open(req, timeout=timeout)
         except urllib.error.HTTPError as error:
             error.artemis_endpoint = path
             raise
@@ -352,6 +373,7 @@ class DeviceSession:
         session = None
         delay = 1
         while True:
+            connected_at = None
             try:
                 active_local = self.local_client()
                 tools = active_local.tools() if active_local else self.scope_tools
@@ -359,13 +381,15 @@ class DeviceSession:
                 session = self.request("register", {"name": self.name, "tools": tools})["session"]
                 with self.open_request(self.device_path + "/events", session=session) as response:
                     for event, message in interruptible_stream_events(response):
+                        if stream_is_stable(connected_at, relayed=event == "request"):
+                            delay = 1
                         if event == "connected":
                             print(
                                 f"Connected: {self.name} ({len(tools)} tool(s)). Leave this window "
                                 f"open.",
                                 flush=True,
                             )
-                            delay = 1
+                            connected_at = time.monotonic()
                         elif event == "ping":
                             with contextlib.suppress(queue.Full):
                                 self.heartbeats.put_nowait(session)
@@ -387,6 +411,8 @@ class DeviceSession:
                                         "Unable to queue busy response; pending call will expire.",
                                         flush=True,
                                     )
+                if stream_is_stable(connected_at, relayed=False):
+                    delay = 1
                 raise ConnectionError("Artemis closed the device connection")
             except urllib.error.HTTPError as error:
                 endpoint = getattr(error, "artemis_endpoint", "unknown endpoint")

@@ -1,3 +1,4 @@
+import contextlib
 import io
 import json
 import os
@@ -676,6 +677,92 @@ class MainLoopTests(unittest.TestCase):
         self.assertIn('ends with "alue"', verbose)
         self.assertNotIn(self.TOKEN, verbose)
 
+    def test_connected_then_close_does_not_reset_the_reconnect_delay(self):
+        """A gateway that accepts the stream and drops it must not be retried every second."""
+
+        class Gateway(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.handle_any()
+
+            def do_GET(self):
+                self.handle_any()
+
+            def handle_any(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                if self.path.endswith("/events"):
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.end_headers()
+                    self.wfile.write(b"event: connected\ndata: {}\n\n")
+                    self.wfile.flush()
+                    return
+                body = json.dumps({"session": "s1"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                return None
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        output, error = self._run_main(
+            server, sleep_side_effect=[None, None, None, None, KeyboardInterrupt]
+        )
+        self.assertIsNone(error)
+        delays = [call.args[0] for call in self.sleep.call_args_list]
+        self.assertEqual(delays[:4], [1, 2, 4, 8])
+        self.assertGreaterEqual(output.count("Connected:"), 2)
+
+    def test_stream_that_stays_up_resets_the_reconnect_delay(self):
+        """After a long-lived stream, the next failure starts again from the 1 second delay."""
+        streams = []
+
+        class Gateway(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.handle_any()
+
+            def do_GET(self):
+                self.handle_any()
+
+            def handle_any(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                if self.path.endswith("/events"):
+                    streams.append(self.path)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.end_headers()
+                    self.wfile.write(b"event: connected\ndata: {}\n\n")
+                    self.wfile.flush()
+                    return
+                body = json.dumps({"session": "s1"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                return None
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        # With a zero threshold, any stream that connected counts as stable, so it resets.
+        with patch.object(device, "STABLE_STREAM_SECONDS", 0):
+            _, error = self._run_main(
+                server, sleep_side_effect=[None, None, None, None, KeyboardInterrupt]
+            )
+        self.assertIsNone(error)
+        self.assertGreaterEqual(len(streams), 4)
+        delays = [call.args[0] for call in self.sleep.call_args_list]
+        self.assertEqual(delays[:4], [1, 1, 1, 1])
+
 
 class ScopeAndEntryPointTests(unittest.TestCase):
     def test_filesystem_rejects_relative_paths_and_enforces_size_limits(self):
@@ -870,6 +957,145 @@ class ScopeAndEntryPointTests(unittest.TestCase):
             self.assertNotIn("isError", result)
             self.assertIn("[audit] filesystem_read path=", errors.getvalue())
             self.assertNotIn("hello", errors.getvalue())
+
+
+class RedirectAndPipeTests(unittest.TestCase):
+    """Redirects are refused, so the bearer token and uploads stay with the gateway; background
+    children cannot hold the terminal readers forever."""
+
+    def _serve(self, handler_class):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler_class)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server
+
+    def _redirect_pair(self, status):
+        """A gateway that answers every request with a redirect to a second local server."""
+        received = []
+
+        class Target(BaseHTTPRequestHandler):
+            def _record(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                received.append((self.headers.get("Authorization"), self.rfile.read(length)))
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            do_GET = do_POST = _record
+
+            def log_message(self, *_args):
+                return None
+
+        target = self._serve(Target)
+        location = f"http://127.0.0.1:{target.server_address[1]}/elsewhere"
+
+        class Gateway(BaseHTTPRequestHandler):
+            def _redirect(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
+                self.send_response(status)
+                self.send_header("Location", location)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            do_GET = do_POST = _redirect
+
+            def log_message(self, *_args):
+                return None
+
+        return self._serve(Gateway), received
+
+    def _session(self, server):
+        return device.DeviceSession(
+            name="laptop",
+            server=f"http://127.0.0.1:{server.server_address[1]}",
+            token="test-token-value",
+            token_source="test",
+            token_hint=None,
+            scope_tools=[],
+            scope_handlers={},
+            mcp_command=None,
+        )
+
+    def test_redirect_is_refused_and_the_token_is_not_sent_to_the_target(self):
+        gateway, received = self._redirect_pair(302)
+        session = self._session(gateway)
+        with self.assertRaises(device.urllib.error.HTTPError) as raised:
+            session.open_request("register", {"name": "laptop", "tools": []})
+        self.assertEqual(raised.exception.code, 302)
+        self.assertEqual(received, [])
+
+    def test_upload_redirect_is_refused_and_the_token_and_body_are_not_resent(self):
+        # urllib turns a 302 POST into a GET that keeps Authorization; a 307 POST is refused by
+        # the stdlib already. Both must end at the gateway.
+        for status in (302, 307):
+            with self.subTest(status=status):
+                gateway, received = self._redirect_pair(status)
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "data.bin"
+                    path.write_bytes(b"secret-file-body")
+                    with self.assertRaises(device.urllib.error.HTTPError) as raised:
+                        device.upload_device_file(
+                            f"http://127.0.0.1:{gateway.server_address[1]}",
+                            "test-token-value",
+                            "laptop",
+                            "session",
+                            "call-id",
+                            path,
+                        )
+                self.assertEqual(raised.exception.code, status)
+                self.assertEqual(received, [])
+
+    # Known gap (R4-NA-007): closing a pipe from another thread does not wake a reader blocked in
+    # read1 on Windows, and close() itself stalls. The readers end only when the background child
+    # exits. Remove this decorator once the readers are released some other way.
+    @unittest.expectedFailure
+    def test_background_child_does_not_hold_the_reader_threads_forever(self):
+        from artemis_device.scopes.terminal import register
+
+        # The grandchild inherits stdout and outlives the command. Its pid is printed first, so
+        # the test can stop it afterwards.
+        code = (
+            "import subprocess,sys\n"
+            "p = subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)'],"
+            "close_fds=False)\n"
+            "print(p.pid, flush=True)\n"
+        )
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            _, handlers = register(SimpleNamespace(active_folder=directory))
+            threads_before = threading.active_count()
+            result = handlers["terminal_run"](
+                {"command": sys.executable, "arguments": ["-c", code]}
+            )
+            text = result["content"][0]["text"]
+            self.addCleanup(self._stop_pid, int(text.split("stdout:\n", 1)[1].split()[0]))
+            self.assertIn("output incomplete", text)
+            # Readers and the closer thread must finish within the bound, not stay blocked for
+            # as long as the background child runs.
+            deadline = time.monotonic() + 15
+            while threading.active_count() > threads_before and time.monotonic() < deadline:
+                time.sleep(0.1)
+            self.assertLessEqual(threading.active_count(), threads_before)
+
+    @staticmethod
+    def _stop_pid(pid):
+        if os.name == "nt":
+            import subprocess
+
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        else:
+            import signal
+
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
 
 
 if __name__ == "__main__":
