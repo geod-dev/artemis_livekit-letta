@@ -1,4 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,7 +19,8 @@ export interface AppConfig {
   transcription: { groqApiKey?: string; model: string };
   livekit: { url: string; apiKey: string; apiSecret: string; agentName: string };
   voiceGatewayToken: string;
-  auth: { password: string; deviceToken: string };
+  /** `trustedProxies` (TRUSTED_PROXIES) is empty when unset; see SessionAuthOptions in auth.ts. */
+  auth: { password: string; deviceToken: string; trustedProxies: string[] };
 }
 
 const DEV_AGENT_SERVER_TOKEN = 'dev-agent-server-token-change-me';
@@ -100,6 +102,30 @@ function integer(env: NodeJS.ProcessEnv, name: string, fallback: number, min: nu
   if (!Number.isSafeInteger(parsed) || parsed < min)
     throw new Error(`${name} must be an integer of at least ${min}`);
   return parsed;
+}
+
+/**
+ * TRUSTED_PROXIES: the reverse proxy's IP addresses or CIDR ranges, comma-separated. An
+ * IPv4-mapped address is stored in its plain form, which is how the gateway compares peers.
+ */
+function trustedProxies(env: NodeJS.ProcessEnv): string[] {
+  const entries = (env.TRUSTED_PROXIES ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return entries.map((entry) => {
+    const [raw = '', prefix, ...rest] = entry.split('/');
+    const address = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+    const family = isIP(address);
+    const maxPrefix = family === 6 ? 128 : 32;
+    const valid =
+      family !== 0 &&
+      rest.length === 0 &&
+      (prefix === undefined || (/^\d+$/.test(prefix) && Number(prefix) <= maxPrefix));
+    if (!valid)
+      throw new Error(`TRUSTED_PROXIES must hold IP addresses or CIDR ranges, not "${entry}"`);
+    return prefix === undefined ? address : `${address}/${prefix}`;
+  });
 }
 
 function containsPath(parent: string, candidate: string): boolean {
@@ -193,6 +219,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): AppConfig {
     auth: {
       password: env.ARTEMIS_PASSWORD?.trim() || '',
       deviceToken: env.ARTEMIS_DEVICE_TOKEN?.trim() || '',
+      trustedProxies: trustedProxies(env),
     },
   };
 }

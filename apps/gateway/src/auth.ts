@@ -4,6 +4,7 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, open, rename, unlink } from 'node:fs/promises';
+import { BlockList, isIP } from 'node:net';
 import { dirname, join } from 'node:path';
 import { bearerToken } from './http.ts';
 import { VOICE_AGENT_PATH_PREFIX } from './routes/voice.ts';
@@ -29,6 +30,32 @@ export interface SessionAuthOptions {
   dataDir: string;
   /** The socket address of a request, read by the Node server (absent in-process, so unknown). */
   peerAddress?: (c: Context) => string | undefined;
+  /**
+   * The reverse proxy's addresses or CIDR ranges (TRUSTED_PROXIES), whose X-Real-IP is honoured.
+   * Empty means unset: any loopback or private peer is trusted, as before.
+   */
+  trustedProxies?: string[];
+}
+
+/** An IP address without the IPv4-mapped prefix that dual-stack sockets report, and its family (0 if invalid). */
+function bareAddress(address: string): { address: string; family: number } {
+  const bare = address.startsWith('::ffff:') ? address.slice(7) : address;
+  return { address: bare, family: isIP(bare) };
+}
+
+/** The configured proxy addresses and ranges, as a set to test a socket peer against. */
+function proxyList(entries: string[]): BlockList {
+  const list = new BlockList();
+  for (const entry of entries) {
+    const [address = '', prefix] = entry.split('/');
+    const { address: bare, family } = bareAddress(address);
+    if (!family)
+      throw new Error(`TRUSTED_PROXIES must hold IP addresses or CIDR ranges, not "${entry}"`);
+    const type = family === 6 ? 'ipv6' : 'ipv4';
+    if (prefix === undefined) list.addAddress(bare, type);
+    else list.addSubnet(bare, Number(prefix), type);
+  }
+  return list;
 }
 
 /** Failed logins in the current window, for one client address. */
@@ -184,15 +211,22 @@ export function createSessionAuth(options: SessionAuthOptions): Hono {
       return undefined;
     }
   };
+  // With TRUSTED_PROXIES set, only those peers count; unset, every loopback or private peer does.
+  const trusted = options.trustedProxies?.length ? proxyList(options.trustedProxies) : undefined;
+  const isTrustedProxy = (peer: string): boolean => {
+    if (!trusted) return isLocalOrPrivateAddress(peer);
+    const { address, family } = bareAddress(peer);
+    return family !== 0 && trusted.check(address, family === 6 ? 'ipv6' : 'ipv4');
+  };
   /**
    * The address a login failure is counted against. nginx sets X-Real-IP from the socket
    * and overwrites any value the client sent, so the header is read only when the direct
-   * peer is a loopback or private address (the proxy). Otherwise the socket address counts.
+   * peer is a trusted proxy. Otherwise the socket address counts.
    */
   const clientAddress = (c: Context): string => {
     const peer = peerAddress(c);
     const forwarded = c.req.header('X-Real-IP');
-    if (forwarded && peer && isLocalOrPrivateAddress(peer)) return forwarded;
+    if (forwarded && peer && isTrustedProxy(peer)) return forwarded;
     return peer ?? 'unknown';
   };
   const app = new Hono();

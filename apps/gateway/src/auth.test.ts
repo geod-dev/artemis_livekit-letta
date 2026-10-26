@@ -13,18 +13,23 @@ const root = mkdtempSync(join(tmpdir(), 'gateway-auth-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 /** A session gate over a data directory, with the Node socket lookup the server uses. */
-function gate(dataDir = mkdtempSync(join(root, 'data-')), password = PASSWORD) {
+function gate(
+  dataDir = mkdtempSync(join(root, 'data-')),
+  password = PASSWORD,
+  trustedProxies?: string[]
+) {
   return createSessionAuth({
     password,
     deviceToken: DEVICE_TOKEN,
     dataDir,
+    trustedProxies,
     peerAddress: (c) => getConnInfo(c).remote.address,
   });
 }
 
 /** The gate with a catch-all private API behind it, for the routes that need one. */
-function fixture(dataDir?: string, password = PASSWORD) {
-  const app = gate(dataDir, password);
+function fixture(dataDir?: string, password = PASSWORD, trustedProxies?: string[]) {
+  const app = gate(dataDir, password, trustedProxies);
   app.all('/api/*', (c) => c.json({ private: true }));
   return app;
 }
@@ -179,6 +184,24 @@ test('login failures are limited per client, and X-Real-IP is read only from a p
   for (let i = 0; i < 10; i++)
     assert.equal((await attempt(app, '203.0.113.9', 'wrong', `10.9.0.${i}`)).status, 401);
   assert.equal((await attempt(app, '203.0.113.9', PASSWORD, '10.0.0.3')).status, 429);
+});
+
+test('X-Real-IP is honoured only from a configured trusted proxy, not from another private peer', async () => {
+  // 172.29.250.10 is the web proxy. 172.29.250.5 is agent-server: private, and on the same edge network.
+  const app = fixture(undefined, PASSWORD, ['172.29.250.10']);
+  for (let i = 0; i < 10; i++)
+    assert.equal((await attempt(app, '172.29.250.5', 'wrong', `10.1.0.${i}`)).status, 401);
+  // The spoofed header is ignored: the agent's socket window is the one that is blocked.
+  assert.equal((await attempt(app, '172.29.250.5', PASSWORD, '10.1.0.99')).status, 429);
+  // Through the configured proxy, the forwarded client address is the one counted.
+  for (let i = 0; i < 10; i++)
+    assert.equal((await attempt(app, '172.29.250.10', 'wrong', '10.2.0.1')).status, 401);
+  assert.equal((await attempt(app, '172.29.250.10', PASSWORD, '10.2.0.1')).status, 429);
+  assert.equal((await attempt(app, '172.29.250.10', PASSWORD, '10.2.0.2')).status, 200);
+  // The IPv4-mapped form of the proxy address is the same peer.
+  for (let i = 0; i < 10; i++)
+    assert.equal((await attempt(app, '::ffff:172.29.250.10', 'wrong', '10.3.0.1')).status, 401);
+  assert.equal((await attempt(app, '::ffff:172.29.250.10', PASSWORD, '10.3.0.1')).status, 429);
 });
 
 test('a blocked client is told how long its window has left, and the refusal is in English', async (t) => {

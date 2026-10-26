@@ -50,6 +50,21 @@ test('configuration rejects invalid ports', () => {
   assert.throws(() => validateConfig({ AGENT_SERVER_PORT: '0' }), /AGENT_SERVER_PORT/);
 });
 
+test('TRUSTED_PROXIES lists proxy IP addresses or CIDR ranges, and nothing else', () => {
+  assert.deepEqual(validateConfig({}).auth.trustedProxies, []);
+  assert.deepEqual(
+    validateConfig({ TRUSTED_PROXIES: ' 172.29.250.10, 10.0.0.0/8 ' }).auth.trustedProxies,
+    ['172.29.250.10', '10.0.0.0/8']
+  );
+  assert.deepEqual(
+    validateConfig({ TRUSTED_PROXIES: '::ffff:172.29.250.10' }).auth.trustedProxies,
+    ['172.29.250.10']
+  );
+  for (const value of ['web', '172.29.250.0/33', '2001:db8::/129', '10.0.0.0/8/8', '10.0.0.0/']) {
+    assert.throws(() => validateConfig({ TRUSTED_PROXIES: value }), /TRUSTED_PROXIES/, value);
+  }
+});
+
 test('the gateway reaches the agent-server at AGENT_SERVER_URL with its shared token', () => {
   const config = validateConfig({
     AGENT_SERVER_URL: 'http://agent-server:4000',
