@@ -105,6 +105,14 @@ jobs:
       - name: Build images
         run: docker compose -f docker-compose.yml build gateway agent-server web voice-agent
 
+      # R4-DP-001: an agent shell must hold no capabilities and must not read the server's environment.
+      # Runs the built agent-server image with the compose capability set (not part of pnpm check: it needs Docker).
+      - name: Check agent shell capabilities in the agent-server image
+        run: |
+          image="$(docker compose -f docker-compose.yml config --images | grep agent-server | head -n 1)"
+          test -n "$image"
+          sh scripts/smoke-agent-shell-caps.sh "$image"
+
       # The Coolify stack has its own web service, so its image is built and its nginx config tested
       # on its own. The upstreams are variables resolved at request time, so nginx -t needs no hosts.
       - name: Build the Coolify web image and test its nginx config

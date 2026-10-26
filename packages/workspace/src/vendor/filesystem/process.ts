@@ -32,21 +32,59 @@ export interface StartProcessOptions {
   clock?: Clock;
 }
 
+export interface ShellInvocation {
+  file: string;
+  args: string[];
+  /** Set only where Node's `uid`/`gid` options are used. */
+  ids?: { uid: number; gid: number };
+}
+
+/**
+ * How the shell is started for `options`. With `runAs` on Linux the shell runs under `setpriv`, which
+ * changes the user and then clears the inheritable and ambient capability sets before it execs the shell.
+ * Node's `uid` option does not clear them: the server's SETUID and SETGID would reach every agent shell,
+ * which could switch back to the server's uid and read its environment. Other platforms have no ambient
+ * capabilities, so Node's option is enough there, and Windows does not run as another user at all.
+ */
+export function shellInvocation(
+  options: Pick<StartProcessOptions, 'shell' | 'command' | 'runAs'>,
+  platform: NodeJS.Platform = process.platform
+): ShellInvocation {
+  const shellArgs = ['-lc', options.command];
+  if (platform === 'win32' || !options.runAs) return { file: options.shell, args: shellArgs };
+  const { uid, gid } = options.runAs;
+  if (platform !== 'linux') {
+    return { file: options.shell, args: shellArgs, ids: { uid, gid } };
+  }
+  return {
+    file: '/usr/bin/setpriv',
+    args: [
+      `--reuid=${uid}`,
+      `--regid=${gid}`,
+      '--init-groups',
+      '--inh-caps=-all',
+      '--ambient-caps=-all',
+      '--',
+      options.shell,
+      ...shellArgs,
+    ],
+  };
+}
+
 /**
  * Spawns `command` in its own process group (POSIX) or process tree (Windows).
  * Resolves once the shell has started; rejects when it cannot be started.
  * Every process is killed once its lifetime (`timeoutMs`, else `maxLifetimeMs`) elapses.
  */
 export async function startProcess(options: StartProcessOptions): Promise<WorkspaceProcess> {
-  const child = spawn(options.shell, ['-lc', options.command], {
+  const invocation = shellInvocation(options);
+  const child = spawn(invocation.file, invocation.args, {
     cwd: options.cwd,
     env: options.env,
     detached: true,
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
-    ...(process.platform !== 'win32' && options.runAs
-      ? { uid: options.runAs.uid, gid: options.runAs.gid }
-      : {}),
+    ...invocation.ids,
   });
   await new Promise<void>((resolve, reject) => {
     child.once('spawn', resolve);

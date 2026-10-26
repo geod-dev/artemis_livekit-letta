@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { FilesystemWorkspaceTransport } from './index.ts';
-import { DEFAULT_MAX_LIFETIME_MS, MAX_OUTPUT_BYTES, OutputLog } from './process.ts';
+import {
+  DEFAULT_MAX_LIFETIME_MS,
+  MAX_OUTPUT_BYTES,
+  OutputLog,
+  shellInvocation,
+} from './process.ts';
 
 let root: string;
 
@@ -96,6 +101,48 @@ describe('OutputLog', () => {
 
   test('rejects a non-positive cap', () => {
     assert.throws(() => new OutputLog(0), RangeError);
+  });
+});
+
+describe('agent shell capabilities', () => {
+  const base = { shell: '/bin/bash', command: 'id -u' };
+
+  test('runAs on Linux wraps the shell in setpriv that clears inheritable and ambient capabilities', () => {
+    const invocation = shellInvocation({ ...base, runAs: { uid: 1002, gid: 1001 } }, 'linux');
+    assert.equal(invocation.file, '/usr/bin/setpriv');
+    assert.deepEqual(invocation.args, [
+      '--reuid=1002',
+      '--regid=1001',
+      '--init-groups',
+      '--inh-caps=-all',
+      '--ambient-caps=-all',
+      '--',
+      '/bin/bash',
+      '-lc',
+      'id -u',
+    ]);
+    assert.equal(invocation.ids, undefined, 'Node must not also apply the uid option');
+  });
+
+  test('runAs on win32 is ignored and the shell runs as the current user', () => {
+    const invocation = shellInvocation({ ...base, runAs: { uid: 1002, gid: 1001 } }, 'win32');
+    assert.equal(invocation.file, '/bin/bash');
+    assert.deepEqual(invocation.args, ['-lc', 'id -u']);
+    assert.equal(invocation.ids, undefined);
+  });
+
+  test('runAs on other POSIX platforms keeps Node uid option, which has no capabilities to leak', () => {
+    const invocation = shellInvocation({ ...base, runAs: { uid: 1002, gid: 1001 } }, 'darwin');
+    assert.equal(invocation.file, '/bin/bash');
+    assert.deepEqual(invocation.args, ['-lc', 'id -u']);
+    assert.deepEqual(invocation.ids, { uid: 1002, gid: 1001 });
+  });
+
+  test('without runAs the shell is started directly', () => {
+    const invocation = shellInvocation(base, 'linux');
+    assert.equal(invocation.file, '/bin/bash');
+    assert.deepEqual(invocation.args, ['-lc', 'id -u']);
+    assert.equal(invocation.ids, undefined);
   });
 });
 
