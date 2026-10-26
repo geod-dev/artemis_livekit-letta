@@ -19,8 +19,10 @@ Paths in this section are relative to `apps/web/src/`.
   with static idle/tool states and motion confined to thinking and measured speech.
 - `styles/controls.css`: composer, effort slider, statuses, and theme previews.
 - `styles/interactions.css`: character expressions, motion, and reduced motion.
-- `styles/responsive.css`: mobile composition, bottom docking, touch targets,
-  safe areas, and drawer transitions.
+- `styles/responsive-shell.css`: responsive shells and shared touch behaviour.
+- `styles/responsive-chrome.css`: viewport-height handling for the chrome and settings page.
+- `styles/responsive-phone.css`: the phone layout below 768px (top bar, docking, drawers).
+- `styles/responsive-touch.css`: short-viewport adjustments and touch sizing.
 - `styles/generative-ui/`: structured tool output vocabulary, split by component:
   `actions.css`, `data-display.css`, `form-controls.css`, `layout-and-cards.css`, and
   `text-and-facts.css`.

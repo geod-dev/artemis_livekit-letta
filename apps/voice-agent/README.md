@@ -15,7 +15,7 @@ completions. It does not call the agent server directly.
   `pythonVersion` in this app's `pyproject.toml`, the Python tag of the Dockerfile base image, and
   `requires-python` and the ruff `target-version` in
   [`apps/device-client/pyproject.toml`](../device-client/pyproject.toml).
-- Check: `pnpm check:voice` (pytest, ruff, and pyright, run with `uv run --locked`).
+- Check: `pnpm check:voice-agent` (pytest, ruff, and pyright, run with `uv run --locked`).
 - Tests: `tests/`. `tests/conftest.py` clears the settings variables and points `VOICE_ENV_FILE`
   at a missing file, so no real `.env` is read.
 - Settings: read from the env file named by `VOICE_ENV_FILE`. When that is unset, a source

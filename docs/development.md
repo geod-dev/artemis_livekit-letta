@@ -142,8 +142,8 @@ Build the debug APK from the repository root. Every build needs an HTTPS origin:
 ```
 
 Set `ARTEMIS_MOBILE_URL` in the environment instead of the `-P` property if you prefer. The output is
-`apps/mobile/app/build/outputs/apk/debug/app-debug.apk`. `apps/mobile/scripts/install-android.ps1`
-installs that APK by default; pass `-ApkPath` to install another file. The app's microphone permission,
+`apps/mobile/app/build/outputs/apk/debug/app-debug.apk`. `scripts/install-android.ps1` installs the
+release APK when one exists and the debug APK otherwise; pass `-ApkPath` to install another file. The app's microphone permission,
 authenticated downloads, and same-site previews all depend on this origin. Navigations off that origin
 open in the browser. See [its README](../apps/mobile/README.md).
 
