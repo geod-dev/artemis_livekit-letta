@@ -31,6 +31,7 @@ test('startGateway serves until close, then stops listening and releases its sig
     'ARTEMIS_DATA_DIR',
     'ARTEMIS_PASSWORD',
     'VOICE_GATEWAY_TOKEN',
+    'ARTEMIS_DEVICE_TOKEN',
   ] as const;
   const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
   const port = await freePort();
@@ -44,6 +45,8 @@ test('startGateway serves until close, then stops listening and releases its sig
     ARTEMIS_DATA_DIR: join(root, 'data'),
     ARTEMIS_PASSWORD: 'test-password',
     VOICE_GATEWAY_TOKEN: 'test-voice-token',
+    // Set here so the test does not depend on a local .env, which CI does not have.
+    ARTEMIS_DEVICE_TOKEN: 'test-device-token',
   });
   const sigint = process.listenerCount('SIGINT');
   const sigterm = process.listenerCount('SIGTERM');
