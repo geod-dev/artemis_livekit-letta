@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
         webView.setWebViewClient(new SiteWebViewClient(this));
         webView.setWebChromeClient(new SiteWebChromeClient(this));
         webView.setDownloadListener(
-            (url, agent, disposition, type) -> downloads.start(url, agent, disposition, type));
+            (url, agent, disposition, type, length) -> downloads.start(url, agent, disposition, type));
     }
 
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
