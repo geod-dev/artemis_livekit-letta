@@ -18,6 +18,28 @@ import {
  * the workspace, so the agent cannot change it.
  */
 const ABANDONED_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Windows refuses to replace a file that another process has open for a moment
+ * (an antivirus or indexer scan right after the write), with EPERM, EACCES or EBUSY.
+ * Those clear within milliseconds, so the rename is retried briefly before failing.
+ */
+const RENAME_ATTEMPTS = 6;
+const RENAME_RETRY_MS = 25;
+const TRANSIENT_RENAME_ERRORS = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+async function renameReplacing(from: string, to: string): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= RENAME_ATTEMPTS || !code || !TRANSIENT_RENAME_ERRORS.has(code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, RENAME_RETRY_MS * attempt));
+    }
+  }
+}
 const CLEANUP_EVERY_MS = 6 * 60 * 60 * 1000;
 
 /** The type and kind of an upload, decided once from its leading bytes. */
@@ -235,7 +257,7 @@ export class AttachmentRegistry {
       } finally {
         await handle.close();
       }
-      await rename(temporary, this.retentionFile);
+      await renameReplacing(temporary, this.retentionFile);
     } catch (error) {
       await unlink(temporary).catch(() => {});
       throw error;
