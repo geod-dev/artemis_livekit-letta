@@ -5,8 +5,9 @@ import process from 'node:process';
 const pnpmExecutable = 'pnpm';
 // One Python pin for every Python check: apps/voice-agent/.python-version (also read by CI).
 const pythonVersion = readFileSync(new URL('../apps/voice-agent/.python-version', import.meta.url), 'utf8').trim();
-// The Gradle wrapper is a .bat on Windows; it runs through cmd.exe like pnpm does.
-const gradleExecutable = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
+// The Gradle wrapper is a .bat on Windows; it runs through cmd.exe like pnpm does. cmd.exe does not search
+// the working directory for commands, so the wrapper needs the explicit .\ prefix.
+const gradleExecutable = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
 const hasJdk = spawnSync('java', ['-version'], { stdio: 'ignore', shell: false }).status === 0;
 // Without a JDK the mobile group fails unless the caller opts out (decision 16).
 const skipMobile = process.env.CHECK_SKIP_MOBILE === '1';
