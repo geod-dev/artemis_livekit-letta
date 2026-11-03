@@ -43,11 +43,10 @@ const AUI_CONFIG = AuiConfig({ tools: Tools({ toolkit: generativeUIToolkit }) })
 export function ChatApp({ assistantName }: { assistantName: string }) {
   useAppViewport();
   const list = useConversations();
-  const { upsert, create } = list;
+  const { upsert } = list;
   const [activeId, select] = useSelectedConversation();
   const conversation = useConversation(activeId, upsert);
   const contextUsage = useContextUsage(conversation.shownId, conversation.contextUsageRevision);
-  const { expectNew, setError } = conversation;
   const [effort, setEffort] = useState<TextEffort>('medium');
   const [effortLoaded, setEffortLoaded] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
